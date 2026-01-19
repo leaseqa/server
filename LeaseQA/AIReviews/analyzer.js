@@ -1,5 +1,4 @@
-// Available models: gemini-1.5-flash (recommended for free tier), gemini-1.5-pro, gemini-1.0-pro
-const MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
+import OpenAI from "openai";
 
 const parseModelJson = (rawText) => {
     try {
@@ -17,13 +16,16 @@ const parseModelJson = (rawText) => {
     }
 };
 
-
-
 export const analyzeContractText = async (text) => {
-    const apiKey = process.env.GOOGLE_API_KEY;
+    const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
-        throw new Error("Missing GOOGLE_API_KEY environment variable. Please add it to your .env file.");
+        throw new Error("Missing DEEPSEEK_API_KEY environment variable. Please add it to your .env file.");
     }
+
+    const openai = new OpenAI({
+        baseURL: 'https://api.deepseek.com',
+        apiKey: apiKey,
+    });
 
     const prompt = `You are a lease risk analyst. Return JSON in the exact format:
 {
@@ -37,39 +39,45 @@ Strictly output valid JSON only. No markdown formatting. No trailing commas. Lea
 ${text.slice(0, 12000)}
 `.trim();
 
-    const response = await fetch(`${MODEL_URL}?key=${apiKey}`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            contents: [{parts: [{text: prompt}]}],
-            generationConfig: {temperature: 0.3, maxOutputTokens: 512},
-        }),
-    });
+    try {
+        const completion = await openai.chat.completions.create({
+            model: "deepseek-chat",
+            messages: [
+                {
+                    role: "system",
+                    content: "You are a lease risk analyst. Always return valid JSON in the specified format."
+                },
+                {
+                    role: "user",
+                    content: prompt
+                }
+            ],
+            temperature: 0.3,
+            max_tokens: 2000,
+        });
 
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-        const message = data?.error?.message || `Gemini request failed: ${response.status}`;
+        const rawText = completion.choices[0]?.message?.content || "";
+        const parsed = parseModelJson(rawText);
+        if (parsed) {
+            return {
+                summary: parsed.summary || "Analysis complete.",
+                highRisk: parsed.highRisk || [],
+                mediumRisk: parsed.mediumRisk || [],
+                lowRisk: parsed.lowRisk || [],
+                recommendations: parsed.recommendations || [],
+            };
+        }
+        
+        // Fallback if parsing absolutely failed
+        return {
+            summary: rawText || "No summary returned.",
+            highRisk: [],
+            mediumRisk: [],
+            lowRisk: [],
+            recommendations: [],
+        };
+    } catch (error) {
+        const message = error?.message || `DeepSeek API request failed`;
         throw new Error(message);
     }
-
-    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const parsed = parseModelJson(rawText);
-    if (parsed) {
-        return {
-            summary: parsed.summary || "Analysis complete.",
-            highRisk: parsed.highRisk || [],
-            mediumRisk: parsed.mediumRisk || [],
-            lowRisk: parsed.lowRisk || [],
-            recommendations: parsed.recommendations || [],
-        };
-    }
-    
-    // Fallback if parsing absolutely failed
-    return {
-        summary: rawText || "No summary returned.",
-        highRisk: [],
-        mediumRisk: [],
-        lowRisk: [],
-        recommendations: [],
-    };
 };
