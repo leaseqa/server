@@ -7,6 +7,11 @@
   "scripts": {
     "dev": "node --watch index.js",
     "start": "node index.js",
+    "test:rag": "node --test LeaseQA/RAG/*.test.js LeaseQA/shared/*.test.js",
+    "eval:rag": "node scripts/run-rag-eval.js",
+    "eval:rag:smoke": "node scripts/run-rag-eval.js --ids=ch03-security-deposit-return,ch06-heat-hot-water,ch09-lead-child,ch18-foreclosure-rights,form-repair-demand-letter,booklet-answer-summary-process",
+    "ingest:rag": "node scripts/ingest-rag-corpus.js",
+    "ingest:rag:reset": "node scripts/ingest-rag-corpus.js --reset",
     "seed:demo-users": "node scripts/seed-demo-users.js",
     "seed:assign-authors": "node scripts/assign-demo-authors.js"
   },
@@ -14,15 +19,22 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@langchain/classic": "^1.0.22",
+    "@langchain/openai": "^1.2.12",
+    "@langchain/textsplitters": "^1.0.1",
+    "@zilliz/milvus2-sdk-node": "^2.6.10",
     "bcryptjs": "^3.0.3",
     "connect-mongo": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-session": "^1.18.2",
+    "mammoth": "^1.11.0",
     "mongoose": "^9.0.0",
     "multer": "^2.0.2",
     "openai": "^6.16.0",
-    "uuid": "^13.0.0"
+    "pdf-parse": "^2.4.5",
+    "uuid": "^13.0.0",
+    "zod": "^4.3.6"
   }
 }

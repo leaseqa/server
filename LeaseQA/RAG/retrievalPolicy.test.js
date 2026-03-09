@@ -1,0 +1,179 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  buildKnowledgeSearchPlan,
+  rankKnowledgeChunks,
+} from "./retrievalPolicy.js";
+
+const config = { knowledgeTopK: 8 };
+
+const createChunk = ({
+  id,
+  sourceGroup,
+  sourceName,
+  chapterRef = "",
+  score,
+}) => ({
+  id,
+  source_group: sourceGroup,
+  source_name: sourceName,
+  chapter_ref: chapterRef,
+  score,
+});
+
+test("buildKnowledgeSearchPlan prioritizes forms for template questions", () => {
+  const plan = buildKnowledgeSearchPlan(
+    "Can you draft a repair demand letter for my landlord?",
+    config,
+  );
+
+  assert.equal(plan[0].group, "forms");
+});
+
+test("buildKnowledgeSearchPlan prioritizes booklets for summary process procedure questions", () => {
+  const plan = buildKnowledgeSearchPlan(
+    "In a summary process eviction, how do I file an answer?",
+    config,
+  );
+
+  assert.equal(plan[0].group, "booklets");
+});
+
+test("buildKnowledgeSearchPlan adds chapter 9 targeted searches for lead questions", () => {
+  const plan = buildKnowledgeSearchPlan(
+    "What must a landlord do if a child under 6 lives in a unit with lead paint?",
+    config,
+  );
+
+  assert.deepEqual(
+    plan.slice(0, 2).map(({ group, chapterRef }) => ({ group, chapterRef })),
+    [
+      { group: "chapters", chapterRef: "9" },
+      { group: "handouts", chapterRef: "9" },
+    ],
+  );
+});
+
+test("rankKnowledgeChunks prioritizes forms over chapters for template questions", () => {
+  const ranked = rankKnowledgeChunks(
+    "Can you draft a repair demand letter for my landlord?",
+    [
+      createChunk({
+        id: "chapter",
+        sourceGroup: "chapters",
+        sourceName: "ch08_getting_repairs_made.pdf",
+        chapterRef: "8",
+        score: 0.99,
+      }),
+      createChunk({
+        id: "form",
+        sourceGroup: "forms",
+        sourceName: "form_10_repair_demand_letter.pdf",
+        score: 0.65,
+      }),
+    ],
+  );
+
+  assert.equal(ranked[0].id, "form");
+});
+
+test("rankKnowledgeChunks prioritizes chapter 9 for lead questions", () => {
+  const ranked = rankKnowledgeChunks(
+    "What must a landlord do if a child under 6 lives in a unit with lead paint?",
+    [
+      createChunk({
+        id: "wrong",
+        sourceGroup: "chapters",
+        sourceName: "ch07_discrimination.pdf",
+        chapterRef: "7",
+        score: 0.99,
+      }),
+      createChunk({
+        id: "lead",
+        sourceGroup: "chapters",
+        sourceName: "ch09_lead_poisoning.pdf",
+        chapterRef: "9",
+        score: 0.70,
+      }),
+    ],
+  );
+
+  assert.equal(ranked[0].id, "lead");
+});
+
+test("buildKnowledgeSearchPlan does not treat notice to quit as a template question", () => {
+  const plan = buildKnowledgeSearchPlan("What is a notice to quit in an eviction case?", config);
+
+  assert.equal(plan[0].group, "chapters");
+});
+
+test("buildKnowledgeSearchPlan prioritizes chapter 10 for organizing questions", () => {
+  const plan = buildKnowledgeSearchPlan(
+    "Can tenants organize together without the landlord retaliating against them?",
+    config,
+  );
+
+  assert.deepEqual(
+    plan.slice(0, 2).map(({ group, chapterRef }) => ({ group, chapterRef })),
+    [
+      { group: "chapters", chapterRef: "10" },
+      { group: "handouts", chapterRef: "10" },
+    ],
+  );
+});
+
+test("buildKnowledgeSearchPlan treats housing code checklist as a booklet question", () => {
+  const plan = buildKnowledgeSearchPlan(
+    "In an eviction case, do you have a housing code checklist I can use?",
+    config,
+  );
+
+  assert.equal(plan[0].group, "booklets");
+});
+
+test("rankKnowledgeChunks prioritizes chapter 10 for organizing questions", () => {
+  const ranked = rankKnowledgeChunks(
+    "Can tenants organize together without the landlord retaliating against them?",
+    [
+      createChunk({
+        id: "repairs",
+        sourceGroup: "chapters",
+        sourceName: "ch08_getting_repairs_made.pdf",
+        chapterRef: "8",
+        score: 0.98,
+      }),
+      createChunk({
+        id: "organizing",
+        sourceGroup: "chapters",
+        sourceName: "ch10_organizing.pdf",
+        chapterRef: "10",
+        score: 0.65,
+      }),
+    ],
+  );
+
+  assert.equal(ranked[0].id, "organizing");
+});
+
+test("rankKnowledgeChunks prioritizes booklets for housing code checklist questions", () => {
+  const ranked = rankKnowledgeChunks(
+    "In an eviction case, do you have a housing code checklist I can use?",
+    [
+      createChunk({
+        id: "repairs",
+        sourceGroup: "chapters",
+        sourceName: "ch08_getting_repairs_made.pdf",
+        chapterRef: "8",
+        score: 0.98,
+      }),
+      createChunk({
+        id: "booklet",
+        sourceGroup: "booklets",
+        sourceName: "booklet_2_housing_code_checklist.pdf",
+        score: 0.64,
+      }),
+    ],
+  );
+
+  assert.equal(ranked[0].id, "booklet");
+});

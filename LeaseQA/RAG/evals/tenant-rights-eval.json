@@ -1,0 +1,177 @@
+[
+  {
+    "id": "ch01-moving-in-checklist",
+    "category": "chapters",
+    "question": "What should I inspect or document before moving into an apartment?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["1"]
+  },
+  {
+    "id": "ch02-screening-records",
+    "category": "chapters",
+    "question": "Can a landlord use an old eviction record against me during tenant screening?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["2"]
+  },
+  {
+    "id": "ch03-security-deposit-return",
+    "category": "chapters",
+    "question": "When does a landlord have to return my security deposit after I move out?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["3"]
+  },
+  {
+    "id": "ch04-tenancy-types",
+    "category": "chapters",
+    "question": "What is the difference between a lease and a tenancy at will?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["4"]
+  },
+  {
+    "id": "ch05-rent-increase",
+    "category": "chapters",
+    "question": "Can my landlord raise my rent whenever they want?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["5"]
+  },
+  {
+    "id": "ch06-heat-hot-water",
+    "category": "chapters",
+    "question": "My landlord shut off heat and hot water. What can I do?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["6"]
+  },
+  {
+    "id": "ch07-discrimination-families",
+    "category": "chapters",
+    "question": "Is it illegal for a landlord to discriminate against families with children?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["7"]
+  },
+  {
+    "id": "ch08-rent-withholding",
+    "category": "chapters",
+    "question": "When can a tenant withhold rent because serious repairs were not made?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["8"]
+  },
+  {
+    "id": "ch09-lead-child",
+    "category": "chapters",
+    "question": "What must a landlord do if a child under 6 lives in a unit with lead paint?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["9"]
+  },
+  {
+    "id": "ch10-organizing-rights",
+    "category": "chapters",
+    "question": "Can tenants organize together without the landlord retaliating against them?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["10"]
+  },
+  {
+    "id": "ch11-moving-out-protect-deposit",
+    "category": "chapters",
+    "question": "What should I do before moving out to protect my security deposit?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["11"]
+  },
+  {
+    "id": "ch12-notice-to-quit",
+    "category": "chapters",
+    "question": "What is a notice to quit in an eviction case?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["12"]
+  },
+  {
+    "id": "ch13-sue-landlord",
+    "category": "chapters",
+    "question": "Can I take my landlord to court over bad housing conditions?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["13"]
+  },
+  {
+    "id": "ch14-court-system",
+    "category": "chapters",
+    "question": "How does the Massachusetts court process work for a tenant civil case?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["14"]
+  },
+  {
+    "id": "ch15-rooming-house-rights",
+    "category": "chapters",
+    "question": "Do tenants in rooming houses have special rights?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["15"]
+  },
+  {
+    "id": "ch16-mobile-home-rights",
+    "category": "chapters",
+    "question": "What rights do mobile home park residents have?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["16"]
+  },
+  {
+    "id": "ch17-condo-conversion",
+    "category": "chapters",
+    "question": "What rights do tenants have if their building is being converted to condos?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["17"]
+  },
+  {
+    "id": "ch18-foreclosure-rights",
+    "category": "chapters",
+    "question": "What rights do tenants have after a foreclosure?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": ["18"]
+  },
+  {
+    "id": "form-repair-demand-letter",
+    "category": "forms",
+    "question": "Can you draft a repair demand letter for my landlord?",
+    "expectedSourceGroup": "forms",
+    "expectedSourceNameIncludes": ["repair_demand_letter"]
+  },
+  {
+    "id": "form-security-deposit-demand-letter",
+    "category": "forms",
+    "question": "Do you have a sample security deposit demand letter I can use?",
+    "expectedSourceGroup": "forms",
+    "expectedSourceNameIncludes": ["security_deposit_demand_letter", "security_dep"]
+  },
+  {
+    "id": "form-rent-withholding-letter",
+    "category": "forms",
+    "question": "What should I put in a rent withholding letter to my landlord?",
+    "expectedSourceGroup": "forms",
+    "expectedSourceNameIncludes": ["rent_withholding_letter"]
+  },
+  {
+    "id": "form-tro",
+    "category": "forms",
+    "question": "Is there a TRO form a tenant can use against a landlord?",
+    "expectedSourceGroup": "forms",
+    "expectedSourceNameIncludes": ["tro"]
+  },
+  {
+    "id": "booklet-answer-summary-process",
+    "category": "booklets",
+    "question": "In a summary process eviction, how do I file an answer?",
+    "expectedSourceGroup": "booklets",
+    "expectedSourceNameIncludes": ["answer"]
+  },
+  {
+    "id": "booklet-late-answer",
+    "category": "booklets",
+    "question": "In an eviction case, how do I ask for permission to file a late answer?",
+    "expectedSourceGroup": "booklets",
+    "expectedSourceNameIncludes": ["late_answer"]
+  },
+  {
+    "id": "booklet-housing-code-checklist",
+    "category": "booklets",
+    "question": "In an eviction case, do you have a housing code checklist I can use?",
+    "expectedSourceGroup": "booklets",
+    "expectedSourceNameIncludes": ["housing_code_checklist"]
+  }
+]
