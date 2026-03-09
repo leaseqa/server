@@ -12,7 +12,11 @@ export const createReview = (payload) => {
         contractType: payload.contractType || null,
         contractText: payload.contractText,
         contractFileUrl: payload.contractFileUrl || null,
-        aiResponse: payload.aiResponse,
+        status: payload.status || "completed",
+        error: payload.error || null,
+        startedAt: payload.startedAt || null,
+        completedAt: payload.completedAt || null,
+        aiResponse: payload.aiResponse || null,
         relatedPostId: payload.relatedPostId || null,
     };
     return model.create(review);

@@ -4,6 +4,7 @@ import * as aiDao from "./dao.js";
 import { analyzeContractText } from "./analyzer.js";
 import { sendData, sendError, sendNotFound } from "../utils/responses.js";
 import { requireUser } from "../utils/session.js";
+import { enqueueJob } from "./jobQueue.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
@@ -53,16 +54,46 @@ router.post("/", upload.single("file"), async (req, res) => {
     }
 
     try {
-        const aiResponse = await analyzeContractText(textContent);
         const review = await aiDao.createReview({
             userId: currentUser?._id || null,
             contractType,
             relatedPostId,
             contractText: textContent,
-            aiResponse,
+            status: "pending",
+            aiResponse: null,
+            error: null,
+            startedAt: null,
+            completedAt: null,
         });
 
-        sendData(res, review, 201);
+        // Process asynchronously to avoid tying up the request on high-latency model calls.
+        enqueueJob(async () => {
+            try {
+                await aiDao.updateReview(review._id, {
+                    status: "processing",
+                    startedAt: new Date(),
+                    error: null,
+                });
+
+                const aiResponse = await analyzeContractText(textContent);
+                await aiDao.updateReview(review._id, {
+                    status: "completed",
+                    aiResponse,
+                    completedAt: new Date(),
+                    error: null,
+                });
+            } catch (err) {
+                console.error("[AI Reviews] Async analysis failed:", err);
+                await aiDao.updateReview(review._id, {
+                    status: "failed",
+                    error: err?.message || "AI review failed",
+                    completedAt: new Date(),
+                });
+            }
+        });
+
+        // 202 Accepted: review created, analysis running in background.
+        sendData(res, review, 202);
     } catch (err) {
         console.error("AI review failed", err);
         sendError(res, {

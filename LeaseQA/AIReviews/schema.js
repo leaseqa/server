@@ -6,8 +6,19 @@ const aiReviewSchema = new mongoose.Schema(
         contractType: {type: String},
         contractText: {type: String, required: true},
         contractFileUrl: {type: String},
+        // Async job state for high-latency AI calls.
+        status: {
+            type: String,
+            enum: ["pending", "processing", "completed", "failed"],
+            default: "completed",
+            index: true,
+        },
+        error: {type: String},
+        startedAt: {type: Date},
+        completedAt: {type: Date},
+        // Optional because async jobs are created in `pending` state before analysis completes.
         aiResponse: {
-            summary: {type: String, required: true},
+            summary: {type: String},
             highRisk: {type: [String], default: []},
             mediumRisk: {type: [String], default: []},
             lowRisk: {type: [String], default: []},

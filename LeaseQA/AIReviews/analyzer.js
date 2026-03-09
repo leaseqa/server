@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { getGeminiChatConfig } from "../shared/geminiOpenAI.js";
 
 const parseModelJson = (rawText) => {
     try {
@@ -17,13 +18,13 @@ const parseModelJson = (rawText) => {
 };
 
 export const analyzeContractText = async (text) => {
-    const apiKey = process.env.DEEPSEEK_API_KEY;
+    const { apiKey, model, baseURL } = getGeminiChatConfig();
     if (!apiKey) {
-        throw new Error("Missing DEEPSEEK_API_KEY environment variable. Please add it to your .env file.");
+        throw new Error("Missing Gemini chat API key. Please set RAG_CHAT_API_KEY, GEMINI_CHAT_API_KEY, or GEMINI_API_KEY.");
     }
 
     const openai = new OpenAI({
-        baseURL: 'https://api.deepseek.com',
+        baseURL,
         apiKey: apiKey,
     });
 
@@ -41,7 +42,7 @@ ${text.slice(0, 12000)}
 
     try {
         const completion = await openai.chat.completions.create({
-            model: "deepseek-chat",
+            model,
             messages: [
                 {
                     role: "system",
@@ -77,7 +78,7 @@ ${text.slice(0, 12000)}
             recommendations: [],
         };
     } catch (error) {
-        const message = error?.message || `DeepSeek API request failed`;
+        const message = error?.message || `Gemini API request failed`;
         throw new Error(message);
     }
 };
