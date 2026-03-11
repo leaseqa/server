@@ -19,6 +19,11 @@ const normalizeSnippet = (value) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const countWords = (value) =>
+  normalizeSnippet(value)
+    .split(" ")
+    .filter(Boolean).length;
+
 const shouldAttachSourceContext = (question) =>
   questionTargetsTemplateSource(question) ||
   VAGUE_FOLLOW_UP_PATTERN.test(question || "") ||
@@ -27,6 +32,9 @@ const shouldAttachSourceContext = (question) =>
 
 const shouldAttachHistoryContext = (question) =>
   VAGUE_FOLLOW_UP_PATTERN.test(question || "") ||
+  (CONTEXTUAL_REFERENCE_PATTERN.test(question || "") &&
+    countWords(question) <= 6) ||
+  /\bis that enforceable\b/i.test(question || "") ||
   /^\s*(?:is it legal|is that legal|is this legal)\??\s*$/i.test(question || "");
 
 export const buildRetrievalQuestion = ({

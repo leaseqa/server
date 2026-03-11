@@ -212,3 +212,46 @@ test("buildRetrievalQuestion appends prior user turn for vague follow-up questio
   assert.match(query, /is this clause legal\?/i);
   assert.match(query, /security deposit/i);
 });
+
+test("buildRetrievalQuestion appends prior user turn for referential follow-up questions", () => {
+  const query = buildRetrievalQuestion({
+    question: "Can they do that?",
+    sourceTextPreview:
+      "The landlord must return the security deposit within 30 days after the tenant moves out, minus any lawful deductions.",
+    messages: [
+      {
+        role: "user",
+        content: "If I move out early, does the 30-day deadline still start right away?",
+      },
+      {
+        role: "assistant",
+        content: "No, the deadline may run from the last day of the lease.",
+      },
+    ],
+  });
+
+  assert.match(query, /can they do that\?/i);
+  assert.match(
+    query,
+    /if i move out early, does the 30-day deadline still start right away\?/i,
+  );
+  assert.match(query, /security deposit/i);
+});
+
+test("buildRetrievalQuestion keeps clause context for enforceability questions", () => {
+  const query = buildRetrievalQuestion({
+    question: "Is that enforceable?",
+    sourceTextPreview:
+      "The tenant waives all rights to challenge unlawful fees or deductions from the security deposit.",
+    messages: [
+      {
+        role: "user",
+        content: "My lease says I waive my rights to challenge unlawful fees.",
+      },
+    ],
+  });
+
+  assert.match(query, /is that enforceable\?/i);
+  assert.match(query, /waive my rights to challenge unlawful fees/i);
+  assert.match(query, /security deposit/i);
+});
