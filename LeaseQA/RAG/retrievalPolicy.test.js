@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildRetrievalQuestion,
   buildKnowledgeSearchPlan,
   rankKnowledgeChunks,
 } from "./retrievalPolicy.js";
@@ -176,4 +177,38 @@ test("rankKnowledgeChunks prioritizes booklets for housing code checklist questi
   );
 
   assert.equal(ranked[0].id, "booklet");
+});
+
+test("buildRetrievalQuestion appends source preview for clause legality questions", () => {
+  const query = buildRetrievalQuestion({
+    question: "Is this clause legal?",
+    sourceTextPreview:
+      "The landlord must return the security deposit within 30 days after the tenant moves out, minus any lawful deductions.",
+    messages: [],
+  });
+
+  assert.match(query, /security deposit/i);
+  assert.match(query, /30 days/i);
+});
+
+test("buildRetrievalQuestion appends prior user turn for vague follow-up questions", () => {
+  const query = buildRetrievalQuestion({
+    question: "What do you mean?",
+    sourceTextPreview:
+      "The landlord must return the security deposit within 30 days after the tenant moves out, minus any lawful deductions.",
+    messages: [
+      {
+        role: "user",
+        content: "Is this clause legal?",
+      },
+      {
+        role: "assistant",
+        content: "I could not answer that reliably.",
+      },
+    ],
+  });
+
+  assert.match(query, /what do you mean\?/i);
+  assert.match(query, /is this clause legal\?/i);
+  assert.match(query, /security deposit/i);
 });

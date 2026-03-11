@@ -10,6 +10,7 @@ import {
   splitTextToChunks,
 } from "./text.js";
 import {
+  buildRetrievalQuestion,
   buildKnowledgeSearchPlan,
   rankKnowledgeChunks,
 } from "./retrievalPolicy.js";
@@ -362,17 +363,26 @@ export const answerQuestion = async ({
 
   const embeddings = createEmbeddingsClient(config);
   const chatModel = createChatClient(config);
-  const questionVector = await embeddings.embedQuery(question);
+  const retrievalQuestion = buildRetrievalQuestion({
+    question,
+    sourceTextPreview: session.sourceTextPreview,
+    messages: session.messages,
+  });
+  const questionVector = await embeddings.embedQuery(retrievalQuestion);
   const [sessionChunks, knowledgeChunks] = await Promise.all([
     searchHybridChunks({
       config,
       collectionName: config.sessionCollection,
       denseVector: questionVector,
-      sparseText: question,
+      sparseText: retrievalQuestion,
       limit: config.sessionTopK,
       filter: `session_id == "${sessionId}"`,
     }),
-    getKnowledgeResults({ config, vector: questionVector, question }),
+    getKnowledgeResults({
+      config,
+      vector: questionVector,
+      question: retrievalQuestion,
+    }),
   ]);
 
   const history = session.messages

@@ -9,6 +9,51 @@ const EVICTION_PATTERN =
   /\b(?:eviction|notice to quit|summary process|court date)\b/i;
 const LEAD_PATTERN = /\b(?:lead|delead|poisoning|child under 6)\b/i;
 const ORGANIZING_PATTERN = /\b(?:organizing|organize|retaliat(?:e|ion)|tenant association|collective bargaining)\b/i;
+const CONTEXTUAL_REFERENCE_PATTERN =
+  /\b(?:this|that|it|they|them|these|those)\b|\b(?:clause|provision|term|section|paragraph|part)\b/i;
+const VAGUE_FOLLOW_UP_PATTERN =
+  /^\s*(?:what do you mean|what does that mean|what does this mean|can you explain|why|how so|what about that)\??\s*$/i;
+
+const normalizeSnippet = (value) =>
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const shouldAttachSourceContext = (question) =>
+  questionTargetsTemplateSource(question) ||
+  VAGUE_FOLLOW_UP_PATTERN.test(question || "") ||
+  CONTEXTUAL_REFERENCE_PATTERN.test(question || "") ||
+  /\bis (?:this|that|it)\s+legal\b/i.test(question || "");
+
+const shouldAttachHistoryContext = (question) =>
+  VAGUE_FOLLOW_UP_PATTERN.test(question || "") ||
+  /^\s*(?:is it legal|is that legal|is this legal)\??\s*$/i.test(question || "");
+
+export const buildRetrievalQuestion = ({
+  question,
+  sourceTextPreview = "",
+  messages = [],
+}) => {
+  const parts = [normalizeSnippet(question)];
+  const recentUserTurns = messages
+    .filter((message) => message?.role === "user")
+    .slice(-2)
+    .map((message) => normalizeSnippet(message.content))
+    .filter(Boolean);
+
+  if (shouldAttachHistoryContext(question) && recentUserTurns.length > 0) {
+    parts.push(...recentUserTurns);
+  }
+
+  if (shouldAttachSourceContext(question)) {
+    const normalizedPreview = normalizeSnippet(sourceTextPreview);
+    if (normalizedPreview) {
+      parts.push(normalizedPreview);
+    }
+  }
+
+  return [...new Set(parts.filter(Boolean))].join("\n");
+};
 
 export const questionTargetsTemplateSource = (question) =>
   TEMPLATE_PATTERN.test(question || "") && !/notice to quit/i.test(question || "");
