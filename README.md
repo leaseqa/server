@@ -14,8 +14,8 @@ Sibling Express server that mirrors the LeaseQA docs and reuses the lightweight 
 ```bash
 cd leaseqa-server
 cp .env.example .env
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Server defaults to `http://localhost:4050` and expects the Next.js client at `http://localhost:3000` (override via `CLIENT_URL`).

@@ -4,8 +4,8 @@
 
 - The knowledge corpus ingest job is resumable.
 - Progress is stored in `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/.rag-knowledge-ingest-state.json` by default.
-- Run `npm run ingest:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` to resume from the saved checkpoint.
-- Run `npm run ingest:rag:reset` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` to rebuild the knowledge collection from scratch.
+- Run `pnpm ingest:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` to resume from the saved checkpoint.
+- Run `pnpm ingest:rag:reset` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` to rebuild the knowledge collection from scratch.
 - Knowledge chunk rows are written idempotently per source file. Before retrying a file, existing rows for that file are deleted and then reinserted.
 
 ## Retrieval
@@ -26,7 +26,7 @@
 
 ## RAG Testing
 
-- Run `npm run test:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` for RAG unit tests.
-- Run `npm run eval:rag:smoke` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` for a small live retrieval eval against the running backend.
-- Run `npm run eval:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` for the full live eval set.
+- Run `pnpm test:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` for RAG unit tests.
+- Run `pnpm eval:rag:smoke` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` for a small live retrieval eval against the running backend.
+- Run `pnpm eval:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` for the full live eval set.
 - Eval cases live in `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/LeaseQA/RAG/evals/tenant-rights-eval.json`.

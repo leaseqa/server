@@ -6,7 +6,7 @@ import {
 } from "./retrievalPolicy.js";
 
 const UPLOAD_SOURCE_PATTERN =
-  /\b(?:my|the)\s+(?:lease|contract|agreement|document|pdf|file)\b|\b(?:lease|contract|agreement)\s+says\b|\b(?:this|uploaded)\s+(?:lease|contract|agreement|document|pdf|file)\b|\bclause\b/i;
+  /\b(?:my|the)\s+(?:lease|contract|agreement|document|pdf|file|form)\b|\b(?:lease|contract|agreement)\s+says\b|\b(?:this|uploaded)\s+(?:lease|contract|agreement|document|pdf|file|form)\b|\bclause\b/i;
 
 const dedupeById = (items) => {
   const seen = new Set();

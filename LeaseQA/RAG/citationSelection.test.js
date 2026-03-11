@@ -33,6 +33,15 @@ test("questionTargetsUploadedSource detects lease-specific questions", () => {
   );
 });
 
+test("questionTargetsUploadedSource detects uploaded form questions", () => {
+  assert.equal(
+    questionTargetsUploadedSource(
+      "In the uploaded form, what does the tenant ask the landlord to do within 30 days?",
+    ),
+    true,
+  );
+});
+
 test("questionTargetsUploadedSource ignores general legal questions", () => {
   assert.equal(
     questionTargetsUploadedSource(
@@ -59,6 +68,32 @@ test("selectCitationChunks prioritizes uploaded source for lease-specific questi
   const citations = selectCitationChunks({
     question:
       "Can my landlord enter whenever they want if my lease says 24 hours notice?",
+    sessionChunks: [sessionChunk],
+    knowledgeChunks: [knowledgeChunk],
+    limit: 2,
+  });
+
+  assert.equal(citations[0].id, "upload-1");
+  assert.equal(citations[1].id, "kb-1");
+});
+
+test("selectCitationChunks prioritizes uploaded source for uploaded form questions", () => {
+  const sessionChunk = createChunk({
+    id: "upload-1",
+    sourceGroup: "upload",
+    sourceName: "form_05_security_deposit_demand_letter.pdf",
+    score: 0.81,
+  });
+  const knowledgeChunk = createChunk({
+    id: "kb-1",
+    sourceGroup: "forms",
+    sourceName: "form_03_statement_of_condition.pdf",
+    score: 0.95,
+  });
+
+  const citations = selectCitationChunks({
+    question:
+      "In the uploaded form, what does the tenant ask the landlord to do within 30 days?",
     sessionChunks: [sessionChunk],
     knowledgeChunks: [knowledgeChunk],
     limit: 2,
