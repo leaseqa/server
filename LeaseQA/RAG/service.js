@@ -16,6 +16,7 @@ import {
 } from "./retrievalPolicy.js";
 import {
   hasReliableCitationSupport,
+  questionNeedsHandbookSupport,
   selectCitationChunks,
 } from "./citationSelection.js";
 import {
@@ -32,13 +33,23 @@ import {
   writeIngestState,
 } from "./ingestState.js";
 
+const getChunkKey = (item) =>
+  item.id ||
+  [
+    item.source_group,
+    item.source_name,
+    item.chapter_ref,
+    String(item.text || "").slice(0, 160),
+  ].join("::");
+
 const dedupeById = (items) => {
   const seen = new Set();
   return items.filter((item) => {
-    if (seen.has(item.id)) {
+    const key = getChunkKey(item);
+    if (seen.has(key)) {
       return false;
     }
-    seen.add(item.id);
+    seen.add(key);
     return true;
   });
 };
@@ -184,46 +195,229 @@ const buildCitation = (chunk) => ({
   snippet: createTextPreview(chunk.text, 180),
 });
 
-const formatContextBlock = (chunks) =>
+const getCitationRefId = (index) => `c${index + 1}`;
+
+export const formatEvidenceSourceLabel = (chunk) => {
+  if (["text", "upload"].includes(String(chunk.source_group || ""))) {
+    return "Uploaded clause text";
+  }
+
+  return chunk.source_name;
+};
+
+const formatEvidenceBlock = (chunks) =>
   chunks
     .map(
       (chunk, index) =>
-        `[${index + 1}] ${chunk.source_name} | group=${chunk.source_group} | chapter=${chunk.chapter_ref || "n/a"}\n${chunk.text}`,
+        `[${getCitationRefId(index)}] ${formatEvidenceSourceLabel(chunk)} | group=${chunk.source_group} | chapter=${chunk.chapter_ref || "n/a"}\n${chunk.text}`,
     )
     .join("\n\n");
 
-const buildPrompt = ({ question, history, sessionChunks, knowledgeChunks }) =>
+const buildPrompt = ({ question, history, supportChunks }) =>
   `
 You are LeaseQA. Answer in simple, direct language for a low-reading-level user.
-Use only the supplied context. If the context is insufficient, say that clearly.
+Use only the supplied evidence. If the evidence is insufficient, say that clearly.
 Do not present yourself as a lawyer. Do not claim certainty beyond the sources.
-Prefer the tenant-rights knowledge base when it directly answers the question.
-If the uploaded document changes the answer, explain that difference plainly.
+Keep the answer concise and easy to scan.
 
 Recent conversation:
 ${history || "None"}
 
-Uploaded document context:
-${sessionChunks.length > 0 ? formatContextBlock(sessionChunks) : "None"}
-
-Tenant-rights knowledge base context:
-${knowledgeChunks.length > 0 ? formatContextBlock(knowledgeChunks) : "None"}
+Evidence:
+${supportChunks.length > 0 ? formatEvidenceBlock(supportChunks) : "None"}
 
 User question:
 ${question}
 
-Respond with:
-1. A short answer.
-2. Key reasons or steps.
-3. A one-sentence disclaimer that this is legal information, not legal advice.
+Return valid JSON only:
+{
+  "summary": "one short sentence",
+  "bullets": [
+    {
+      "text": "short bullet",
+      "supports": ["c1"]
+    }
+  ]
+}
+
+Rules:
+- If an evidence item is labeled "Uploaded clause text", treat it as the user-provided clause or document.
+- Summary: 1 sentence, at most 24 words.
+- Bullets: 2 to 4 items, each under 18 words.
+- Every bullet must include 1 or 2 support ids from the evidence list.
+- No markdown headings.
+- No disclaimer text.
 `.trim();
 
-const buildInsufficientSupportAnswer = () =>
-  [
-    "1. I could not find enough support in the uploaded document or the tenant-rights materials to answer that reliably.",
-    "2. Please ask a narrower question, quote the specific lease clause, or upload more of the relevant document.",
-    "3. This is legal information, not legal advice.",
-  ].join("\n\n");
+const stripFence = (text) =>
+  text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+const extractJsonObject = (text) => {
+  const stripped = stripFence(text);
+  const match = stripped.match(/\{[\s\S]*\}/);
+  return match ? match[0] : stripped;
+};
+
+const cleanSentence = (text) =>
+  String(text || "")
+    .replace(/^[*•\-\d.\s]+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const isFormattingLine = (line) =>
+  /^(?:#+\s*)?(?:\d+\.\s*)?(short answer|answer|key reasons?(?: or steps)?|disclaimer)\b/i.test(
+    line,
+  );
+
+const isDisclaimerLine = (line) =>
+  /(?:legal information,\s*not legal advice|this is not legal advice|not legal advice)/i.test(
+    line,
+  );
+
+const buildAnswerContent = ({ summary, bullets }) =>
+  [summary, ...bullets.map((bullet) => `• ${bullet.text}`)]
+    .filter(Boolean)
+    .join("\n");
+
+const normalizeCitationIndices = (
+  supports,
+  citationIdToIndex,
+  fallbackCitationIndices,
+) => {
+  const resolved = (supports || [])
+    .map((supportId) => citationIdToIndex[supportId])
+    .filter((index) => Number.isInteger(index));
+  const indices =
+    supports && supports.length > 0
+      ? resolved
+      : fallbackCitationIndices;
+  return [...new Set(indices)].slice(0, 2);
+};
+
+const buildStructuredFallback = ({ rawAnswer, fallbackCitationIndices }) => {
+  const lines = String(rawAnswer || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !isFormattingLine(line))
+    .filter((line) => !isDisclaimerLine(line));
+
+  const bulletLines = lines
+    .filter((line) => /^[-*•]\s+/.test(line))
+    .map((line) => cleanSentence(line))
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const proseLines = lines
+    .filter((line) => !/^[-*•]\s+/.test(line))
+    .map((line) => cleanSentence(line))
+    .filter(Boolean);
+
+  const summary = proseLines[0] || bulletLines[0] || "I could not answer that clearly from the available materials.";
+  const remainingBullets =
+    bulletLines.length > 0
+      ? bulletLines
+      : proseLines.slice(1, 5);
+  const bullets = remainingBullets.slice(0, 4).map((text) => ({
+    text,
+    citationIndices: fallbackCitationIndices,
+  }));
+
+  return {
+    summary,
+    bullets,
+    content: buildAnswerContent({
+      summary,
+      bullets,
+    }),
+  };
+};
+
+export const normalizeAssistantAnswer = ({
+  rawAnswer,
+  citationIdToIndex,
+  fallbackCitationIndices,
+}) => {
+  try {
+    const parsed = JSON.parse(extractJsonObject(rawAnswer));
+    const summary = cleanSentence(parsed?.summary);
+    const bullets = Array.isArray(parsed?.bullets)
+      ? parsed.bullets
+          .map((bullet) => ({
+            text: cleanSentence(bullet?.text),
+            citationIndices: normalizeCitationIndices(
+              bullet?.supports,
+              citationIdToIndex,
+              fallbackCitationIndices,
+            ),
+          }))
+          .filter((bullet) => bullet.text)
+          .slice(0, 4)
+      : [];
+
+    if (summary && bullets.length > 0) {
+      return {
+        summary,
+        bullets,
+        content: buildAnswerContent({ summary, bullets }),
+      };
+    }
+  } catch (error) {
+    // Fall through to compact plain-text parsing.
+  }
+
+  return buildStructuredFallback({
+    rawAnswer,
+    fallbackCitationIndices,
+  });
+};
+
+const buildInsufficientSupportAnswer = () => {
+  const summary =
+    "I could not find enough support to answer that reliably from this source and the handbook.";
+  const bullets = [
+    {
+      text: "Ask a narrower question or quote the specific clause you want reviewed.",
+      citationIndices: [],
+    },
+  ];
+  return {
+    summary,
+    bullets,
+    content: buildAnswerContent({ summary, bullets }),
+  };
+};
+
+export const resolveSupportedCitationChunks = ({
+  question,
+  citationChunks,
+  knowledgeChunks,
+}) => {
+  const questionNeedsDualSupport = questionNeedsHandbookSupport(question);
+  const hasDirectSupport = hasReliableCitationSupport({
+    question,
+    citationChunks,
+  });
+  if (hasDirectSupport) {
+    return citationChunks;
+  }
+
+  if (questionNeedsDualSupport) {
+    return [];
+  }
+
+  if (knowledgeChunks.length > 0) {
+    return dedupeById([
+      ...citationChunks,
+      ...rankKnowledgeChunks(question, knowledgeChunks),
+    ]).slice(0, 6);
+  }
+
+  return [];
+};
 
 const ensureViewerCanAccess = ({ session, userId, clientSessionId }) => {
   if (!session) {
@@ -390,27 +584,37 @@ export const answerQuestion = async ({
     .map((message) => `${message.role}: ${message.content}`)
     .join("\n");
 
-  const prompt = buildPrompt({
-    question,
-    history,
-    sessionChunks,
-    knowledgeChunks,
-  });
-
   const citationChunks = selectCitationChunks({
     question,
     sessionChunks,
     knowledgeChunks,
     limit: 6,
   });
-  const hasReliableSupport = hasReliableCitationSupport({
+  const supportedCitationChunks = resolveSupportedCitationChunks({
     question,
     citationChunks,
+    knowledgeChunks,
   });
-  const answer = hasReliableSupport
-    ? getMessageText(await chatModel.invoke(prompt))
-    : buildInsufficientSupportAnswer();
-  const citations = hasReliableSupport ? citationChunks.map(buildCitation) : [];
+  const citations =
+    supportedCitationChunks.length > 0
+      ? supportedCitationChunks.map(buildCitation)
+      : [];
+  const citationIdToIndex = Object.fromEntries(
+    citations.map((citation, index) => [getCitationRefId(index), index]),
+  );
+  const prompt = buildPrompt({
+    question,
+    history,
+    supportChunks: supportedCitationChunks,
+  });
+  const structuredAnswer =
+    supportedCitationChunks.length > 0
+      ? normalizeAssistantAnswer({
+          rawAnswer: getMessageText(await chatModel.invoke(prompt)),
+          citationIdToIndex,
+          fallbackCitationIndices: citations.map((_, index) => index),
+        })
+      : buildInsufficientSupportAnswer();
 
   const updatedSession = await dao.appendMessages(sessionId, [
     {
@@ -421,7 +625,9 @@ export const answerQuestion = async ({
     },
     {
       role: "assistant",
-      content: answer,
+      content: structuredAnswer.content,
+      summary: structuredAnswer.summary,
+      bullets: structuredAnswer.bullets,
       citations,
       createdAt: new Date(),
     },
@@ -429,9 +635,45 @@ export const answerQuestion = async ({
 
   return {
     session: updatedSession,
-    answer,
+    answer: structuredAnswer.content,
     citations,
   };
+};
+
+export const createSessionWithOptionalInitialAnswer = async ({
+  userId,
+  clientSessionId,
+  sourceText,
+  file,
+  initialQuestion,
+  createSessionFn = createRagSession,
+  answerFn = answerQuestion,
+}) => {
+  const session = await createSessionFn({
+    userId,
+    clientSessionId,
+    sourceText,
+    file,
+  });
+  const trimmedQuestion = initialQuestion?.trim();
+  if (file || !trimmedQuestion) {
+    return session;
+  }
+  try {
+    const result = await answerFn({
+      sessionId: session._id.toString(),
+      userId,
+      clientSessionId,
+      question: trimmedQuestion,
+    });
+    return result.session;
+  } catch (error) {
+    console.error(
+      "[RAG] Initial question failed after session creation:",
+      error,
+    );
+    return session;
+  }
 };
 
 const parseManifestLine = (line) => {

@@ -9,6 +9,8 @@ const EVICTION_PATTERN =
   /\b(?:eviction|notice to quit|summary process|court date)\b/i;
 const LEAD_PATTERN = /\b(?:lead|delead|poisoning|child under 6)\b/i;
 const ORGANIZING_PATTERN = /\b(?:organizing|organize|retaliat(?:e|ion)|tenant association|collective bargaining)\b/i;
+const SECURITY_DEPOSIT_PATTERN =
+  /\b(?:security deposit|deposit return|return the deposit|deposit within 30 days)\b/i;
 const CONTEXTUAL_REFERENCE_PATTERN =
   /\b(?:this|that|it|they|them|these|those)\b|\b(?:clause|provision|term|section|paragraph|part)\b/i;
 const VAGUE_FOLLOW_UP_PATTERN =
@@ -75,6 +77,9 @@ export const questionTargetsLeadChapter = (question) =>
 export const questionTargetsOrganizingChapter = (question) =>
   ORGANIZING_PATTERN.test(question || "");
 
+export const questionTargetsSecurityDepositChapter = (question) =>
+  SECURITY_DEPOSIT_PATTERN.test(question || "");
+
 const questionTargetsEvictionProcedures = (question) =>
   EVICTION_PATTERN.test(question || "");
 
@@ -106,6 +111,16 @@ export const buildKnowledgeSearchPlan = (question, config) => {
     return [
       { group: "chapters", limit: primaryLimit, chapterRef: "10" },
       { group: "handouts", limit: 2, chapterRef: "10" },
+      { group: "chapters", limit: secondaryLimit },
+      { group: "handouts", limit: 2 },
+      { group: "forms", limit: 1 },
+    ];
+  }
+
+  if (questionTargetsSecurityDepositChapter(question)) {
+    return [
+      { group: "chapters", limit: primaryLimit, chapterRef: "3" },
+      { group: "handouts", limit: 2, chapterRef: "3" },
       { group: "chapters", limit: secondaryLimit },
       { group: "handouts", limit: 2 },
       { group: "forms", limit: 1 },
@@ -161,6 +176,11 @@ const isOrganizingPreferredChunk = (question, chunk) =>
   (String(chunk.chapter_ref || "") === "10" ||
     /organiz/i.test(String(chunk.source_name || "")));
 
+const isSecurityDepositPreferredChunk = (question, chunk) =>
+  questionTargetsSecurityDepositChapter(question) &&
+  (String(chunk.chapter_ref || "") === "3" ||
+    /security[_\s-]?deposit/i.test(String(chunk.source_name || "")));
+
 const isHousingChecklistPreferredChunk = (question, chunk) =>
   questionTargetsBookletSource(question) &&
   /housing code checklist/i.test(question || "") &&
@@ -180,6 +200,19 @@ export const rankKnowledgeChunks = (question, chunks) => {
     const rightOrganizingBoost = isOrganizingPreferredChunk(question, right) ? 1 : 0;
     if (leftOrganizingBoost !== rightOrganizingBoost) {
       return rightOrganizingBoost - leftOrganizingBoost;
+    }
+
+    const leftSecurityDepositBoost = isSecurityDepositPreferredChunk(question, left)
+      ? 1
+      : 0;
+    const rightSecurityDepositBoost = isSecurityDepositPreferredChunk(
+      question,
+      right,
+    )
+      ? 1
+      : 0;
+    if (leftSecurityDepositBoost !== rightSecurityDepositBoost) {
+      return rightSecurityDepositBoost - leftSecurityDepositBoost;
     }
 
     const leftHousingChecklistBoost = isHousingChecklistPreferredChunk(

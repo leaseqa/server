@@ -13,6 +13,14 @@ const citationSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const answerBulletSchema = new mongoose.Schema(
+  {
+    text: { type: String, required: true },
+    citationIndices: { type: [Number], default: [] },
+  },
+  { _id: false },
+);
+
 const messageSchema = new mongoose.Schema(
   {
     role: {
@@ -21,6 +29,8 @@ const messageSchema = new mongoose.Schema(
       required: true,
     },
     content: { type: String, required: true },
+    summary: { type: String, default: null },
+    bullets: { type: [answerBulletSchema], default: undefined },
     citations: { type: [citationSchema], default: [] },
     createdAt: { type: Date, default: Date.now },
   },

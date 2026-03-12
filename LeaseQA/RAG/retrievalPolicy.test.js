@@ -55,6 +55,21 @@ test("buildKnowledgeSearchPlan adds chapter 9 targeted searches for lead questio
   );
 });
 
+test("buildKnowledgeSearchPlan adds chapter 3 targeted searches for security deposit clause questions", () => {
+  const plan = buildKnowledgeSearchPlan(
+    "Is this clause legal under the tenant-rights handbook if it says the landlord returns the security deposit within 30 days after move-out?",
+    config,
+  );
+
+  assert.deepEqual(
+    plan.slice(0, 2).map(({ group, chapterRef }) => ({ group, chapterRef })),
+    [
+      { group: "chapters", chapterRef: "3" },
+      { group: "handouts", chapterRef: "3" },
+    ],
+  );
+});
+
 test("rankKnowledgeChunks prioritizes forms over chapters for template questions", () => {
   const ranked = rankKnowledgeChunks(
     "Can you draft a repair demand letter for my landlord?",
@@ -100,6 +115,30 @@ test("rankKnowledgeChunks prioritizes chapter 9 for lead questions", () => {
   );
 
   assert.equal(ranked[0].id, "lead");
+});
+
+test("rankKnowledgeChunks prioritizes chapter 3 for security deposit clause questions", () => {
+  const ranked = rankKnowledgeChunks(
+    "Is this clause legal under the tenant-rights handbook if it says the landlord returns the security deposit within 30 days after move-out?",
+    [
+      createChunk({
+        id: "wrong",
+        sourceGroup: "chapters",
+        sourceName: "ch06_utilities.pdf",
+        chapterRef: "6",
+        score: 0.99,
+      }),
+      createChunk({
+        id: "deposit",
+        sourceGroup: "chapters",
+        sourceName: "ch03_security_deposits.pdf",
+        chapterRef: "3",
+        score: 0.7,
+      }),
+    ],
+  );
+
+  assert.equal(ranked[0].id, "deposit");
 });
 
 test("buildKnowledgeSearchPlan does not treat notice to quit as a template question", () => {

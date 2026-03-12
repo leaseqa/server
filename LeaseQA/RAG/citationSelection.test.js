@@ -103,6 +103,78 @@ test("selectCitationChunks prioritizes uploaded source for uploaded form questio
   assert.equal(citations[1].id, "kb-1");
 });
 
+test("selectCitationChunks includes handbook support for uploaded clause legality questions", () => {
+  const sessionChunk = createChunk({
+    id: "upload-1",
+    sourceGroup: "text",
+    sourceName: "pasted-text",
+    score: 0.98,
+  });
+  const secondSessionChunk = createChunk({
+    id: "upload-2",
+    sourceGroup: "text",
+    sourceName: "pasted-text",
+    score: 0.96,
+  });
+  const handbookChunk = {
+    ...createChunk({
+      id: "kb-1",
+      sourceGroup: "chapters",
+      sourceName: "ch03_security_deposits.pdf",
+      score: 0.91,
+    }),
+    chapter_ref: "3",
+  };
+
+  const citations = selectCitationChunks({
+    question:
+      "Is this clause legal under the tenant-rights handbook, and what tenant protections are missing?",
+    sessionChunks: [sessionChunk, secondSessionChunk],
+    knowledgeChunks: [handbookChunk],
+    limit: 2,
+  });
+
+  assert.equal(citations.length, 2);
+  assert.equal(citations[0].id, "upload-1");
+  assert.equal(citations[1].id, "kb-1");
+});
+
+test("selectCitationChunks keeps both uploaded and handbook citations when chunk ids are missing", () => {
+  const citations = selectCitationChunks({
+    question:
+      "Is this clause legal under the tenant-rights handbook, and what tenant protections are missing?",
+    sessionChunks: [
+      {
+        source_group: "text",
+        source_name: "pasted-text",
+        source_type: "text",
+        chapter_ref: "",
+        file_path: null,
+        source_url: null,
+        text: "The landlord must return the security deposit within 30 days.",
+        score: 0.98,
+      },
+    ],
+    knowledgeChunks: [
+      {
+        source_group: "chapters",
+        source_name: "ch03_security_deposits.pdf",
+        source_type: "chapter",
+        chapter_ref: "3",
+        file_path: null,
+        source_url: null,
+        text: "A landlord must return the security deposit within 30 days after the tenancy ends.",
+        score: 0.91,
+      },
+    ],
+    limit: 2,
+  });
+
+  assert.equal(citations.length, 2);
+  assert.equal(citations[0].source_group, "text");
+  assert.equal(citations[1].source_group, "chapters");
+});
+
 test("selectCitationChunks prioritizes knowledge base for general legal questions", () => {
   const sessionChunk = createChunk({
     id: "upload-1",
@@ -196,5 +268,50 @@ test("hasReliableCitationSupport accepts chapter support for general legal quest
       citationChunks: [chapterChunk],
     }),
     true,
+  );
+});
+
+test("hasReliableCitationSupport requires handbook support for uploaded clause legality questions", () => {
+  const sessionChunk = createChunk({
+    id: "upload-1",
+    sourceGroup: "text",
+    sourceName: "pasted-text",
+    score: 0.98,
+  });
+  const handbookChunk = {
+    ...createChunk({
+      id: "kb-1",
+      sourceGroup: "chapters",
+      sourceName: "ch03_security_deposits.pdf",
+      score: 0.91,
+    }),
+    chapter_ref: "3",
+  };
+
+  assert.equal(
+    hasReliableCitationSupport({
+      question:
+        "Is this clause legal under the tenant-rights handbook, and what tenant protections are missing?",
+      citationChunks: [sessionChunk],
+    }),
+    false,
+  );
+
+  assert.equal(
+    hasReliableCitationSupport({
+      question:
+        "Is this clause legal under the tenant-rights handbook, and what tenant protections are missing?",
+      citationChunks: [sessionChunk, handbookChunk],
+    }),
+    true,
+  );
+
+  assert.equal(
+    hasReliableCitationSupport({
+      question:
+        "Is this clause legal under the tenant-rights handbook, and what tenant protections are missing?",
+      citationChunks: [handbookChunk],
+    }),
+    false,
   );
 });

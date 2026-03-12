@@ -4,18 +4,19 @@ import { z } from "zod";
 import { sendData, sendError, sendNotFound } from "../utils/responses.js";
 import {
   answerQuestion,
-  createRagSession,
+  createSessionWithOptionalInitialAnswer,
   getViewerSession,
   listViewerSessions,
 } from "./service.js";
 
 const router = express.Router();
+export const getUploadMaxBytes = (env = process.env) =>
+  Number.parseInt(env.RAG_UPLOAD_MAX_BYTES || "", 10) || 20 * 1024 * 1024;
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize:
-      Number.parseInt(process.env.RAG_UPLOAD_MAX_BYTES || "", 10) ||
-      12 * 1024 * 1024,
+    fileSize: getUploadMaxBytes(),
   },
 });
 
@@ -28,6 +29,7 @@ router.use((req, _res, next) => {
 
 const createSessionSchema = z.object({
   sourceText: z.string().trim().optional().default(""),
+  initialQuestion: z.string().optional(),
 });
 
 const messageSchema = z.object({
@@ -95,7 +97,8 @@ router.get("/sessions/:sessionId", async (req, res) => {
 
 router.post("/sessions", upload.single("file"), async (req, res) => {
   try {
-    const { sourceText } = createSessionSchema.parse(req.body);
+    const { sourceText, initialQuestion: rawInitialQuestion } =
+      createSessionSchema.parse(req.body);
     if (!sourceText && !req.file) {
       return sendError(res, {
         code: "VALIDATION_ERROR",
@@ -104,11 +107,12 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
       });
     }
 
-    const session = await createRagSession({
+    const session = await createSessionWithOptionalInitialAnswer({
       userId: req.session?.currentUser?._id || null,
       clientSessionId: req.sessionID,
       sourceText,
       file: req.file || null,
+      initialQuestion: rawInitialQuestion,
     });
     sendData(res, session, 201);
   } catch (error) {
