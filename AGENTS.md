@@ -1,5 +1,29 @@
 # LeaseQA Server Notes
 
+## Canonical Docs
+
+Backend operational truth in this repo lives in:
+
+- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/README.md`
+- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/.env.example`
+
+Current product behavior and cross-repo architecture live in the client repo:
+
+- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/product-prd.md`
+- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/architecture.md`
+- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/api-design.md`
+- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/release-checklist.md`
+
+## Documentation Impact Rules
+
+When backend changes public auth, account, activity, notification, Q&A, moderation, or RAG behavior:
+
+- review this repo's `README.md`
+- review the canonical client docs listed above
+- update both repos if the change affects public behavior or API contracts
+
+Do not treat backend feature work as complete until documentation impact has been checked.
+
 ## RAG Knowledge Ingestion
 
 - The knowledge corpus ingest job is resumable.
