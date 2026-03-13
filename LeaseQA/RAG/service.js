@@ -32,6 +32,8 @@ import {
   readIngestState,
   writeIngestState,
 } from "./ingestState.js";
+import { createActivity } from "../Activity/dao.js";
+import { buildActivity } from "../Activity/service.js";
 
 const getChunkKey = (item) =>
   item.id ||
@@ -648,6 +650,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
   initialQuestion,
   createSessionFn = createRagSession,
   answerFn = answerQuestion,
+  recordActivityFn = createActivity,
 }) => {
   const session = await createSessionFn({
     userId,
@@ -655,6 +658,26 @@ export const createSessionWithOptionalInitialAnswer = async ({
     sourceText,
     file,
   });
+  if (userId) {
+    try {
+      await recordActivityFn(
+        buildActivity({
+          userId,
+          type: "ai_review_created",
+          title: "Created an AI review",
+          summary: session.sourceName || "Started a new document review",
+          href: `/ai-review?session=${session._id.toString()}`,
+          surface: "account",
+          metadata: {
+            sessionId: session._id.toString(),
+            sourceKind: session.sourceKind || (file ? "upload" : "text"),
+          },
+        }),
+      );
+    } catch (error) {
+      console.error("[RAG] Failed to record ai review activity:", error);
+    }
+  }
   const trimmedQuestion = initialQuestion?.trim();
   if (file || !trimmedQuestion) {
     return session;

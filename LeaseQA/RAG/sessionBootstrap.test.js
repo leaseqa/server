@@ -31,6 +31,7 @@ test("pasted text sessions auto-answer when an initial question is provided", as
       assert.equal(sessionId, "session-text");
       return { session: updatedSession };
     },
+    recordActivityFn: async () => {},
   });
 
   assert.equal(answerCalled, true);
@@ -53,6 +54,7 @@ test("uploaded-file sessions skip the auto-answer flow", async () => {
       answerCalled = true;
       return { session };
     },
+    recordActivityFn: async () => {},
   });
 
   assert.equal(answerCalled, false);
@@ -72,8 +74,35 @@ test("pasted text sessions still return the created session if the automatic ans
     answerFn: async () => {
       throw new Error("chat model unavailable");
     },
+    recordActivityFn: async () => {},
   });
 
   assert.equal(result._id.toString(), "session-fallback");
   assert.equal(result.messages.length, 0);
+});
+
+test("logged-in sessions write an ai review activity after creation", async () => {
+  const session = buildSession("session-activity");
+  const recorded = [];
+
+  const result = await createSessionWithOptionalInitialAnswer({
+    userId: "user-9",
+    clientSessionId: "client-9",
+    sourceText: "Clause text",
+    file: null,
+    initialQuestion: "",
+    createSessionFn: async () => session,
+    answerFn: async () => {
+      throw new Error("should not run");
+    },
+    recordActivityFn: async (payload) => {
+      recorded.push(payload);
+    },
+  });
+
+  assert.equal(result._id.toString(), "session-activity");
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].type, "ai_review_created");
+  assert.equal(recorded[0].userId, "user-9");
+  assert.equal(recorded[0].metadata.sessionId, "session-activity");
 });
