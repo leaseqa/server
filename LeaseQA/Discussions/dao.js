@@ -1,4 +1,5 @@
 import model from "./model.js";
+import {collectDiscussionSubtreeIds} from "./tree.js";
 
 export const findDiscussionsByPostId = (postId) =>
     model.find({postId});
@@ -26,6 +27,17 @@ export const deleteDiscussionsByPostId = (postId) =>
 
 export const deleteReplies = (parentId) =>
     model.deleteMany({parentId});
+
+export const deleteDiscussionSubtree = async (discussionId) => {
+    const discussions = await model.find();
+    const ids = collectDiscussionSubtreeIds(discussions, discussionId);
+
+    if (!ids.length) {
+        return {deletedCount: 0};
+    }
+
+    return model.deleteMany({_id: {$in: ids}});
+};
 
 export const findDiscussionTreeForPost = async (postId) => {
     const threads = await model.find({postId});

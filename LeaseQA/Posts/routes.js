@@ -2,6 +2,10 @@ import express from "express";
 import * as postsDao from "./dao.js";
 import * as answersDao from "../Answers/dao.js";
 import * as discussionsDao from "../Discussions/dao.js";
+import {
+    annotateDiscussionTreeAuthors,
+    collectDiscussionAuthorIds,
+} from "../Discussions/tree.js";
 import * as usersDao from "../Users/dao.js";
 import UsersModel from "../Users/model.js";
 import {requireRole, requireUser} from "../utils/session.js";
@@ -55,8 +59,7 @@ router.get("/", async (req, res) => {
             const ids = [
                 post.authorId,
                 ...answers.map((a) => a.authorId),
-                ...discussions.map((d) => d.authorId),
-                ...discussions.flatMap((d) => (d.replies || []).map((r) => r.authorId)),
+                ...collectDiscussionAuthorIds(discussions),
             ];
             const userMap = await buildUserMap(ids);
 
@@ -69,10 +72,7 @@ router.get("/", async (req, res) => {
                 ...post.toObject(),
                 author: userMap[post.authorId?.toString()] || null,
                 answers: answers.map(withAuthor),
-                discussions: discussions.map((d) => ({
-                    ...withAuthor(d),
-                    replies: (d.replies || []).map(withAuthor),
-                })),
+                discussions: annotateDiscussionTreeAuthors(discussions, userMap),
             };
         })
     );
@@ -94,8 +94,7 @@ router.get("/:postId", async (req, res) => {
     const ids = [
         post.authorId,
         ...answers.map((a) => a.authorId),
-        ...discussions.map((d) => d.authorId),
-        ...discussions.flatMap((d) => (d.replies || []).map((r) => r.authorId)),
+        ...collectDiscussionAuthorIds(discussions),
     ];
     const userMap = await buildUserMap(ids);
     const withAuthor = (item) => {
@@ -107,10 +106,7 @@ router.get("/:postId", async (req, res) => {
         ...post.toObject(),
         author: userMap[post.authorId?.toString()] || null,
         answers: answers.map(withAuthor),
-        discussions: discussions.map((d) => ({
-            ...withAuthor(d),
-            replies: (d.replies || []).map(withAuthor),
-        })),
+        discussions: annotateDiscussionTreeAuthors(discussions, userMap),
     });
 });
 

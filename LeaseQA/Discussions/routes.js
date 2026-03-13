@@ -10,7 +10,7 @@ router.post("/", async (req, res) => {
     const currentUser = requireUser(req, res);
     if (!currentUser) return;
 
-    const {postId, parentId, content} = req.body;
+    const {postId, parentId, content} = req.body || {};
     if (!postId || !content) {
         return sendError(res, {
             code: "VALIDATION_ERROR",
@@ -110,8 +110,7 @@ router.delete("/:discussionId", async (req, res) => {
         });
     }
 
-    await discussionsDao.deleteReplies(discussion._id);
-    await discussionsDao.deleteDiscussion(discussion._id);
+    await discussionsDao.deleteDiscussionSubtree(discussion._id);
     sendData(res, {message: "Discussion deleted"});
 });
 
