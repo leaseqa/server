@@ -4,7 +4,7 @@
   "description": "Express server for the LeaseQA project",
   "main": "index.js",
   "type": "module",
-  "packageManager": "pnpm@10.31.0",
+  "packageManager": "npm@10.9.2",
   "scripts": {
     "dev": "node --watch index.js",
     "start": "node index.js",

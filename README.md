@@ -59,7 +59,7 @@ These are exposed through:
 
 - Express
 - MongoDB Atlas
-- `pnpm`
+- `npm`
 - Milvus / Zilliz for vector search
 - OpenAI-compatible chat and embedding clients
 - Render for production hosting
@@ -69,14 +69,14 @@ These are exposed through:
 Requirements:
 
 - Node `20.x`
-- `pnpm`
+- `npm`
 
 Setup:
 
 ```bash
 cp .env.example .env
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 
 Default local server:
@@ -107,17 +107,17 @@ See [.env.example](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/.env.example)
 ## Useful Commands
 
 ```bash
-pnpm dev
-pnpm start
-pnpm test:rag
-pnpm eval:rag:smoke
-pnpm ingest:rag
-pnpm ingest:rag:reset
-pnpm seed:demo-users
+npm run dev
+npm start
+npm run test:rag
+npm run eval:rag:smoke
+npm run ingest:rag
+npm run ingest:rag:reset
+npm run seed:demo-users
 ```
 
 ## Verification Used for the Current Release
 
-- `pnpm test:rag`
+- `npm run test:rag`
 - `node --test LeaseQA/Activity/routes.test.js LeaseQA/Auth/routes.test.js LeaseQA/Answers/routes.test.js LeaseQA/Discussions/routes.test.js LeaseQA/Posts/routes.test.js LeaseQA/RAG/sessionBootstrap.test.js`
 - production `/api/health`
