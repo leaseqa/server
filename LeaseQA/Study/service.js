@@ -87,17 +87,23 @@ export const createStudyService = ({
     const scenario = getScenarioById(scenarioId);
 
     if (reusableSession?.ragSessionId) {
-      const ragSession = await ragService.getViewerSession({
-        sessionId: reusableSession.ragSessionId,
-        userId,
-        clientSessionId,
-      });
-      return buildStudyView({
-        studySession: reusableSession,
-        ragSession,
-        scenario,
-        maxFollowUps,
-      });
+      try {
+        const ragSession = await ragService.getViewerSession({
+          sessionId: reusableSession.ragSessionId,
+          userId,
+          clientSessionId,
+        });
+        return buildStudyView({
+          studySession: reusableSession,
+          ragSession,
+          scenario,
+          maxFollowUps,
+        });
+      } catch (error) {
+        if (!error.message?.includes("access")) {
+          throw error;
+        }
+      }
     }
 
     const condition = assignConditionImpl({ participantId, scenarioId });

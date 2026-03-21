@@ -70,6 +70,77 @@ test("createStudySession creates a backing rag session from the fixed scenario p
   assert.equal(session.scenario.mainQuestion, createScenario().mainQuestion);
 });
 
+test("createStudySession creates a fresh backing session when an old active session belongs to another browser", async () => {
+  const calls = [];
+  const service = createStudyService({
+    getScenarioById: () => createScenario(),
+    assignCondition: () => ({
+      conditionId: "condition-low-informational_detached",
+      boundaryCue: "low",
+      framing: "informational_detached",
+    }),
+    studyDao: {
+      findReusableStudySession: async () => ({
+        _id: "study-old",
+        participantId: "participant-1",
+        scenarioId: "security-deposit",
+        ragSessionId: "rag-old",
+        conditionId: "condition-high-professional_personalized",
+        boundaryCue: "high",
+        framing: "professional_personalized",
+        status: "active",
+        turnCount: 1,
+      }),
+      createStudySession: async (payload) => ({
+        _id: "study-new",
+        participantId: payload.participantId,
+        scenarioId: payload.scenarioId,
+        conditionId: payload.conditionId,
+        boundaryCue: payload.boundaryCue,
+        framing: payload.framing,
+        status: "active",
+        turnCount: 0,
+      }),
+      updateStudySession: async (studySessionId, payload) => ({
+        _id: studySessionId,
+        participantId: "participant-1",
+        scenarioId: "security-deposit",
+        conditionId: "condition-low-informational_detached",
+        boundaryCue: "low",
+        framing: "informational_detached",
+        status: "active",
+        turnCount: 0,
+        ...payload,
+      }),
+    },
+    ragService: {
+      getViewerSession: async () => {
+        throw new Error("You do not have access to this session");
+      },
+      createRagSession: async (payload) => {
+        calls.push(payload);
+        return {
+          _id: "rag-new",
+          status: "ready",
+          messages: [],
+        };
+      },
+    },
+  });
+
+  const session = await service.createStudySession({
+    participantId: "participant-1",
+    scenarioId: "security-deposit",
+    clientSessionId: "browser-session-2",
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].studyMetadata.studySessionId, "study-new");
+  assert.equal(session.studySessionId, "study-new");
+  assert.equal(session.ragSessionId, "rag-new");
+  assert.equal(session.boundaryCue, "low");
+});
+
 test("sendStudyMessage uses the saved rag session and injects framing", async () => {
   const increments = [];
   const service = createStudyService({
