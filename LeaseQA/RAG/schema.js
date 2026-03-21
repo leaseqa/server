@@ -57,6 +57,14 @@ const ragSessionSchema = new mongoose.Schema(
     sourceMimeType: { type: String, default: null },
     sourceTextPreview: { type: String, required: true },
     sourceCharCount: { type: Number, required: true },
+    studySessionId: { type: String, default: null, index: true },
+    studyConditionId: { type: String, default: null },
+    studyScenarioId: { type: String, default: null },
+    studyFraming: {
+      type: String,
+      enum: ["professional_personalized", "informational_detached", null],
+      default: null,
+    },
     messages: { type: [messageSchema], default: [] },
   },
   {

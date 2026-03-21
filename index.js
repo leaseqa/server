@@ -16,6 +16,7 @@ import folderRoutes from "./LeaseQA/Folders/routes.js";
 import statsRoutes from "./LeaseQA/Stats/routes.js";
 import moderationRoutes from "./LeaseQA/Moderation/routes.js";
 import activityRoutes from "./LeaseQA/Activity/routes.js";
+import studyRoutes from "./LeaseQA/Study/routes.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -105,6 +106,7 @@ app.use("/api/folders", folderRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/moderation", moderationRoutes);
 app.use("/api/activity", activityRoutes);
+app.use("/api/study", studyRoutes);
 
 const port = process.env.PORT || 4050;
 app.listen(port, () => {

@@ -34,6 +34,7 @@ import {
 } from "./ingestState.js";
 import { createActivity } from "../Activity/dao.js";
 import { buildActivity } from "../Activity/service.js";
+import { getFramingInstructions } from "../Study/framing.js";
 
 const getChunkKey = (item) =>
   item.id ||
@@ -215,12 +216,18 @@ const formatEvidenceBlock = (chunks) =>
     )
     .join("\n\n");
 
-const buildPrompt = ({ question, history, supportChunks }) =>
+const buildPrompt = ({
+  question,
+  history,
+  supportChunks,
+  framingInstructions = null,
+}) =>
   `
 You are LeaseQA. Answer in simple, direct language for a low-reading-level user.
 Use only the supplied evidence. If the evidence is insufficient, say that clearly.
 Do not present yourself as a lawyer. Do not claim certainty beyond the sources.
 Keep the answer concise and easy to scan.
+${framingInstructions ? `\nResponse framing instructions:\n${framingInstructions}\n` : ""}
 
 Recent conversation:
 ${history || "None"}
@@ -464,6 +471,7 @@ export const createRagSession = async ({
   clientSessionId,
   sourceText,
   file,
+  studyMetadata = null,
 }) => {
   const config = getRagConfig();
   const embeddings = createEmbeddingsClient(config);
@@ -488,6 +496,10 @@ export const createRagSession = async ({
     sourceMimeType: file?.mimetype || "text/plain",
     sourceTextPreview: sourcePreview,
     sourceCharCount: extractedText.length,
+    studySessionId: studyMetadata?.studySessionId || null,
+    studyConditionId: studyMetadata?.studyConditionId || null,
+    studyScenarioId: studyMetadata?.studyScenarioId || null,
+    studyFraming: studyMetadata?.studyFraming || null,
     messages: [],
   });
 
@@ -548,6 +560,7 @@ export const answerQuestion = async ({
   userId,
   clientSessionId,
   question,
+  studyFraming = null,
 }) => {
   const config = getRagConfig();
   const session = await dao.findSessionById(sessionId);
@@ -604,10 +617,14 @@ export const answerQuestion = async ({
   const citationIdToIndex = Object.fromEntries(
     citations.map((citation, index) => [getCitationRefId(index), index]),
   );
+  const activeStudyFraming = studyFraming || session.studyFraming || null;
   const prompt = buildPrompt({
     question,
     history,
     supportChunks: supportedCitationChunks,
+    framingInstructions: activeStudyFraming
+      ? getFramingInstructions(activeStudyFraming)
+      : null,
   });
   const structuredAnswer =
     supportedCitationChunks.length > 0
@@ -648,6 +665,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
   sourceText,
   file,
   initialQuestion,
+  studyMetadata = null,
   createSessionFn = createRagSession,
   answerFn = answerQuestion,
   recordActivityFn = createActivity,
@@ -657,6 +675,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
     clientSessionId,
     sourceText,
     file,
+    studyMetadata,
   });
   if (userId) {
     try {
@@ -688,6 +707,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
       userId,
       clientSessionId,
       question: trimmedQuestion,
+      studyFraming: studyMetadata?.studyFraming || null,
     });
     return result.session;
   } catch (error) {

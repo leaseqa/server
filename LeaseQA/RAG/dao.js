@@ -11,6 +11,10 @@ export const createSession = (payload) =>
     sourceMimeType: payload.sourceMimeType || null,
     sourceTextPreview: payload.sourceTextPreview,
     sourceCharCount: payload.sourceCharCount,
+    studySessionId: payload.studySessionId || null,
+    studyConditionId: payload.studyConditionId || null,
+    studyScenarioId: payload.studyScenarioId || null,
+    studyFraming: payload.studyFraming || null,
     messages: payload.messages || [],
   });
 
