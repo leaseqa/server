@@ -35,6 +35,27 @@ import {
 import { createActivity } from "../Activity/dao.js";
 import { buildActivity } from "../Activity/service.js";
 
+const RESPONSE_FRAMING_INSTRUCTIONS = {
+  professional_personalized: `
+Use a careful professional helper tone.
+Refer to the renter as "you" and "your situation" when it fits the evidence.
+Emphasize what matters most for this renter's next step.
+If the evidence supports it, include cautious next-step guidance.
+Do not present the assistant as a lawyer or law firm.
+`.trim(),
+  informational_detached: `
+Present general legal information in a detached tone.
+Avoid telling the renter what they should do.
+Avoid personalized recommendation language unless the user explicitly asks for it.
+Prefer neutral descriptions of rules, options, deadlines, and conditions.
+Do not present the assistant as a lawyer or law firm.
+`.trim(),
+};
+
+const getResponseFramingInstructions = (responseFraming) =>
+  RESPONSE_FRAMING_INSTRUCTIONS[responseFraming] ||
+  RESPONSE_FRAMING_INSTRUCTIONS.informational_detached;
+
 const getChunkKey = (item) =>
   item.id ||
   [
@@ -215,12 +236,20 @@ const formatEvidenceBlock = (chunks) =>
     )
     .join("\n\n");
 
-const buildPrompt = ({ question, history, supportChunks }) =>
+const buildPrompt = ({
+  question,
+  history,
+  supportChunks,
+  responseFraming = "informational_detached",
+}) =>
   `
 You are LeaseQA. Answer in simple, direct language for a low-reading-level user.
 Use only the supplied evidence. If the evidence is insufficient, say that clearly.
 Do not present yourself as a lawyer. Do not claim certainty beyond the sources.
 Keep the answer concise and easy to scan.
+
+Response framing instructions:
+${getResponseFramingInstructions(responseFraming)}
 
 Recent conversation:
 ${history || "None"}
@@ -548,6 +577,7 @@ export const answerQuestion = async ({
   userId,
   clientSessionId,
   question,
+  responseFraming = "informational_detached",
 }) => {
   const config = getRagConfig();
   const session = await dao.findSessionById(sessionId);
@@ -608,6 +638,7 @@ export const answerQuestion = async ({
     question,
     history,
     supportChunks: supportedCitationChunks,
+    responseFraming,
   });
   const structuredAnswer =
     supportedCitationChunks.length > 0
@@ -648,6 +679,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
   sourceText,
   file,
   initialQuestion,
+  responseFraming = "informational_detached",
   createSessionFn = createRagSession,
   answerFn = answerQuestion,
   recordActivityFn = createActivity,
@@ -688,6 +720,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
       userId,
       clientSessionId,
       question: trimmedQuestion,
+      responseFraming,
     });
     return result.session;
   } catch (error) {
