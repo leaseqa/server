@@ -561,6 +561,7 @@ export const answerQuestion = async ({
   clientSessionId,
   question,
   studyFraming = null,
+  responseFraming = null,
 }) => {
   const config = getRagConfig();
   const session = await dao.findSessionById(sessionId);
@@ -617,13 +618,14 @@ export const answerQuestion = async ({
   const citationIdToIndex = Object.fromEntries(
     citations.map((citation, index) => [getCitationRefId(index), index]),
   );
-  const activeStudyFraming = studyFraming || session.studyFraming || null;
+  const activeFraming =
+    studyFraming || responseFraming || session.studyFraming || null;
   const prompt = buildPrompt({
     question,
     history,
     supportChunks: supportedCitationChunks,
-    framingInstructions: activeStudyFraming
-      ? getFramingInstructions(activeStudyFraming)
+    framingInstructions: activeFraming
+      ? getFramingInstructions(activeFraming)
       : null,
   });
   const structuredAnswer =
@@ -666,6 +668,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
   file,
   initialQuestion,
   studyMetadata = null,
+  responseFraming = null,
   createSessionFn = createRagSession,
   answerFn = answerQuestion,
   recordActivityFn = createActivity,
@@ -708,6 +711,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
       clientSessionId,
       question: trimmedQuestion,
       studyFraming: studyMetadata?.studyFraming || null,
+      responseFraming,
     });
     return result.session;
   } catch (error) {

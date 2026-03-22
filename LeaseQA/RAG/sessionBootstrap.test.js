@@ -106,3 +106,25 @@ test("logged-in sessions write an ai review activity after creation", async () =
   assert.equal(recorded[0].userId, "user-9");
   assert.equal(recorded[0].metadata.sessionId, "session-activity");
 });
+
+test("pasted text sessions pass response framing into the automatic answer flow", async () => {
+  const session = buildSession("session-framing");
+  let capturedFraming = null;
+
+  await createSessionWithOptionalInitialAnswer({
+    userId: "user-10",
+    clientSessionId: "client-10",
+    sourceText: "Clause text",
+    file: null,
+    initialQuestion: "What does this clause mean?",
+    responseFraming: "professional_personalized",
+    createSessionFn: async () => session,
+    answerFn: async ({ responseFraming }) => {
+      capturedFraming = responseFraming;
+      return { session };
+    },
+    recordActivityFn: async () => {},
+  });
+
+  assert.equal(capturedFraming, "professional_personalized");
+});

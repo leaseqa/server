@@ -12,6 +12,10 @@ import {
 const router = express.Router();
 export const getUploadMaxBytes = (env = process.env) =>
   Number.parseInt(env.RAG_UPLOAD_MAX_BYTES || "", 10) || 20 * 1024 * 1024;
+export const normalizeResponseFraming = (value) =>
+  value === "professional_personalized"
+    ? "professional_personalized"
+    : "informational_detached";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -30,10 +34,12 @@ router.use((req, _res, next) => {
 const createSessionSchema = z.object({
   sourceText: z.string().trim().optional().default(""),
   initialQuestion: z.string().optional(),
+  responseFraming: z.string().optional(),
 });
 
 const messageSchema = z.object({
   message: z.string().trim().min(1, "Message is required"),
+  responseFraming: z.string().optional(),
 });
 
 const getErrorStatus = (error) => {
@@ -97,7 +103,11 @@ router.get("/sessions/:sessionId", async (req, res) => {
 
 router.post("/sessions", upload.single("file"), async (req, res) => {
   try {
-    const { sourceText, initialQuestion: rawInitialQuestion } =
+    const {
+      sourceText,
+      initialQuestion: rawInitialQuestion,
+      responseFraming: rawResponseFraming,
+    } =
       createSessionSchema.parse(req.body);
     if (!sourceText && !req.file) {
       return sendError(res, {
@@ -113,6 +123,7 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
       sourceText,
       file: req.file || null,
       initialQuestion: rawInitialQuestion,
+      responseFraming: normalizeResponseFraming(rawResponseFraming),
     });
     sendData(res, session, 201);
   } catch (error) {
@@ -128,12 +139,14 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
 
 router.post("/sessions/:sessionId/messages", async (req, res) => {
   try {
-    const { message } = messageSchema.parse(req.body);
+    const { message, responseFraming: rawResponseFraming } =
+      messageSchema.parse(req.body);
     const result = await answerQuestion({
       sessionId: req.params.sessionId,
       userId: req.session?.currentUser?._id || null,
       clientSessionId: req.sessionID,
       question: message,
+      responseFraming: normalizeResponseFraming(rawResponseFraming),
     });
     sendData(res, result);
   } catch (error) {
