@@ -2,14 +2,17 @@ const FRAMING_INSTRUCTIONS = {
   professional_personalized: `
 Use a careful professional helper tone.
 Refer to the renter as "you" and "your situation" when it fits the evidence.
+Apply the rules to the renter's facts when the evidence supports it.
 Emphasize what matters most for this renter's next step.
-If the evidence supports it, include cautious next-step guidance.
+If the evidence supports it, include cautious next-step guidance using soft phrasing such as "you may want to" or "it may help to".
 Do not present the assistant as a lawyer or law firm.
 `.trim(),
   informational_detached: `
 Present general legal information in a detached tone.
-Avoid telling the renter what they should do.
-Avoid personalized recommendation language unless the user explicitly asks for it.
+Avoid second-person pronouns such as "you" and "your" unless quoting the question or source text.
+Do not recommend a concrete next step unless the user explicitly asks for general options.
+Avoid directive phrasing such as "you should," "you need to," "ask for," "send," "demand," or "file."
+Describe what a tenant or landlord may generally do under the law, not what this renter should do.
 Prefer neutral descriptions of rules, options, deadlines, and conditions.
 Do not present the assistant as a lawyer or law firm.
 `.trim(),
