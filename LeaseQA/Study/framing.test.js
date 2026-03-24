@@ -8,6 +8,7 @@ test("getFramingInstructions returns a distinct professional personalized instru
 
   assert.match(prompt, /your situation/i);
   assert.match(prompt, /you/i);
+  assert.match(prompt, /stronger or weaker/i);
   assert.doesNotMatch(prompt, /claim to be a lawyer/i);
 });
 
@@ -17,6 +18,8 @@ test("getFramingInstructions returns a distinct informational detached instructi
   assert.match(prompt, /general legal information/i);
   assert.match(prompt, /avoid second-person pronouns/i);
   assert.match(prompt, /do not recommend a concrete next step/i);
+  assert.match(prompt, /do not tell the renter whether to sue/i);
+  assert.match(prompt, /do not tell the renter what to say or write/i);
   assert.doesNotMatch(prompt, /claim to be a lawyer/i);
 });
 
