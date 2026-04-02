@@ -58,6 +58,7 @@ const ragSessionSchema = new mongoose.Schema(
     sourceTextPreview: { type: String, required: true },
     sourceCharCount: { type: Number, required: true },
     studyParticipantId: { type: String, default: null, index: true },
+    studyParticipantSource: { type: String, default: null },
     studySessionId: { type: String, default: null, index: true },
     studyConditionId: { type: String, default: null },
     studyScenarioId: { type: String, default: null },

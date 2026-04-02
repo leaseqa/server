@@ -37,12 +37,14 @@ test("buildSessionStudyMetadata preserves participant and condition metadata", (
   assert.deepEqual(
     buildSessionStudyMetadata({
       participantId: "R_123",
+      participantSource: "ResponseID",
       conditionId: "C3",
       scenarioId: "security-deposit",
       responseFraming: "professional_personalized",
     }),
     {
       studyParticipantId: "R_123",
+      studyParticipantSource: "ResponseID",
       studyConditionId: "C3",
       studyScenarioId: "security-deposit",
       studyFraming: "professional_personalized",

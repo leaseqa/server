@@ -18,11 +18,13 @@ export const normalizeResponseFraming = (value) =>
     : "informational_detached";
 export const buildSessionStudyMetadata = ({
   participantId = "",
+  participantSource = "",
   conditionId = "",
   scenarioId = "",
   responseFraming,
 }) => {
   const normalizedParticipantId = participantId.trim();
+  const normalizedParticipantSource = participantSource.trim();
   const normalizedConditionId = conditionId.trim();
   const normalizedScenarioId = scenarioId.trim();
   const normalizedFraming = responseFraming
@@ -40,6 +42,10 @@ export const buildSessionStudyMetadata = ({
 
   return {
     studyParticipantId: normalizedParticipantId || null,
+    studyParticipantSource:
+      normalizedParticipantId && normalizedParticipantSource
+        ? normalizedParticipantSource
+        : null,
     studyConditionId: normalizedConditionId || null,
     studyScenarioId: normalizedScenarioId || null,
     studyFraming: normalizedFraming,
@@ -65,6 +71,7 @@ const createSessionSchema = z.object({
   initialQuestion: z.string().optional(),
   responseFraming: z.string().optional(),
   participantId: z.string().trim().optional().default(""),
+  participantSource: z.string().trim().optional().default(""),
   conditionId: z.string().trim().optional().default(""),
   scenarioId: z.string().trim().optional().default(""),
 });
@@ -140,6 +147,7 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
       initialQuestion: rawInitialQuestion,
       responseFraming: rawResponseFraming,
       participantId,
+      participantSource,
       conditionId,
       scenarioId,
     } =
@@ -154,6 +162,7 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
 
     const studyMetadata = buildSessionStudyMetadata({
       participantId,
+      participantSource,
       conditionId,
       scenarioId,
       responseFraming: rawResponseFraming,

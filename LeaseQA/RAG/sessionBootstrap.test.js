@@ -141,6 +141,7 @@ test("session creation forwards study metadata into the created rag session", as
     initialQuestion: "",
     studyMetadata: {
       studyParticipantId: "R_123",
+      studyParticipantSource: "prolific_id",
       studyConditionId: "C2",
       studyScenarioId: "security-deposit",
       studyFraming: "informational_detached",
@@ -155,6 +156,7 @@ test("session creation forwards study metadata into the created rag session", as
 
   assert.deepEqual(capturedStudyMetadata, {
     studyParticipantId: "R_123",
+    studyParticipantSource: "prolific_id",
     studyConditionId: "C2",
     studyScenarioId: "security-deposit",
     studyFraming: "informational_detached",
