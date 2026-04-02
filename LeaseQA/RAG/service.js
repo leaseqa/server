@@ -496,6 +496,7 @@ export const createRagSession = async ({
     sourceMimeType: file?.mimetype || "text/plain",
     sourceTextPreview: sourcePreview,
     sourceCharCount: extractedText.length,
+    studyParticipantId: studyMetadata?.studyParticipantId || null,
     studySessionId: studyMetadata?.studySessionId || null,
     studyConditionId: studyMetadata?.studyConditionId || null,
     studyScenarioId: studyMetadata?.studyScenarioId || null,

@@ -16,6 +16,35 @@ export const normalizeResponseFraming = (value) =>
   value === "professional_personalized"
     ? "professional_personalized"
     : "informational_detached";
+export const buildSessionStudyMetadata = ({
+  participantId = "",
+  conditionId = "",
+  scenarioId = "",
+  responseFraming,
+}) => {
+  const normalizedParticipantId = participantId.trim();
+  const normalizedConditionId = conditionId.trim();
+  const normalizedScenarioId = scenarioId.trim();
+  const normalizedFraming = responseFraming
+    ? normalizeResponseFraming(responseFraming)
+    : null;
+
+  if (
+    !normalizedParticipantId &&
+    !normalizedConditionId &&
+    !normalizedScenarioId &&
+    !normalizedFraming
+  ) {
+    return null;
+  }
+
+  return {
+    studyParticipantId: normalizedParticipantId || null,
+    studyConditionId: normalizedConditionId || null,
+    studyScenarioId: normalizedScenarioId || null,
+    studyFraming: normalizedFraming,
+  };
+};
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -35,6 +64,9 @@ const createSessionSchema = z.object({
   sourceText: z.string().trim().optional().default(""),
   initialQuestion: z.string().optional(),
   responseFraming: z.string().optional(),
+  participantId: z.string().trim().optional().default(""),
+  conditionId: z.string().trim().optional().default(""),
+  scenarioId: z.string().trim().optional().default(""),
 });
 
 const messageSchema = z.object({
@@ -107,6 +139,9 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
       sourceText,
       initialQuestion: rawInitialQuestion,
       responseFraming: rawResponseFraming,
+      participantId,
+      conditionId,
+      scenarioId,
     } =
       createSessionSchema.parse(req.body);
     if (!sourceText && !req.file) {
@@ -117,13 +152,23 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
       });
     }
 
+    const studyMetadata = buildSessionStudyMetadata({
+      participantId,
+      conditionId,
+      scenarioId,
+      responseFraming: rawResponseFraming,
+    });
+
     const session = await createSessionWithOptionalInitialAnswer({
       userId: req.session?.currentUser?._id || null,
       clientSessionId: req.sessionID,
       sourceText,
       file: req.file || null,
       initialQuestion: rawInitialQuestion,
-      responseFraming: normalizeResponseFraming(rawResponseFraming),
+      responseFraming: rawResponseFraming
+        ? normalizeResponseFraming(rawResponseFraming)
+        : null,
+      studyMetadata,
     });
     sendData(res, session, 201);
   } catch (error) {

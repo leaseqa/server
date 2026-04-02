@@ -128,3 +128,35 @@ test("pasted text sessions pass response framing into the automatic answer flow"
 
   assert.equal(capturedFraming, "professional_personalized");
 });
+
+test("session creation forwards study metadata into the created rag session", async () => {
+  const session = buildSession("session-study-metadata");
+  let capturedStudyMetadata = null;
+
+  await createSessionWithOptionalInitialAnswer({
+    userId: "user-11",
+    clientSessionId: "client-11",
+    sourceText: "Clause text",
+    file: null,
+    initialQuestion: "",
+    studyMetadata: {
+      studyParticipantId: "R_123",
+      studyConditionId: "C2",
+      studyScenarioId: "security-deposit",
+      studyFraming: "informational_detached",
+    },
+    createSessionFn: async (payload) => {
+      capturedStudyMetadata = payload.studyMetadata;
+      return session;
+    },
+    answerFn: async () => ({ session }),
+    recordActivityFn: async () => {},
+  });
+
+  assert.deepEqual(capturedStudyMetadata, {
+    studyParticipantId: "R_123",
+    studyConditionId: "C2",
+    studyScenarioId: "security-deposit",
+    studyFraming: "informational_detached",
+  });
+});

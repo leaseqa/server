@@ -11,6 +11,7 @@ export const createSession = (payload) =>
     sourceMimeType: payload.sourceMimeType || null,
     sourceTextPreview: payload.sourceTextPreview,
     sourceCharCount: payload.sourceCharCount,
+    studyParticipantId: payload.studyParticipantId || null,
     studySessionId: payload.studySessionId || null,
     studyConditionId: payload.studyConditionId || null,
     studyScenarioId: payload.studyScenarioId || null,
