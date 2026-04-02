@@ -703,7 +703,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
     }
   }
   const trimmedQuestion = initialQuestion?.trim();
-  if (file || !trimmedQuestion) {
+  if (!trimmedQuestion) {
     return session;
   }
   try {
