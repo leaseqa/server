@@ -13,6 +13,7 @@
     "eval:rag:smoke": "node scripts/run-rag-eval.js --ids=ch03-security-deposit-return,ch06-heat-hot-water,ch09-lead-child,ch18-foreclosure-rights,form-repair-demand-letter,booklet-answer-summary-process",
     "ingest:rag": "node scripts/ingest-rag-corpus.js",
     "ingest:rag:reset": "node scripts/ingest-rag-corpus.js --reset",
+    "export:study": "node scripts/export-study-transcripts.js",
     "seed:demo-users": "node scripts/seed-demo-users.js",
     "seed:assign-authors": "node scripts/assign-demo-authors.js"
   },

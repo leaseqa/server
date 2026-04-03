@@ -12,6 +12,7 @@ export const createSession = (payload) =>
     sourceTextPreview: payload.sourceTextPreview,
     sourceCharCount: payload.sourceCharCount,
     studyParticipantId: payload.studyParticipantId || null,
+    studyParticipantSource: payload.studyParticipantSource || null,
     studySessionId: payload.studySessionId || null,
     studyConditionId: payload.studyConditionId || null,
     studyScenarioId: payload.studyScenarioId || null,
