@@ -39,8 +39,15 @@ test("pasted text sessions auto-answer when an initial question is provided", as
   assert.equal(result.messages[0].role, "user");
 });
 
-test("uploaded-file sessions skip the auto-answer flow", async () => {
+test("uploaded-file sessions also auto-answer when an initial question is provided", async () => {
   const session = buildSession("session-upload");
+  const updatedSession = {
+    ...session,
+    messages: [
+      { role: "user", content: "Please summarize" },
+      { role: "assistant", content: "This document raises a security-deposit dispute." },
+    ],
+  };
   let answerCalled = false;
 
   const result = await createSessionWithOptionalInitialAnswer({
@@ -50,15 +57,17 @@ test("uploaded-file sessions skip the auto-answer flow", async () => {
     file: { originalname: "doc.pdf" },
     initialQuestion: "Please summarize",
     createSessionFn: async () => session,
-    answerFn: async () => {
+    answerFn: async ({ question, sessionId }) => {
       answerCalled = true;
-      return { session };
+      assert.equal(question, "Please summarize");
+      assert.equal(sessionId, "session-upload");
+      return { session: updatedSession };
     },
     recordActivityFn: async () => {},
   });
 
-  assert.equal(answerCalled, false);
-  assert.equal(result.messages.length, 0);
+  assert.equal(answerCalled, true);
+  assert.equal(result.messages.length, 2);
 });
 
 test("pasted text sessions still return the created session if the automatic answer fails", async () => {
