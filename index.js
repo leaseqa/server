@@ -16,6 +16,7 @@ import folderRoutes from "./LeaseQA/Folders/routes.js";
 import statsRoutes from "./LeaseQA/Stats/routes.js";
 import moderationRoutes from "./LeaseQA/Moderation/routes.js";
 import activityRoutes from "./LeaseQA/Activity/routes.js";
+import { scrubBlockedDemoSession } from "./LeaseQA/utils/session.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -87,6 +88,10 @@ if (useSecureCookies) {
 }
 
 app.use(session(sessionOptions));
+app.use((req, _res, next) => {
+  scrubBlockedDemoSession(req);
+  next();
+});
 
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

@@ -3,6 +3,10 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import PostsModel from '../LeaseQA/Posts/model.js';
 import UsersModel from '../LeaseQA/Users/model.js';
+import {
+  DEMO_ACCOUNT_EMAILS,
+  assertDemoAccountsAllowed,
+} from '../LeaseQA/shared/demoAccounts.js';
 
 const mongoUrl = process.env.DATABASE_CONNECTION_STRING;
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD;
@@ -29,10 +33,14 @@ if (!mongoUrl) {
 }
 
 async function main() {
+  assertDemoAccountsAllowed(process.env);
   await mongoose.connect(mongoUrl);
 
   const hashed = bcrypt.hashSync(DEMO_PASSWORD, 10);
   const ids = [];
+  if (!demoUsers.every((user) => DEMO_ACCOUNT_EMAILS.has(user.email))) {
+    throw new Error('Demo author seed list contains a non-demo email.');
+  }
   for (const u of demoUsers) {
     const user = await UsersModel.findOneAndUpdate(
       { email: u.email },

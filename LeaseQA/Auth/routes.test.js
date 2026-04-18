@@ -74,6 +74,43 @@ test("POST /register creates a user and persists a sanitized session", async () 
   assert.deepEqual(req.session.currentUser, res.payload.data);
 });
 
+test("POST /register rejects reserved demo emails outside development", async () => {
+  const router = createAuthRouter(
+    {
+      findUserByEmail: async () => null,
+      createUser: async () => {
+        throw new Error("should not create demo users in production");
+      },
+      sanitizeUser: (user) => user,
+    },
+    {
+      env: {
+        SERVER_ENV: "production",
+      },
+    },
+  );
+  const handler = getRouteHandler(router, "post", "/register");
+  const req = {
+    body: {
+      username: "Demo Admin",
+      email: "admin@leaseqa.dev",
+      password: "leaseqa-secret",
+    },
+    session: {
+      save(callback) {
+        callback(null);
+      },
+    },
+  };
+  const res = createResponse();
+
+  await handler(req, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.payload.error.code, "FORBIDDEN");
+  assert.equal(req.session.currentUser, undefined);
+});
+
 test("POST /login creates a session for a valid user", async () => {
   const router = createAuthRouter({
     findUserByEmail: async () => ({
@@ -117,6 +154,56 @@ test("POST /login creates a session for a valid user", async () => {
   assert.equal(req.session.currentUser.hashedPassword, undefined);
 });
 
+test("POST /login rejects demo accounts outside development", async () => {
+  const router = createAuthRouter(
+    {
+      findUserByEmail: async () => ({
+        _id: "user-1",
+        email: "admin@leaseqa.dev",
+        hashedPassword: "hashed-password",
+        role: "admin",
+        banned: false,
+        toObject() {
+          return {
+            _id: "user-1",
+            email: "admin@leaseqa.dev",
+            username: "Demo Admin",
+            hashedPassword: "hashed-password",
+            role: "admin",
+            banned: false,
+          };
+        },
+      }),
+      verifyPassword: () => true,
+    },
+    {
+      env: {
+        SERVER_ENV: "production",
+      },
+    },
+  );
+  const handler = getRouteHandler(router, "post", "/login");
+  const req = {
+    body: {
+      email: "admin@leaseqa.dev",
+      password: "leaseqa-secret",
+    },
+    sessionID: "session-1",
+    session: {
+      save(callback) {
+        callback(null);
+      },
+    },
+  };
+  const res = createResponse();
+
+  await handler(req, res);
+
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.payload.error.code, "INVALID_CREDENTIALS");
+  assert.equal(req.session.currentUser, undefined);
+});
+
 test("GET /session returns unauthorized when the session is empty", async () => {
   const router = createAuthRouter();
   const handler = getRouteHandler(router, "get", "/session");
@@ -130,6 +217,35 @@ test("GET /session returns unauthorized when the session is empty", async () => 
 
   assert.equal(res.statusCode, 401);
   assert.equal(res.payload.error.code, "UNAUTHORIZED");
+});
+
+test("GET /session clears demo sessions outside development", async () => {
+  const router = createAuthRouter(undefined, {
+    env: {
+      SERVER_ENV: "production",
+    },
+  });
+  const handler = getRouteHandler(router, "get", "/session");
+  const req = {
+    sessionID: "session-1",
+    session: {
+      currentUser: {
+        _id: "user-1",
+        email: "admin@leaseqa.dev",
+        role: "admin",
+      },
+      destroy(callback) {
+        callback();
+      },
+    },
+  };
+  const res = createResponse();
+
+  await handler(req, res);
+
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.payload.error.code, "UNAUTHORIZED");
+  assert.equal(req.session.currentUser, undefined);
 });
 
 test("POST /logout destroys the session and clears the cookie", async () => {
