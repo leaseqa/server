@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out server
+        uses: actions/checkout@v4
+        with:
+          path: leaseqa-server
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: leaseqa-server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: leaseqa-server
+        run: npm ci
+
+      - name: Run server test suite
+        working-directory: leaseqa-server
+        run: >-
+          node --test
+          LeaseQA/Activity/routes.test.js
+          LeaseQA/Auth/routes.test.js
+          LeaseQA/Answers/routes.test.js
+          LeaseQA/Discussions/routes.test.js
+          LeaseQA/Discussions/tree.test.js
+          LeaseQA/Posts/routes.test.js
+          LeaseQA/RAG/*.test.js
+          LeaseQA/shared/*.test.js
+          LeaseQA/utils/session.test.js
+
+  client-e2e:
+    runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 30
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval \"db.adminCommand('ping').ok\""
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_CONNECTION_STRING: mongodb://127.0.0.1:27017/leaseqa_ci
+      SESSION_SECRET: leaseqa-ci-secret
+      PLAYWRIGHT_ADMIN_PASSWORD: leaseqa-e2e-admin
+    steps:
+      - name: Check out server
+        uses: actions/checkout@v4
+        with:
+          path: leaseqa-server
+
+      - name: Check out client
+        uses: actions/checkout@v4
+        with:
+          repository: leaseqa/client
+          ref: main
+          path: leaseqa-client
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            leaseqa-server/package-lock.json
+            leaseqa-client/package-lock.json
+
+      - name: Install server dependencies
+        working-directory: leaseqa-server
+        run: npm ci
+
+      - name: Install client dependencies
+        working-directory: leaseqa-client
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: leaseqa-client/apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run client end-to-end tests against local server
+        working-directory: leaseqa-client
+        run: npm run e2e --workspace @leaseqa/web
