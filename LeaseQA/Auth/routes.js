@@ -1,6 +1,8 @@
 import express from "express";
 import * as usersDao from "../Users/dao.js";
 import {sendData, sendError} from "../utils/responses.js";
+import { isBlockedDemoAccount } from "../shared/demoAccounts.js";
+import { requireUser, scrubBlockedDemoSession } from "../utils/session.js";
 
 const setSessionUser = (req, user, dao = usersDao) => {
     try {
@@ -15,7 +17,7 @@ const setSessionUser = (req, user, dao = usersDao) => {
     }
 };
 
-export const createAuthRouter = (dao = usersDao) => {
+export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => {
     const router = express.Router();
 
     router.post("/register", async (req, res) => {
@@ -35,6 +37,14 @@ export const createAuthRouter = (dao = usersDao) => {
                 code: "USER_EXISTS",
                 message: "A user with that email already exists.",
                 status: 409,
+            });
+        }
+
+        if (isBlockedDemoAccount(email, env)) {
+            return sendError(res, {
+                code: "FORBIDDEN",
+                message: "This email is reserved.",
+                status: 403,
             });
         }
 
@@ -77,6 +87,15 @@ export const createAuthRouter = (dao = usersDao) => {
             const user = await dao.findUserByEmail(email);
             if (!user) {
                 console.log("[Auth] User not found");
+                return sendError(res, {
+                    code: "INVALID_CREDENTIALS",
+                    message: "Invalid login.",
+                    status: 401,
+                });
+            }
+
+            if (isBlockedDemoAccount(email, env)) {
+                console.log("[Auth] Blocked demo account outside development");
                 return sendError(res, {
                     code: "INVALID_CREDENTIALS",
                     message: "Invalid login.",
@@ -140,17 +159,14 @@ export const createAuthRouter = (dao = usersDao) => {
     router.get("/session", (req, res) => {
         console.log(`[Auth] Session check. SessionID: ${req.sessionID}`);
         console.log(`[Auth] Session Data:`, req.session);
-
-        if (!req.session.currentUser) {
+        scrubBlockedDemoSession(req, { env });
+        const currentUser = requireUser(req, res, { env });
+        if (!currentUser) {
             console.log("[Auth] No currentUser in session.");
-            return sendError(res, {
-                code: "UNAUTHORIZED",
-                message: "Not signed in.",
-                status: 401,
-            });
+            return;
         }
-        console.log(`[Auth] Session valid for user: ${req.session.currentUser.email}`);
-        return sendData(res, req.session.currentUser);
+        console.log(`[Auth] Session valid for user: ${currentUser.email}`);
+        return sendData(res, currentUser);
     });
 
     return router;

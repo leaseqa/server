@@ -2,6 +2,10 @@ import "dotenv/config";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import UsersModel from "../LeaseQA/Users/model.js";
+import {
+    DEMO_ACCOUNT_EMAILS,
+    assertDemoAccountsAllowed,
+} from "../LeaseQA/shared/demoAccounts.js";
 
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD;
 
@@ -23,6 +27,7 @@ const usersToSeed = [
 ];
 
 async function main() {
+    assertDemoAccountsAllowed(process.env);
     const mongoUrl = process.env.DATABASE_CONNECTION_STRING;
     if (!mongoUrl) {
         console.error("DATABASE_CONNECTION_STRING is required");
@@ -31,6 +36,9 @@ async function main() {
 
     await mongoose.connect(mongoUrl);
     const hashed = bcrypt.hashSync(DEMO_PASSWORD, 10);
+    if (!usersToSeed.every((user) => DEMO_ACCOUNT_EMAILS.has(user.email))) {
+        throw new Error("Demo seed list contains a non-demo email.");
+    }
 
     for (const user of usersToSeed) {
         await UsersModel.findOneAndUpdate(
@@ -44,7 +52,7 @@ async function main() {
             },
             { upsert: true, new: true }
         );
-        console.log(`Seeded ${user.email} (${user.role}) with password ${DEMO_PASSWORD}`);
+        console.log(`Seeded ${user.email} (${user.role})`);
     }
 
     await mongoose.disconnect();
