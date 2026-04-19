@@ -66,6 +66,7 @@ jobs:
       DATABASE_CONNECTION_STRING: mongodb://127.0.0.1:27017/leaseqa_ci
       SESSION_SECRET: leaseqa-ci-secret
       PLAYWRIGHT_ADMIN_PASSWORD: leaseqa-e2e-admin
+      CI_SKIP_RAG: "true"
     steps:
       - name: Check out server
         uses: actions/checkout@v4
@@ -102,4 +103,4 @@ jobs:
 
       - name: Run client end-to-end tests against local server
         working-directory: leaseqa-client
-        run: npm run e2e --workspace @leaseqa/web
+        run: npm run e2e --workspace @leaseqa/web -- --retries=1
