@@ -19,12 +19,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out server
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
         with:
           path: leaseqa-server
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6.3.0
         with:
           node-version: 20
           cache: npm
@@ -69,19 +69,19 @@ jobs:
       CI_SKIP_RAG: "true"
     steps:
       - name: Check out server
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
         with:
           path: leaseqa-server
 
       - name: Check out client
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
         with:
           repository: leaseqa/client
           ref: main
           path: leaseqa-client
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6.3.0
         with:
           node-version: 20
           cache: npm
