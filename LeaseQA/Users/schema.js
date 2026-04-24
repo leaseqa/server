@@ -13,7 +13,9 @@ const UserSchema = new mongoose.Schema(
     {
         username: {type: String, required: true},
         email: {type: String, required: true, unique: true},
-        hashedPassword: {type: String, required: true},
+        hashedPassword: {type: String},
+        googleId: {type: String, sparse: true, index: true},
+        avatarUrl: {type: String},
         role: {
             type: String,
             enum: ["tenant", "lawyer", "admin"],

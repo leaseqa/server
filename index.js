@@ -6,6 +6,7 @@ import MongoStore from "connect-mongo";
 import mongoose from "mongoose";
 
 import { rateLimit } from "express-rate-limit";
+import passport from "passport";
 import authRoutes from "./LeaseQA/Auth/routes.js";
 import userRoutes from "./LeaseQA/Users/routes.js";
 import aiReviewRoutes from "./LeaseQA/AIReviews/routes.js";
@@ -94,6 +95,7 @@ app.use((req, _res, next) => {
   next();
 });
 
+app.use(passport.initialize());
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.get("/api/health", (_req, res) => {

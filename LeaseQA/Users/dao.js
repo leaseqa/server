@@ -10,11 +10,19 @@ export const findUserById = (id) =>
 export const findUserByEmail = (email) =>
     model.findOne({email});
 
+export const findUserByGoogleId = (googleId) =>
+    model.findOne({ googleId });
+
+export const updateUserById = (id, updates) =>
+    model.findByIdAndUpdate(id, updates, { new: true });
+
 export const createUser = (payload) =>
     model.create({
         username: payload.username,
         email: payload.email,
-        hashedPassword: bcrypt.hashSync(payload.password, 10),
+        hashedPassword: payload.password ? bcrypt.hashSync(payload.password, 10) : undefined,
+        googleId: payload.googleId || undefined,
+        avatarUrl: payload.avatarUrl || undefined,
         role: payload.role || "tenant",
         lawyerVerification: payload.lawyerVerification || null,
         banned: false,

@@ -1,8 +1,48 @@
 import express from "express";
+import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import * as usersDao from "../Users/dao.js";
 import {sendData, sendError} from "../utils/responses.js";
 import { isBlockedDemoAccount } from "../shared/demoAccounts.js";
 import { requireUser, scrubBlockedDemoSession } from "../utils/session.js";
+
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:4000/api/auth/google/callback",
+    },
+    async (_accessToken, _refreshToken, profile, done) => {
+      try {
+        const email = profile.emails?.[0]?.value;
+        if (!email) return done(new Error("No email from Google"));
+
+        let user = await usersDao.findUserByGoogleId(profile.id);
+        if (!user) user = await usersDao.findUserByEmail(email);
+
+        if (user) {
+          if (!user.googleId) {
+            user = await usersDao.updateUserById(user._id, {
+              googleId: profile.id,
+              avatarUrl: profile.photos?.[0]?.value,
+            });
+          }
+        } else {
+          user = await usersDao.createUser({
+            username: profile.displayName || email.split("@")[0],
+            email,
+            googleId: profile.id,
+            avatarUrl: profile.photos?.[0]?.value,
+          });
+        }
+        return done(null, user);
+      } catch (err) {
+        return done(err);
+      }
+    }
+  )
+);
 
 const setSessionUser = (req, user, dao = usersDao) => {
     try {
@@ -147,6 +187,14 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
                 status: 500
             });
         }
+    });
+
+    router.get("/google", passport.authenticate("google", { scope: ["profile", "email"], session: false }));
+
+    router.get("/google/callback", passport.authenticate("google", { failureRedirect: "/auth/login", session: false }), (req, res) => {
+        const clientUrl = process.env.CLIENT_URL || process.env.CLIENT_URLS?.split(",")[0] || "http://localhost:3000";
+        setSessionUser(req, req.user, dao);
+        req.session.save(() => res.redirect(clientUrl));
     });
 
     router.post("/logout", (req, res) => {
