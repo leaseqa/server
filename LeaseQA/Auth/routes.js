@@ -6,7 +6,7 @@ import {sendData, sendError} from "../utils/responses.js";
 import { isBlockedDemoAccount } from "../shared/demoAccounts.js";
 import { requireUser, scrubBlockedDemoSession } from "../utils/session.js";
 
-passport.use(
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) passport.use(
   new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
