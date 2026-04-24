@@ -100,9 +100,10 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
 });
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
-const ragLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5 });
-const generalLimiter = rateLimit({ windowMs: 60 * 1000, max: 100 });
+const isTest = process.env.CI_DISABLE_RATE_LIMIT === "true";
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: isTest ? 1000 : 10 });
+const ragLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: isTest ? 1000 : 5 });
+const generalLimiter = rateLimit({ windowMs: 60 * 1000, max: isTest ? 10000 : 100 });
 
 app.use("/api", generalLimiter);
 app.use("/api/auth", authLimiter);

@@ -67,6 +67,7 @@ jobs:
       SESSION_SECRET: leaseqa-ci-secret
       PLAYWRIGHT_ADMIN_PASSWORD: leaseqa-e2e-admin
       CI_SKIP_RAG: "true"
+      CI_DISABLE_RATE_LIMIT: "true"
     steps:
       - name: Check out server
         uses: actions/checkout@v6.0.2
