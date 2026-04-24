@@ -5,6 +5,7 @@ import session from "express-session";
 import MongoStore from "connect-mongo";
 import mongoose from "mongoose";
 
+import { rateLimit } from "express-rate-limit";
 import authRoutes from "./LeaseQA/Auth/routes.js";
 import userRoutes from "./LeaseQA/Users/routes.js";
 import aiReviewRoutes from "./LeaseQA/AIReviews/routes.js";
@@ -99,10 +100,16 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
 });
 
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+const ragLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5 });
+const generalLimiter = rateLimit({ windowMs: 60 * 1000, max: 100 });
+
+app.use("/api", generalLimiter);
+app.use("/api/auth", authLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/ai-reviews", aiReviewRoutes);
-app.use("/api/rag", ragRoutes);
+app.use("/api/rag", ragLimiter, ragRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/answers", answerRoutes);
 app.use("/api/discussions", discussionRoutes);

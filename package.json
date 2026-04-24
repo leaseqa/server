@@ -6,7 +6,7 @@
   "type": "module",
   "packageManager": "npm@10.9.2",
   "scripts": {
-    "dev": "node --watch index.js",
+    "dev": "node index.js",
     "start": "node index.js",
     "test:rag": "node --test LeaseQA/RAG/*.test.js LeaseQA/shared/*.test.js",
     "eval:rag": "node scripts/run-rag-eval.js",
@@ -29,6 +29,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.4.0",
     "express-session": "^1.18.2",
     "mammoth": "^1.11.0",
     "mongoose": "^9.0.0",
