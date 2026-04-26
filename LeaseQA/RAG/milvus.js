@@ -1,11 +1,4 @@
-import {
-  DataType,
-  FunctionType,
-  IndexType,
-  MetricType,
-  MilvusClient,
-  RRFRanker,
-} from "@zilliz/milvus2-sdk-node";
+import { DataType, FunctionType, IndexType, MetricType, MilvusClient, RRFRanker, } from "@zilliz/milvus2-sdk-node";
 
 const OUTPUT_FIELDS = [
   "text",
@@ -31,7 +24,7 @@ const collectionDimensions = new Map();
 const collectionSparseSupport = new Map();
 
 const createClient = (config) => {
-  if (!cachedClient) {
+  if ( !cachedClient ) {
     cachedClient = new MilvusClient({
       address: config.milvusAddress,
       token: config.milvusToken || undefined,
@@ -55,11 +48,11 @@ const isTransientMilvusError = (error) => {
 const withMilvusRetry = async (operation) => {
   const maxAttempts = 5;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  for ( let attempt = 1; attempt <= maxAttempts; attempt += 1 ) {
     try {
       return await operation();
-    } catch (error) {
-      if (!isTransientMilvusError(error) || attempt === maxAttempts) {
+    } catch ( error ) {
+      if ( !isTransientMilvusError(error) || attempt === maxAttempts ) {
         throw error;
       }
 
@@ -69,7 +62,7 @@ const withMilvusRetry = async (operation) => {
 };
 
 const getCollectionSupportsSparse = async ({ client, collectionName }) => {
-  if (collectionSparseSupport.has(collectionName)) {
+  if ( collectionSparseSupport.has(collectionName) ) {
     return collectionSparseSupport.get(collectionName);
   }
 
@@ -84,11 +77,11 @@ const getCollectionSupportsSparse = async ({ client, collectionName }) => {
 };
 
 const createCollectionIfMissing = async ({
-  client,
-  collectionName,
-  dimension,
-}) => {
-  if (collectionDimensions.get(collectionName) === dimension) {
+                                           client,
+                                           collectionName,
+                                           dimension,
+                                         }) => {
+  if ( collectionDimensions.get(collectionName) === dimension ) {
     return;
   }
 
@@ -97,7 +90,7 @@ const createCollectionIfMissing = async ({
       collection_name: collectionName,
     }),
   );
-  if (!existing.value) {
+  if ( !existing.value ) {
     await withMilvusRetry(() =>
       client.createCollection({
         collection_name: collectionName,
@@ -214,12 +207,12 @@ const ensureCollectionLoaded = async ({ client, collectionName }) => {
 };
 
 export const insertChunkRows = async ({
-  config,
-  collectionName,
-  rows,
-  dimension,
-}) => {
-  if (rows.length === 0) {
+                                        config,
+                                        collectionName,
+                                        rows,
+                                        dimension,
+                                      }) => {
+  if ( rows.length === 0 ) {
     return;
   }
 
@@ -248,7 +241,7 @@ export const resetCollection = async ({ config, collectionName }) => {
       collection_name: collectionName,
     }),
   );
-  if (!existing.value) {
+  if ( !existing.value ) {
     return;
   }
 
@@ -270,7 +263,7 @@ export const hasChunkCollection = async ({ config, collectionName }) => {
 };
 
 export const deleteChunkRows = async ({ config, collectionName, filter }) => {
-  if (!filter) {
+  if ( !filter ) {
     return;
   }
 
@@ -280,7 +273,7 @@ export const deleteChunkRows = async ({ config, collectionName, filter }) => {
       collection_name: collectionName,
     }),
   );
-  if (!existing.value) {
+  if ( !existing.value ) {
     return;
   }
 
@@ -293,19 +286,19 @@ export const deleteChunkRows = async ({ config, collectionName, filter }) => {
 };
 
 export const searchChunks = async ({
-  config,
-  collectionName,
-  vector,
-  limit,
-  filter,
-}) => {
+                                     config,
+                                     collectionName,
+                                     vector,
+                                     limit,
+                                     filter,
+                                   }) => {
   const client = createClient(config);
   const existing = await withMilvusRetry(() =>
     client.hasCollection({
       collection_name: collectionName,
     }),
   );
-  if (!existing.value) {
+  if ( !existing.value ) {
     return [];
   }
 
@@ -327,20 +320,20 @@ export const searchChunks = async ({
 };
 
 export const searchHybridChunks = async ({
-  config,
-  collectionName,
-  denseVector,
-  sparseText,
-  limit,
-  filter,
-}) => {
+                                           config,
+                                           collectionName,
+                                           denseVector,
+                                           sparseText,
+                                           limit,
+                                           filter,
+                                         }) => {
   const client = createClient(config);
   const existing = await withMilvusRetry(() =>
     client.hasCollection({
       collection_name: collectionName,
     }),
   );
-  if (!existing.value) {
+  if ( !existing.value ) {
     return [];
   }
 
@@ -349,7 +342,7 @@ export const searchHybridChunks = async ({
     collectionName,
   });
 
-  if (!supportsSparse) {
+  if ( !supportsSparse ) {
     return searchChunks({
       config,
       collectionName,

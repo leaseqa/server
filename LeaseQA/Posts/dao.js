@@ -1,69 +1,69 @@
 import model from "./model.js";
 
 export const listPosts = (filters = {}) => {
-    const {folder, search, role, viewerRole, audience} = filters;
+  const { folder, search, role, viewerRole, audience } = filters;
 
-    const query = {};
+  const query = {};
 
-    if (folder) {
-        query.folders = folder;
-    }
+  if ( folder ) {
+    query.folders = folder;
+  }
 
-    if (search) {
-        query.$or = [
-            {summary: {$regex: search, $options: "i"}},
-            {details: {$regex: search, $options: "i"}}
-        ];
-    }
+  if ( search ) {
+    query.$or = [
+      { summary: { $regex: search, $options: "i" } },
+      { details: { $regex: search, $options: "i" } }
+    ];
+  }
 
-    if (role === "lawyer" && viewerRole !== "lawyer") {
-        query.lawyerOnly = {$ne: true};
-    }
+  if ( role === "lawyer" && viewerRole !== "lawyer" ) {
+    query.lawyerOnly = { $ne: true };
+  }
 
-    if (audience) {
-        query.audience = audience;
-    } else if (viewerRole !== "admin") {
-        query.audience = {$ne: "admin"};
-    }
+  if ( audience ) {
+    query.audience = audience;
+  } else if ( viewerRole !== "admin" ) {
+    query.audience = { $ne: "admin" };
+  }
 
-    return model.find(query).sort({lastActivityAt: -1});
+  return model.find(query).sort({ lastActivityAt: -1 });
 };
 
 export const findPostById = (id) =>
-    model.findById(id);
+  model.findById(id);
 
 export const findPostsByAuthor = (authorId) =>
-    model.find({authorId});
+  model.find({ authorId });
 
 export const findPostsByFolder = (folder) =>
-    model.find({folders: folder});
+  model.find({ folders: folder });
 
 export const createPost = (payload) =>
-    model.create({
-        summary: payload.summary,
-        details: payload.details,
-        postType: payload.postType || "question",
-        audience: payload.audience || "everyone",
-        folders: payload.folders,
-        authorId: payload.authorId,
-        lawyerOnly: payload.lawyerOnly || false,
-        isAnonymous: payload.isAnonymous || false,
-        fromAIReviewId: payload.fromAIReviewId || null,
-        urgency: payload.urgency || "low",
-        attachments: payload.attachments || [],
-        viewCount: 0,
-        isResolved: false,
-        lastActivityAt: new Date(),
-    });
+  model.create({
+    summary: payload.summary,
+    details: payload.details,
+    postType: payload.postType || "question",
+    audience: payload.audience || "everyone",
+    folders: payload.folders,
+    authorId: payload.authorId,
+    lawyerOnly: payload.lawyerOnly || false,
+    isAnonymous: payload.isAnonymous || false,
+    fromAIReviewId: payload.fromAIReviewId || null,
+    urgency: payload.urgency || "low",
+    attachments: payload.attachments || [],
+    viewCount: 0,
+    isResolved: false,
+    lastActivityAt: new Date(),
+  });
 
 export const updatePost = (postId, updates) =>
-    model.findByIdAndUpdate(postId, updates, {new: true});
+  model.findByIdAndUpdate(postId, updates, { new: true });
 
 export const incrementViewCount = (postId) =>
-    model.findByIdAndUpdate(postId, {$inc: {viewCount: 1}}, {new: true});
+  model.findByIdAndUpdate(postId, { $inc: { viewCount: 1 } }, { new: true });
 
 export const updateLastActivity = (postId) =>
-    model.findByIdAndUpdate(postId, {lastActivityAt: new Date()}, {new: true});
+  model.findByIdAndUpdate(postId, { lastActivityAt: new Date() }, { new: true });
 
 export const deletePost = (postId) =>
-    model.findByIdAndDelete(postId);
+  model.findByIdAndDelete(postId);

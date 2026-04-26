@@ -31,7 +31,8 @@ test("pasted text sessions auto-answer when an initial question is provided", as
       assert.equal(sessionId, "session-text");
       return { session: updatedSession };
     },
-    recordActivityFn: async () => {},
+    recordActivityFn: async () => {
+    },
   });
 
   assert.equal(answerCalled, true);
@@ -63,7 +64,8 @@ test("uploaded-file sessions also auto-answer when an initial question is provid
       assert.equal(sessionId, "session-upload");
       return { session: updatedSession };
     },
-    recordActivityFn: async () => {},
+    recordActivityFn: async () => {
+    },
   });
 
   assert.equal(answerCalled, true);
@@ -83,7 +85,8 @@ test("pasted text sessions still return the created session if the automatic ans
     answerFn: async () => {
       throw new Error("chat model unavailable");
     },
-    recordActivityFn: async () => {},
+    recordActivityFn: async () => {
+    },
   });
 
   assert.equal(result._id.toString(), "session-fallback");

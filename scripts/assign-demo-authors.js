@@ -3,15 +3,12 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import PostsModel from '../LeaseQA/Posts/model.js';
 import UsersModel from '../LeaseQA/Users/model.js';
-import {
-  DEMO_ACCOUNT_EMAILS,
-  assertDemoAccountsAllowed,
-} from '../LeaseQA/shared/demoAccounts.js';
+import { assertDemoAccountsAllowed, DEMO_ACCOUNT_EMAILS, } from '../LeaseQA/shared/demoAccounts.js';
 
 const mongoUrl = process.env.DATABASE_CONNECTION_STRING;
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD;
 
-if (!DEMO_PASSWORD) {
+if ( !DEMO_PASSWORD ) {
   console.error("DEMO_PASSWORD is required in .env");
   process.exit(1);
 }
@@ -27,7 +24,7 @@ const demoUsers = [
   { email: 'marcus@leaseqa.dev', username: 'Marcus Attorney', role: 'lawyer' },
 ];
 
-if (!mongoUrl) {
+if ( !mongoUrl ) {
   console.error('DATABASE_CONNECTION_STRING is required');
   process.exit(1);
 }
@@ -38,10 +35,10 @@ async function main() {
 
   const hashed = bcrypt.hashSync(DEMO_PASSWORD, 10);
   const ids = [];
-  if (!demoUsers.every((user) => DEMO_ACCOUNT_EMAILS.has(user.email))) {
+  if ( !demoUsers.every((user) => DEMO_ACCOUNT_EMAILS.has(user.email)) ) {
     throw new Error('Demo author seed list contains a non-demo email.');
   }
-  for (const u of demoUsers) {
+  for ( const u of demoUsers ) {
     const user = await UsersModel.findOneAndUpdate(
       { email: u.email },
       {
@@ -57,7 +54,7 @@ async function main() {
   }
 
   const posts = await PostsModel.find({}).sort({ createdAt: 1 });
-  for (let i = 0; i < posts.length; i++) {
+  for ( let i = 0; i < posts.length; i++ ) {
     const post = posts[i];
     post.authorId = ids[i % ids.length];
     post.isAnonymous = false;

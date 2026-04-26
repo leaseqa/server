@@ -8,7 +8,7 @@ const parseInteger = (value, fallback) => {
 
 const requireEnv = (name) => {
   const value = process.env[name];
-  if (!value) {
+  if ( !value ) {
     throw new Error(`${name} is not configured`);
   }
   return value;
@@ -28,7 +28,7 @@ export const getRagConfig = () => {
       process.env.RAG_CORPUS_MANIFEST ||
       path.resolve(
         process.env.RAG_CORPUS_ROOT ||
-          path.resolve(process.cwd(), "../source/mass tenant rights"),
+        path.resolve(process.cwd(), "../source/mass tenant rights"),
         "corpus_manifest.csv",
       ),
     ingestStatePath:

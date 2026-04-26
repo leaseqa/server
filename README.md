@@ -5,9 +5,12 @@ This repository contains the Express API and RAG services used by the LeaseQA we
 Canonical product docs live in the client repo:
 
 - Product PRD: [leaseqa-client/docs/product-prd.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/product-prd.md)
-- Architecture: [leaseqa-client/docs/architecture.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/architecture.md)
-- API design summary: [leaseqa-client/docs/api-design.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/api-design.md)
-- Release checklist: [leaseqa-client/docs/release-checklist.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/release-checklist.md)
+-
+Architecture: [leaseqa-client/docs/architecture.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/architecture.md)
+- API design
+  summary: [leaseqa-client/docs/api-design.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/api-design.md)
+- Release
+  checklist: [leaseqa-client/docs/release-checklist.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/release-checklist.md)
 
 Production:
 
@@ -37,7 +40,8 @@ The ingested knowledge base is organized around:
 - forms
 - booklets
 
-Knowledge retrieval is stored in Milvus / Zilliz collections and answer generation is driven through the configured chat model endpoints.
+Knowledge retrieval is stored in Milvus / Zilliz collections and answer generation is driven through the configured chat
+model endpoints.
 
 ## Activity and Notification Model
 
@@ -119,5 +123,6 @@ npm run seed:demo-users
 ## Verification Used for the Current Release
 
 - `npm run test:rag`
-- `node --test LeaseQA/Activity/routes.test.js LeaseQA/Auth/routes.test.js LeaseQA/Answers/routes.test.js LeaseQA/Discussions/routes.test.js LeaseQA/Posts/routes.test.js LeaseQA/RAG/sessionBootstrap.test.js`
+-
+`node --test LeaseQA/Activity/routes.test.js LeaseQA/Auth/routes.test.js LeaseQA/Answers/routes.test.js LeaseQA/Discussions/routes.test.js LeaseQA/Posts/routes.test.js LeaseQA/RAG/sessionBootstrap.test.js`
 - production `/api/health`

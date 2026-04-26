@@ -1,20 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  buildRetrievalQuestion,
-  buildKnowledgeSearchPlan,
-  rankKnowledgeChunks,
-} from "./retrievalPolicy.js";
+import { buildKnowledgeSearchPlan, buildRetrievalQuestion, rankKnowledgeChunks, } from "./retrievalPolicy.js";
 
 const config = { knowledgeTopK: 8 };
 
 const createChunk = ({
-  id,
-  sourceGroup,
-  sourceName,
-  chapterRef = "",
-  score,
-}) => ({
+                       id,
+                       sourceGroup,
+                       sourceName,
+                       chapterRef = "",
+                       score,
+                     }) => ({
   id,
   source_group: sourceGroup,
   source_name: sourceName,

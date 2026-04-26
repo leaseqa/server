@@ -48,7 +48,7 @@ const connectDB = async () => {
   try {
     await mongoose.connect(process.env.DATABASE_CONNECTION_STRING);
     console.log("Connected to MongoDB");
-  } catch (error) {
+  } catch ( error ) {
     console.error("MongoDB connection error:", error);
     process.exit(1);
   }
@@ -58,8 +58,8 @@ connectDB();
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.has(origin) || origin.endsWith(".vercel.app")) {
+      if ( !origin ) return callback(null, true);
+      if ( allowedOrigins.has(origin) || origin.endsWith(".vercel.app") ) {
         return callback(null, true);
       }
       return callback(new Error(`Not allowed by CORS: ${origin}`));
@@ -83,7 +83,7 @@ const sessionOptions = {
   },
 };
 
-if (useSecureCookies) {
+if ( useSecureCookies ) {
   // ensure secure cookies work correctly behind proxies/load balancers in prod/staging
   app.set("trust proxy", 1);
   sessionOptions.proxy = true;

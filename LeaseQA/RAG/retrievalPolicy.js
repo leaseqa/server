@@ -40,10 +40,10 @@ const shouldAttachHistoryContext = (question) =>
   /^\s*(?:is it legal|is that legal|is this legal)\??\s*$/i.test(question || "");
 
 export const buildRetrievalQuestion = ({
-  question,
-  sourceTextPreview = "",
-  messages = [],
-}) => {
+                                         question,
+                                         sourceTextPreview = "",
+                                         messages = [],
+                                       }) => {
   const parts = [normalizeSnippet(question)];
   const recentUserTurns = messages
     .filter((message) => message?.role === "user")
@@ -51,13 +51,13 @@ export const buildRetrievalQuestion = ({
     .map((message) => normalizeSnippet(message.content))
     .filter(Boolean);
 
-  if (shouldAttachHistoryContext(question) && recentUserTurns.length > 0) {
+  if ( shouldAttachHistoryContext(question) && recentUserTurns.length > 0 ) {
     parts.push(...recentUserTurns);
   }
 
-  if (shouldAttachSourceContext(question)) {
+  if ( shouldAttachSourceContext(question) ) {
     const normalizedPreview = normalizeSnippet(sourceTextPreview);
-    if (normalizedPreview) {
+    if ( normalizedPreview ) {
       parts.push(normalizedPreview);
     }
   }
@@ -84,10 +84,10 @@ const questionTargetsEvictionProcedures = (question) =>
   EVICTION_PATTERN.test(question || "");
 
 const getKnowledgeGroupPriority = (question) => {
-  if (questionTargetsTemplateSource(question)) {
+  if ( questionTargetsTemplateSource(question) ) {
     return TEMPLATE_GROUP_PRIORITY;
   }
-  if (questionTargetsBookletSource(question)) {
+  if ( questionTargetsBookletSource(question) ) {
     return BOOKLET_GROUP_PRIORITY;
   }
   return DEFAULT_GROUP_PRIORITY;
@@ -97,7 +97,7 @@ export const buildKnowledgeSearchPlan = (question, config) => {
   const primaryLimit = Math.max(4, Math.ceil(config.knowledgeTopK / 2));
   const secondaryLimit = Math.max(2, Math.ceil(config.knowledgeTopK / 3));
 
-  if (questionTargetsLeadChapter(question)) {
+  if ( questionTargetsLeadChapter(question) ) {
     return [
       { group: "chapters", limit: primaryLimit, chapterRef: "9" },
       { group: "handouts", limit: 2, chapterRef: "9" },
@@ -107,7 +107,7 @@ export const buildKnowledgeSearchPlan = (question, config) => {
     ];
   }
 
-  if (questionTargetsOrganizingChapter(question)) {
+  if ( questionTargetsOrganizingChapter(question) ) {
     return [
       { group: "chapters", limit: primaryLimit, chapterRef: "10" },
       { group: "handouts", limit: 2, chapterRef: "10" },
@@ -117,7 +117,7 @@ export const buildKnowledgeSearchPlan = (question, config) => {
     ];
   }
 
-  if (questionTargetsSecurityDepositChapter(question)) {
+  if ( questionTargetsSecurityDepositChapter(question) ) {
     return [
       { group: "chapters", limit: primaryLimit, chapterRef: "3" },
       { group: "handouts", limit: 2, chapterRef: "3" },
@@ -127,7 +127,7 @@ export const buildKnowledgeSearchPlan = (question, config) => {
     ];
   }
 
-  if (questionTargetsTemplateSource(question)) {
+  if ( questionTargetsTemplateSource(question) ) {
     return [
       { group: "forms", limit: primaryLimit },
       { group: "chapters", limit: secondaryLimit },
@@ -136,7 +136,7 @@ export const buildKnowledgeSearchPlan = (question, config) => {
     ];
   }
 
-  if (questionTargetsBookletSource(question)) {
+  if ( questionTargetsBookletSource(question) ) {
     return [
       { group: "booklets", limit: primaryLimit },
       { group: "chapters", limit: secondaryLimit },
@@ -145,7 +145,7 @@ export const buildKnowledgeSearchPlan = (question, config) => {
     ];
   }
 
-  if (questionTargetsEvictionProcedures(question)) {
+  if ( questionTargetsEvictionProcedures(question) ) {
     return [
       { group: "chapters", limit: primaryLimit },
       { group: "booklets", limit: 3 },
@@ -192,13 +192,13 @@ export const rankKnowledgeChunks = (question, chunks) => {
   return [...chunks].sort((left, right) => {
     const leftLeadBoost = isLeadPreferredChunk(question, left) ? 1 : 0;
     const rightLeadBoost = isLeadPreferredChunk(question, right) ? 1 : 0;
-    if (leftLeadBoost !== rightLeadBoost) {
+    if ( leftLeadBoost !== rightLeadBoost ) {
       return rightLeadBoost - leftLeadBoost;
     }
 
     const leftOrganizingBoost = isOrganizingPreferredChunk(question, left) ? 1 : 0;
     const rightOrganizingBoost = isOrganizingPreferredChunk(question, right) ? 1 : 0;
-    if (leftOrganizingBoost !== rightOrganizingBoost) {
+    if ( leftOrganizingBoost !== rightOrganizingBoost ) {
       return rightOrganizingBoost - leftOrganizingBoost;
     }
 
@@ -211,7 +211,7 @@ export const rankKnowledgeChunks = (question, chunks) => {
     )
       ? 1
       : 0;
-    if (leftSecurityDepositBoost !== rightSecurityDepositBoost) {
+    if ( leftSecurityDepositBoost !== rightSecurityDepositBoost ) {
       return rightSecurityDepositBoost - leftSecurityDepositBoost;
     }
 
@@ -227,14 +227,14 @@ export const rankKnowledgeChunks = (question, chunks) => {
     )
       ? 1
       : 0;
-    if (leftHousingChecklistBoost !== rightHousingChecklistBoost) {
+    if ( leftHousingChecklistBoost !== rightHousingChecklistBoost ) {
       return rightHousingChecklistBoost - leftHousingChecklistBoost;
     }
 
     const groupDelta =
       (groupPriorityMap.get(left.source_group) ?? 99) -
       (groupPriorityMap.get(right.source_group) ?? 99);
-    if (groupDelta !== 0) {
+    if ( groupDelta !== 0 ) {
       return groupDelta;
     }
 

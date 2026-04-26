@@ -22,15 +22,15 @@ const parseArgs = (argv) => {
   };
 
   argv.forEach((argument) => {
-    if (argument.startsWith("--base-url=")) {
+    if ( argument.startsWith("--base-url=") ) {
       options.baseUrl = argument.split("=")[1];
       return;
     }
-    if (argument.startsWith("--limit=")) {
+    if ( argument.startsWith("--limit=") ) {
       options.limit = Number.parseInt(argument.split("=")[1], 10);
       return;
     }
-    if (argument.startsWith("--ids=")) {
+    if ( argument.startsWith("--ids=") ) {
       options.ids = argument
         .split("=")[1]
         .split(",")
@@ -54,7 +54,7 @@ const appendCookies = (cookieJar, response) => {
   setCookies.forEach((headerValue) => {
     const firstPart = headerValue.split(";")[0];
     const [name, ...rest] = firstPart.split("=");
-    if (!name || rest.length === 0) {
+    if ( !name || rest.length === 0 ) {
       return;
     }
     cookieJar.set(name.trim(), rest.join("=").trim());
@@ -65,13 +65,13 @@ const buildCookieHeader = (cookieJar) =>
   [...cookieJar.entries()].map(([name, value]) => `${name}=${value}`).join("; ");
 
 const requestJson = async ({
-  baseUrl,
-  cookieJar,
-  pathname,
-  method = "GET",
-  headers = {},
-  body,
-}) => {
+                             baseUrl,
+                             cookieJar,
+                             pathname,
+                             method = "GET",
+                             headers = {},
+                             body,
+                           }) => {
   const cookieHeader = buildCookieHeader(cookieJar);
   const response = await fetch(`${baseUrl}${pathname}`, {
     method,
@@ -85,7 +85,7 @@ const requestJson = async ({
   appendCookies(cookieJar, response);
   const text = await response.text();
 
-  if (!response.ok) {
+  if ( !response.ok ) {
     throw new Error(`${method} ${pathname} failed (${response.status}): ${text}`);
   }
 
@@ -124,11 +124,11 @@ const askQuestion = async ({ baseUrl, cookieJar, sessionId, question }) => {
 };
 
 const matchesExpectation = (evalCase, citation) => {
-  if (!citation) {
+  if ( !citation ) {
     return false;
   }
 
-  if (citation.sourceGroup !== evalCase.expectedSourceGroup) {
+  if ( citation.sourceGroup !== evalCase.expectedSourceGroup ) {
     return false;
   }
 
@@ -210,16 +210,16 @@ const main = async () => {
   const allEvalCases = await readEvalCases();
 
   let selectedCases = allEvalCases;
-  if (options.ids?.length) {
+  if ( options.ids?.length ) {
     const selectedIds = new Set(options.ids);
     selectedCases = allEvalCases.filter((evalCase) => selectedIds.has(evalCase.id));
   }
-  if (Number.isInteger(options.limit) && options.limit > 0) {
+  if ( Number.isInteger(options.limit) && options.limit > 0 ) {
     selectedCases = selectedCases.slice(0, options.limit);
   }
 
   const results = [];
-  for (const evalCase of selectedCases) {
+  for ( const evalCase of selectedCases ) {
     const result = await runEvalCase({
       baseUrl: options.baseUrl,
       evalCase,
@@ -240,7 +240,7 @@ const isExecutedDirectly =
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href;
 
-if (isExecutedDirectly) {
+if ( isExecutedDirectly ) {
   main().catch((error) => {
     console.error("[RAG eval] Failed:", error);
     process.exit(1);

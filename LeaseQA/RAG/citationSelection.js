@@ -23,7 +23,7 @@ const dedupeById = (items) => {
   const seen = new Set();
   return items.filter((item) => {
     const key = getChunkKey(item);
-    if (seen.has(key)) {
+    if ( seen.has(key) ) {
       return false;
     }
     seen.add(key);
@@ -51,22 +51,22 @@ const hasHandbookSourceSupport = (chunks) =>
   );
 
 export const selectCitationChunks = ({
-  question,
-  sessionChunks,
-  knowledgeChunks,
-  limit = 6,
-}) => {
+                                       question,
+                                       sessionChunks,
+                                       knowledgeChunks,
+                                       limit = 6,
+                                     }) => {
   const prioritizeUploadedSource = questionTargetsUploadedSource(question);
   const requireHandbookSupport = questionNeedsHandbookSupport(question);
   const rankedSessionChunks = sortByScoreDescending(sessionChunks || []);
   const rankedKnowledgeChunks = rankKnowledgeChunks(question, knowledgeChunks || []);
 
-  if (requireHandbookSupport) {
+  if ( requireHandbookSupport ) {
     const leadingChunks = [];
-    if (rankedSessionChunks[0]) {
+    if ( rankedSessionChunks[0] ) {
       leadingChunks.push(rankedSessionChunks[0]);
     }
-    if (rankedKnowledgeChunks[0]) {
+    if ( rankedKnowledgeChunks[0] ) {
       leadingChunks.push(rankedKnowledgeChunks[0]);
     }
     const remainder = prioritizeUploadedSource
@@ -85,30 +85,30 @@ export const selectCitationChunks = ({
 
 export const hasReliableCitationSupport = ({ question, citationChunks }) => {
   const firstChunk = citationChunks?.[0];
-  if (!firstChunk) {
+  if ( !firstChunk ) {
     return false;
   }
 
-  if (questionNeedsHandbookSupport(question)) {
+  if ( questionNeedsHandbookSupport(question) ) {
     return (
       hasUploadedClauseSupport(citationChunks) &&
       hasHandbookSourceSupport(citationChunks)
     );
   }
 
-  if (questionTargetsUploadedSource(question)) {
+  if ( questionTargetsUploadedSource(question) ) {
     return ["upload", "text"].includes(firstChunk.source_group);
   }
 
-  if (questionTargetsTemplateSource(question)) {
+  if ( questionTargetsTemplateSource(question) ) {
     return firstChunk.source_group === "forms";
   }
 
-  if (questionTargetsBookletSource(question)) {
+  if ( questionTargetsBookletSource(question) ) {
     return firstChunk.source_group === "booklets";
   }
 
-  if (questionTargetsLeadChapter(question)) {
+  if ( questionTargetsLeadChapter(question) ) {
     return (
       firstChunk.chapter_ref === "9" ||
       /lead/i.test(String(firstChunk.source_name || ""))

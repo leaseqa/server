@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  GEMINI_OPENAI_BASE_URL,
-  getGeminiChatConfig,
-} from "./geminiOpenAI.js";
+import { GEMINI_OPENAI_BASE_URL, getGeminiChatConfig, } from "./geminiOpenAI.js";
 
 test("getGeminiChatConfig uses Gemini defaults", () => {
   const config = getGeminiChatConfig({});

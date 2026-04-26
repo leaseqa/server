@@ -1,10 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  formatEvidenceSourceLabel,
-  normalizeAssistantAnswer,
-} from "./service.js";
+import { formatEvidenceSourceLabel, normalizeAssistantAnswer, } from "./service.js";
 
 test("normalizeAssistantAnswer maps model support ids to bullet citation indices", () => {
   const normalized = normalizeAssistantAnswer({

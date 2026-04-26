@@ -4,16 +4,8 @@ import { v4 as uuidv4 } from "uuid";
 import { ChatOpenAI } from "@langchain/openai";
 import * as dao from "./dao.js";
 import { getRagConfig } from "./config.js";
-import {
-  createTextPreview,
-  extractTextFromUpload,
-  splitTextToChunks,
-} from "./text.js";
-import {
-  buildRetrievalQuestion,
-  buildKnowledgeSearchPlan,
-  rankKnowledgeChunks,
-} from "./retrievalPolicy.js";
+import { createTextPreview, extractTextFromUpload, splitTextToChunks, } from "./text.js";
+import { buildKnowledgeSearchPlan, buildRetrievalQuestion, rankKnowledgeChunks, } from "./retrievalPolicy.js";
 import {
   hasReliableCitationSupport,
   questionNeedsHandbookSupport,
@@ -26,12 +18,7 @@ import {
   resetCollection,
   searchHybridChunks,
 } from "./milvus.js";
-import {
-  clearIngestState,
-  createInitialIngestState,
-  readIngestState,
-  writeIngestState,
-} from "./ingestState.js";
+import { clearIngestState, createInitialIngestState, readIngestState, writeIngestState, } from "./ingestState.js";
 import { createActivity } from "../Activity/dao.js";
 import { buildActivity } from "../Activity/service.js";
 
@@ -48,7 +35,7 @@ const dedupeById = (items) => {
   const seen = new Set();
   return items.filter((item) => {
     const key = getChunkKey(item);
-    if (seen.has(key)) {
+    if ( seen.has(key) ) {
       return false;
     }
     seen.add(key);
@@ -62,10 +49,10 @@ const sleep = (milliseconds) =>
   });
 
 const getMessageText = (message) => {
-  if (typeof message.content === "string") {
+  if ( typeof message.content === "string" ) {
     return message.content;
   }
-  if (Array.isArray(message.content)) {
+  if ( Array.isArray(message.content) ) {
     return message.content
       .map((part) => (typeof part === "string" ? part : part?.text || ""))
       .join("\n")
@@ -78,7 +65,7 @@ const postGeminiEmbedding = async ({ config, text, taskType, title }) => {
   const requestUrl = `${config.embeddingBaseUrl}/${config.embeddingModel}:embedContent?key=${config.embeddingApiKey}`;
   const maxAttempts = 5;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  for ( let attempt = 1; attempt <= maxAttempts; attempt += 1 ) {
     const response = await fetch(requestUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -93,7 +80,7 @@ const postGeminiEmbedding = async ({ config, text, taskType, title }) => {
     });
 
     const payload = await response.json();
-    if (response.ok && Array.isArray(payload?.embedding?.values)) {
+    if ( response.ok && Array.isArray(payload?.embedding?.values) ) {
       return payload.embedding.values;
     }
 
@@ -102,7 +89,7 @@ const postGeminiEmbedding = async ({ config, text, taskType, title }) => {
     const shouldRetry =
       response.status === 429 || response.status >= 500 || !response.ok;
 
-    if (!shouldRetry || attempt === maxAttempts) {
+    if ( !shouldRetry || attempt === maxAttempts ) {
       throw new Error(errorMessage);
     }
 
@@ -115,7 +102,7 @@ const createEmbeddingsClient = (config) => ({
     const vectors = [];
     const batchSize = 8;
 
-    for (let index = 0; index < texts.length; index += batchSize) {
+    for ( let index = 0; index < texts.length; index += batchSize ) {
       const batch = texts.slice(index, index + batchSize);
       const embeddedBatch = await Promise.all(
         batch.map((text) =>
@@ -140,7 +127,7 @@ const createEmbeddingsClient = (config) => ({
 });
 
 const createChatClient = (config) => {
-  if (!config.chatApiKey) {
+  if ( !config.chatApiKey ) {
     throw new Error(
       "RAG_CHAT_API_KEY, GEMINI_CHAT_API_KEY, or GEMINI_API_KEY is not configured",
     );
@@ -170,11 +157,11 @@ const buildChunkRows = ({ documents, vectors, sessionId }) =>
   }));
 
 const createUploadedSourceMetadata = ({
-  sessionId,
-  sourceName,
-  sourceKind,
-  mimeType,
-}) => ({
+                                        sessionId,
+                                        sourceName,
+                                        sourceKind,
+                                        mimeType,
+                                      }) => ({
   sourceName,
   sourceGroup: sourceKind === "upload" ? "upload" : "text",
   sourceType: sourceKind,
@@ -200,7 +187,7 @@ const buildCitation = (chunk) => ({
 const getCitationRefId = (index) => `c${index + 1}`;
 
 export const formatEvidenceSourceLabel = (chunk) => {
-  if (["text", "upload"].includes(String(chunk.source_group || ""))) {
+  if ( ["text", "upload"].includes(String(chunk.source_group || "")) ) {
     return "Uploaded clause text";
   }
 
@@ -339,35 +326,35 @@ const buildStructuredFallback = ({ rawAnswer, fallbackCitationIndices }) => {
 };
 
 export const normalizeAssistantAnswer = ({
-  rawAnswer,
-  citationIdToIndex,
-  fallbackCitationIndices,
-}) => {
+                                           rawAnswer,
+                                           citationIdToIndex,
+                                           fallbackCitationIndices,
+                                         }) => {
   try {
     const parsed = JSON.parse(extractJsonObject(rawAnswer));
     const summary = cleanSentence(parsed?.summary);
     const bullets = Array.isArray(parsed?.bullets)
       ? parsed.bullets
-          .map((bullet) => ({
-            text: cleanSentence(bullet?.text),
-            citationIndices: normalizeCitationIndices(
-              bullet?.supports,
-              citationIdToIndex,
-              fallbackCitationIndices,
-            ),
-          }))
-          .filter((bullet) => bullet.text)
-          .slice(0, 4)
+        .map((bullet) => ({
+          text: cleanSentence(bullet?.text),
+          citationIndices: normalizeCitationIndices(
+            bullet?.supports,
+            citationIdToIndex,
+            fallbackCitationIndices,
+          ),
+        }))
+        .filter((bullet) => bullet.text)
+        .slice(0, 4)
       : [];
 
-    if (summary && bullets.length > 0) {
+    if ( summary && bullets.length > 0 ) {
       return {
         summary,
         bullets,
         content: buildAnswerContent({ summary, bullets }),
       };
     }
-  } catch (error) {
+  } catch ( error ) {
     // Fall through to compact plain-text parsing.
   }
 
@@ -394,24 +381,24 @@ const buildInsufficientSupportAnswer = () => {
 };
 
 export const resolveSupportedCitationChunks = ({
-  question,
-  citationChunks,
-  knowledgeChunks,
-}) => {
+                                                 question,
+                                                 citationChunks,
+                                                 knowledgeChunks,
+                                               }) => {
   const questionNeedsDualSupport = questionNeedsHandbookSupport(question);
   const hasDirectSupport = hasReliableCitationSupport({
     question,
     citationChunks,
   });
-  if (hasDirectSupport) {
+  if ( hasDirectSupport ) {
     return citationChunks;
   }
 
-  if (questionNeedsDualSupport) {
+  if ( questionNeedsDualSupport ) {
     return [];
   }
 
-  if (knowledgeChunks.length > 0) {
+  if ( knowledgeChunks.length > 0 ) {
     return dedupeById([
       ...citationChunks,
       ...rankKnowledgeChunks(question, knowledgeChunks),
@@ -422,16 +409,16 @@ export const resolveSupportedCitationChunks = ({
 };
 
 const ensureViewerCanAccess = ({ session, userId, clientSessionId }) => {
-  if (!session) {
+  if ( !session ) {
     throw new Error("Session not found");
   }
-  if (session.userId) {
-    if (!userId || session.userId.toString() !== userId.toString()) {
+  if ( session.userId ) {
+    if ( !userId || session.userId.toString() !== userId.toString() ) {
       throw new Error("You do not have access to this session");
     }
     return;
   }
-  if (session.clientSessionId !== clientSessionId) {
+  if ( session.clientSessionId !== clientSessionId ) {
     throw new Error("You do not have access to this session");
   }
 };
@@ -460,11 +447,11 @@ const getKnowledgeResults = async ({ config, vector, question }) => {
 };
 
 export const createRagSession = async ({
-  userId,
-  clientSessionId,
-  sourceText,
-  file,
-}) => {
+                                         userId,
+                                         clientSessionId,
+                                         sourceText,
+                                         file,
+                                       }) => {
   const config = getRagConfig();
   const embeddings = createEmbeddingsClient(config);
 
@@ -521,7 +508,7 @@ export const createRagSession = async ({
       status: "ready",
       error: null,
     });
-  } catch (error) {
+  } catch ( error ) {
     await dao.updateSession(session._id, {
       status: "failed",
       error: error.message || "Failed to index uploaded source",
@@ -534,26 +521,26 @@ export const listViewerSessions = ({ userId, clientSessionId }) =>
   dao.listSessionsForViewer({ userId, clientSessionId });
 
 export const getViewerSession = async ({
-  sessionId,
-  userId,
-  clientSessionId,
-}) => {
+                                         sessionId,
+                                         userId,
+                                         clientSessionId,
+                                       }) => {
   const session = await dao.findSessionById(sessionId);
   ensureViewerCanAccess({ session, userId, clientSessionId });
   return session;
 };
 
 export const answerQuestion = async ({
-  sessionId,
-  userId,
-  clientSessionId,
-  question,
-}) => {
+                                       sessionId,
+                                       userId,
+                                       clientSessionId,
+                                       question,
+                                     }) => {
   const config = getRagConfig();
   const session = await dao.findSessionById(sessionId);
   ensureViewerCanAccess({ session, userId, clientSessionId });
 
-  if (session.status !== "ready") {
+  if ( session.status !== "ready" ) {
     throw new Error("Session is not ready yet");
   }
 
@@ -612,10 +599,10 @@ export const answerQuestion = async ({
   const structuredAnswer =
     supportedCitationChunks.length > 0
       ? normalizeAssistantAnswer({
-          rawAnswer: getMessageText(await chatModel.invoke(prompt)),
-          citationIdToIndex,
-          fallbackCitationIndices: citations.map((_, index) => index),
-        })
+        rawAnswer: getMessageText(await chatModel.invoke(prompt)),
+        citationIdToIndex,
+        fallbackCitationIndices: citations.map((_, index) => index),
+      })
       : buildInsufficientSupportAnswer();
 
   const updatedSession = await dao.appendMessages(sessionId, [
@@ -643,22 +630,22 @@ export const answerQuestion = async ({
 };
 
 export const createSessionWithOptionalInitialAnswer = async ({
-  userId,
-  clientSessionId,
-  sourceText,
-  file,
-  initialQuestion,
-  createSessionFn = createRagSession,
-  answerFn = answerQuestion,
-  recordActivityFn = createActivity,
-}) => {
+                                                               userId,
+                                                               clientSessionId,
+                                                               sourceText,
+                                                               file,
+                                                               initialQuestion,
+                                                               createSessionFn = createRagSession,
+                                                               answerFn = answerQuestion,
+                                                               recordActivityFn = createActivity,
+                                                             }) => {
   const session = await createSessionFn({
     userId,
     clientSessionId,
     sourceText,
     file,
   });
-  if (userId) {
+  if ( userId ) {
     try {
       await recordActivityFn(
         buildActivity({
@@ -674,12 +661,12 @@ export const createSessionWithOptionalInitialAnswer = async ({
           },
         }),
       );
-    } catch (error) {
+    } catch ( error ) {
       console.error("[RAG] Failed to record ai review activity:", error);
     }
   }
   const trimmedQuestion = initialQuestion?.trim();
-  if (!trimmedQuestion) {
+  if ( !trimmedQuestion ) {
     return session;
   }
   try {
@@ -690,7 +677,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
       question: trimmedQuestion,
     });
     return result.session;
-  } catch (error) {
+  } catch ( error ) {
     console.error(
       "[RAG] Initial question failed after session creation:",
       error,
@@ -704,11 +691,11 @@ const parseManifestLine = (line) => {
   let current = "";
   let inQuotes = false;
 
-  for (let index = 0; index < line.length; index += 1) {
+  for ( let index = 0; index < line.length; index += 1 ) {
     const char = line[index];
-    if (char === '"') {
+    if ( char === '"' ) {
       const nextChar = line[index + 1];
-      if (inQuotes && nextChar === '"') {
+      if ( inQuotes && nextChar === '"' ) {
         current += '"';
         index += 1;
       } else {
@@ -716,7 +703,7 @@ const parseManifestLine = (line) => {
       }
       continue;
     }
-    if (char === "," && !inQuotes) {
+    if ( char === "," && !inQuotes ) {
       values.push(current);
       current = "";
       continue;
@@ -768,25 +755,25 @@ const buildFreshIngestState = (config) =>
   });
 
 const shouldRestartIngest = ({ state, config, collectionExists, reset }) => {
-  if (reset || !state) {
+  if ( reset || !state ) {
     return true;
   }
-  if (!collectionExists) {
+  if ( !collectionExists ) {
     return true;
   }
-  if (state.collectionName !== config.knowledgeCollection) {
+  if ( state.collectionName !== config.knowledgeCollection ) {
     return true;
   }
-  if (state.manifestPath !== config.manifestPath) {
+  if ( state.manifestPath !== config.manifestPath ) {
     return true;
   }
   return false;
 };
 
 export const ingestKnowledgeCorpus = async ({
-  reset = false,
-  limit = null,
-} = {}) => {
+                                              reset = false,
+                                              limit = null,
+                                            } = {}) => {
   const config = getRagConfig();
   const embeddings = createEmbeddingsClient(config);
   const manifest = await loadCorpusManifest();
@@ -820,7 +807,7 @@ export const ingestKnowledgeCorpus = async ({
       ? Math.min(manifest.length, startIndex + limit)
       : manifest.length;
 
-  for (let index = startIndex; index < endIndex; index += 1) {
+  for ( let index = startIndex; index < endIndex; index += 1 ) {
     const item = manifest[index];
     console.info(
       `[RAG ingest] ${index + 1}/${manifest.length} ${item.file_name}`,
@@ -872,7 +859,7 @@ export const ingestKnowledgeCorpus = async ({
     });
   }
 
-  if (endIndex >= manifest.length) {
+  if ( endIndex >= manifest.length ) {
     await clearIngestState({ statePath: config.ingestStatePath });
   }
 };

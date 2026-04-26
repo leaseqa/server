@@ -4,12 +4,12 @@ import assert from "node:assert/strict";
 import { resolveSupportedCitationChunks } from "./service.js";
 
 const createChunk = ({
-  id,
-  sourceGroup,
-  sourceName,
-  chapterRef = "",
-  score,
-}) => ({
+                       id,
+                       sourceGroup,
+                       sourceName,
+                       chapterRef = "",
+                       score,
+                     }) => ({
   id,
   source_group: sourceGroup,
   source_name: sourceName,

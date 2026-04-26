@@ -26,7 +26,7 @@ export const listUnreadNotificationsForUser = (userId, { limit = 5 } = {}) =>
     .limit(limit);
 
 export const markActivitiesRead = async (userId, ids = []) => {
-  if (!ids.length) {
+  if ( !ids.length ) {
     return { updatedCount: 0 };
   }
   const result = await model.updateMany(

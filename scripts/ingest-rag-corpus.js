@@ -5,12 +5,12 @@ import { ingestKnowledgeCorpus } from "../LeaseQA/RAG/service.js";
 const parseArguments = (argv) =>
   argv.reduce(
     (options, argument) => {
-      if (argument === "--reset") {
+      if ( argument === "--reset" ) {
         return { ...options, reset: true };
       }
-      if (argument.startsWith("--limit=")) {
+      if ( argument.startsWith("--limit=") ) {
         const value = Number.parseInt(argument.slice("--limit=".length), 10);
-        if (Number.isFinite(value) && value > 0) {
+        if ( Number.isFinite(value) && value > 0 ) {
           return { ...options, limit: value };
         }
       }

@@ -16,7 +16,7 @@ export const isDemoAccountEmail = (email) =>
   DEMO_ACCOUNT_EMAILS.has(normalizeEmail(email));
 
 export const areDemoAccountsAllowed = (env = process.env) => {
-  if (env.ALLOW_DEMO_ACCOUNTS === "true") {
+  if ( env.ALLOW_DEMO_ACCOUNTS === "true" ) {
     return true;
   }
 
@@ -28,7 +28,7 @@ export const isBlockedDemoAccount = (email, env = process.env) =>
   isDemoAccountEmail(email) && !areDemoAccountsAllowed(env);
 
 export const assertDemoAccountsAllowed = (env = process.env) => {
-  if (areDemoAccountsAllowed(env)) {
+  if ( areDemoAccountsAllowed(env) ) {
     return;
   }
 

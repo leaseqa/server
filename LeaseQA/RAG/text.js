@@ -18,7 +18,7 @@ const normalizeText = (value) =>
 
 const ensureNonEmpty = (text, sourceName) => {
   const normalized = normalizeText(text);
-  if (!normalized) {
+  if ( !normalized ) {
     throw new Error(`No readable text found in ${sourceName}`);
   }
   return normalized;
@@ -46,25 +46,25 @@ const getExtension = (sourceName) =>
   path.extname(sourceName || "").toLowerCase();
 
 export const extractTextFromUpload = async ({
-  buffer,
-  originalName,
-  mimeType,
-}) => {
+                                              buffer,
+                                              originalName,
+                                              mimeType,
+                                            }) => {
   const extension = getExtension(originalName);
-  if (PDF_EXTENSIONS.has(extension) || mimeType === "application/pdf") {
+  if ( PDF_EXTENSIONS.has(extension) || mimeType === "application/pdf" ) {
     return parsePdfBuffer(buffer, originalName);
   }
   if (
     DOCX_EXTENSIONS.has(extension) ||
     mimeType ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
     return parseDocxBuffer(buffer, originalName);
   }
-  if (PLAIN_TEXT_EXTENSIONS.has(extension) || mimeType?.startsWith("text/")) {
+  if ( PLAIN_TEXT_EXTENSIONS.has(extension) || mimeType?.startsWith("text/") ) {
     return parsePlainTextBuffer(buffer, originalName);
   }
-  if (extension === ".doc") {
+  if ( extension === ".doc" ) {
     throw new Error(
       "Legacy .doc files are not supported yet. Please export as .docx or PDF.",
     );
@@ -85,11 +85,11 @@ export const extractTextFromFilePath = async (filePath) => {
 };
 
 export const splitTextToChunks = async ({
-  text,
-  metadata,
-  chunkSize,
-  chunkOverlap,
-}) => {
+                                          text,
+                                          metadata,
+                                          chunkSize,
+                                          chunkOverlap,
+                                        }) => {
   const splitter = new RecursiveCharacterTextSplitter({
     chunkSize,
     chunkOverlap,
@@ -99,7 +99,7 @@ export const splitTextToChunks = async ({
 
 export const createTextPreview = (text, maxLength = 240) => {
   const compact = text.replace(/\s+/g, " ").trim();
-  if (compact.length <= maxLength) {
+  if ( compact.length <= maxLength ) {
     return compact;
   }
   return `${compact.slice(0, maxLength - 1)}...`;
