@@ -32,10 +32,10 @@ test("POST / notifies the parent discussion author for replies", async () => {
       findDiscussionById: async (id) =>
         id === "root-1"
           ? {
-              _id: "root-1",
-              postId: "post-1",
-              authorId: { toString: () => "tenant-2" },
-            }
+            _id: "root-1",
+            postId: "post-1",
+            authorId: { toString: () => "tenant-2" },
+          }
           : null,
       createDiscussion: async (payload) => ({
         _id: "reply-1",

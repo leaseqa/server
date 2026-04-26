@@ -7,12 +7,12 @@ import {
 } from "./citationSelection.js";
 
 const createChunk = ({
-  id,
-  sourceGroup,
-  sourceName,
-  score,
-  text = "chunk text",
-}) => ({
+                       id,
+                       sourceGroup,
+                       sourceName,
+                       score,
+                       text = "chunk text",
+                     }) => ({
   id,
   source_group: sourceGroup,
   source_name: sourceName,

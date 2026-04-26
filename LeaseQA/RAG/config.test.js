@@ -19,7 +19,7 @@ const withEnv = (overrides, callback) => {
     callback();
   } finally {
     Object.entries(original).forEach(([key, value]) => {
-      if (value === undefined) {
+      if ( value === undefined ) {
         delete process.env[key];
       } else {
         process.env[key] = value;

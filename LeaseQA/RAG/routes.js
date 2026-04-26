@@ -21,7 +21,7 @@ const upload = multer({
 });
 
 router.use((req, _res, next) => {
-  if (!req.session?.currentUser && !req.session?.ragGuest) {
+  if ( !req.session?.currentUser && !req.session?.ragGuest ) {
     req.session.ragGuest = { createdAt: new Date().toISOString() };
   }
   next();
@@ -37,13 +37,13 @@ const messageSchema = z.object({
 });
 
 const getErrorStatus = (error) => {
-  if (error instanceof z.ZodError) {
+  if ( error instanceof z.ZodError ) {
     return 400;
   }
-  if (error.message === "Session not found") {
+  if ( error.message === "Session not found" ) {
     return 404;
   }
-  if (error.message?.includes("access")) {
+  if ( error.message?.includes("access") ) {
     return 403;
   }
   if (
@@ -64,7 +64,7 @@ router.get("/sessions", async (req, res) => {
       clientSessionId: req.sessionID,
     });
     sendData(res, sessions);
-  } catch (error) {
+  } catch ( error ) {
     console.error("[RAG] Failed to list sessions:", error);
     sendError(res, {
       code: "RAG_LIST_FAILED",
@@ -82,9 +82,9 @@ router.get("/sessions/:sessionId", async (req, res) => {
       clientSessionId: req.sessionID,
     });
     sendData(res, session);
-  } catch (error) {
+  } catch ( error ) {
     const status = getErrorStatus(error);
-    if (status === 404) {
+    if ( status === 404 ) {
       return sendNotFound(res, "Chat session not found");
     }
     sendError(res, {
@@ -99,7 +99,7 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
   try {
     const { sourceText, initialQuestion: rawInitialQuestion } =
       createSessionSchema.parse(req.body);
-    if (!sourceText && !req.file) {
+    if ( !sourceText && !req.file ) {
       return sendError(res, {
         code: "VALIDATION_ERROR",
         message: "Provide sourceText or upload a file.",
@@ -115,7 +115,7 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
       initialQuestion: rawInitialQuestion,
     });
     sendData(res, session, 201);
-  } catch (error) {
+  } catch ( error ) {
     console.error("[RAG] Failed to create session:", error);
     const status = getErrorStatus(error);
     sendError(res, {
@@ -136,9 +136,9 @@ router.post("/sessions/:sessionId/messages", async (req, res) => {
       question: message,
     });
     sendData(res, result);
-  } catch (error) {
+  } catch ( error ) {
     const status = getErrorStatus(error);
-    if (status === 404) {
+    if ( status === 404 ) {
       return sendNotFound(res, "Chat session not found");
     }
     sendError(res, {
