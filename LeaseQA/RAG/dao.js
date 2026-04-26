@@ -27,7 +27,7 @@ export const appendMessages = (sessionId, messages) =>
 export const findSessionById = (sessionId) => model.findById(sessionId);
 
 export const listSessionsForViewer = ({ userId, clientSessionId }) => {
-  if (userId) {
+  if ( userId ) {
     return model.find({ userId }).sort({ updatedAt: -1 }).limit(20);
   }
   return model

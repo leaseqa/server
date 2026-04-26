@@ -18,12 +18,12 @@ export const readIngestState = async ({ statePath }) => {
   try {
     const raw = await fs.readFile(statePath, "utf-8");
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== STATE_VERSION) {
+    if ( !parsed || parsed.version !== STATE_VERSION ) {
       return null;
     }
     return parsed;
-  } catch (error) {
-    if (error?.code === "ENOENT") {
+  } catch ( error ) {
+    if ( error?.code === "ENOENT" ) {
       return null;
     }
     throw error;
@@ -43,8 +43,8 @@ export const writeIngestState = async ({ statePath, state }) => {
 export const clearIngestState = async ({ statePath }) => {
   try {
     await fs.unlink(statePath);
-  } catch (error) {
-    if (error?.code !== "ENOENT") {
+  } catch ( error ) {
+    if ( error?.code !== "ENOENT" ) {
       throw error;
     }
   }

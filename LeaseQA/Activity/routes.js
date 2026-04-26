@@ -5,7 +5,7 @@ import { sendData, sendError } from "../utils/responses.js";
 
 const parseLimit = (value, fallback) => {
   const parsed = Number.parseInt(value || "", 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
+  if ( !Number.isFinite(parsed) || parsed <= 0 ) {
     return fallback;
   }
   return parsed;
@@ -16,7 +16,7 @@ export const createActivityRouter = (activityDao = dao) => {
 
   router.get("/", async (req, res) => {
     const currentUser = requireUser(req, res);
-    if (!currentUser) return;
+    if ( !currentUser ) return;
 
     const limit = parseLimit(req.query.limit, 20);
     const items = await activityDao.listActivityForUser(currentUser._id, {
@@ -27,7 +27,7 @@ export const createActivityRouter = (activityDao = dao) => {
 
   router.get("/notifications", async (req, res) => {
     const currentUser = requireUser(req, res);
-    if (!currentUser) return;
+    if ( !currentUser ) return;
 
     const limit = parseLimit(req.query.limit, 5);
     const items = await activityDao.listUnreadNotificationsForUser(
@@ -41,10 +41,10 @@ export const createActivityRouter = (activityDao = dao) => {
 
   router.post("/notifications/read", async (req, res) => {
     const currentUser = requireUser(req, res);
-    if (!currentUser) return;
+    if ( !currentUser ) return;
 
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
-    if (!ids.length) {
+    if ( !ids.length ) {
       return sendError(res, {
         code: "VALIDATION_ERROR",
         message: "Provide at least one activity id.",
