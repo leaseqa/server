@@ -4,15 +4,15 @@
 
 Backend operational truth in this repo lives in:
 
-- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/README.md`
-- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/.env.example`
+- `/Users/Z1nk/Desktop/proj/leaseqa/server/README.md`
+- `/Users/Z1nk/Desktop/proj/leaseqa/server/.env.example`
 
 Current product behavior and cross-repo architecture live in the client repo:
 
-- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/product-prd.md`
-- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/architecture.md`
-- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/api-design.md`
-- `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/release-checklist.md`
+- `/Users/Z1nk/Desktop/proj/leaseqa/client/docs/product-prd.md`
+- `/Users/Z1nk/Desktop/proj/leaseqa/client/docs/architecture.md`
+- `/Users/Z1nk/Desktop/proj/leaseqa/client/docs/api-design.md`
+- `/Users/Z1nk/Desktop/proj/leaseqa/client/docs/release-checklist.md`
 
 ## Documentation Impact Rules
 
@@ -27,9 +27,9 @@ Do not treat backend feature work as complete until documentation impact has bee
 ## RAG Knowledge Ingestion
 
 - The knowledge corpus ingest job is resumable.
-- Progress is stored in `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/.rag-knowledge-ingest-state.json` by default.
-- Run `npm run ingest:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` to resume from the saved checkpoint.
-- Run `npm run ingest:rag:reset` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` to rebuild the knowledge collection from scratch.
+- Progress is stored in `/Users/Z1nk/Desktop/proj/leaseqa/server/.rag-knowledge-ingest-state.json` by default.
+- Run `npm run ingest:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/server` to resume from the saved checkpoint.
+- Run `npm run ingest:rag:reset` from `/Users/Z1nk/Desktop/proj/leaseqa/server` to rebuild the knowledge collection from scratch.
 - Knowledge chunk rows are written idempotently per source file. Before retrying a file, existing rows for that file are deleted and then reinserted.
 
 ## Retrieval
@@ -50,7 +50,7 @@ Do not treat backend feature work as complete until documentation impact has bee
 
 ## RAG Testing
 
-- Run `npm run test:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` for RAG unit tests.
-- Run `npm run eval:rag:smoke` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` for a small live retrieval eval against the running backend.
-- Run `npm run eval:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server` for the full live eval set.
-- Eval cases live in `/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/LeaseQA/RAG/evals/tenant-rights-eval.json`.
+- Run `npm run test:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/server` for RAG unit tests.
+- Run `npm run eval:rag:smoke` from `/Users/Z1nk/Desktop/proj/leaseqa/server` for a small live retrieval eval against the running backend.
+- Run `npm run eval:rag` from `/Users/Z1nk/Desktop/proj/leaseqa/server` for the full live eval set.
+- Eval cases live in `/Users/Z1nk/Desktop/proj/leaseqa/server/LeaseQA/RAG/evals/tenant-rights-eval.json`.

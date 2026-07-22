@@ -4,10 +4,10 @@ This repository contains the Express API and RAG services used by the LeaseQA we
 
 Canonical product docs live in the client repo:
 
-- Product PRD: [leaseqa-client/docs/product-prd.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/product-prd.md)
-- Architecture: [leaseqa-client/docs/architecture.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/architecture.md)
-- API design summary: [leaseqa-client/docs/api-design.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/api-design.md)
-- Release checklist: [leaseqa-client/docs/release-checklist.md](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-client/docs/release-checklist.md)
+- Product PRD: [client/docs/product-prd.md](https://github.com/leaseqa/client/blob/codex/upl-study-2x2-live/docs/product-prd.md)
+- Architecture: [client/docs/architecture.md](https://github.com/leaseqa/client/blob/codex/upl-study-2x2-live/docs/architecture.md)
+- API design summary: [client/docs/api-design.md](https://github.com/leaseqa/client/blob/codex/upl-study-2x2-live/docs/api-design.md)
+- Release checklist: [client/docs/release-checklist.md](https://github.com/leaseqa/client/blob/codex/upl-study-2x2-live/docs/release-checklist.md)
 
 Production:
 
@@ -102,7 +102,7 @@ Expected local client:
 - `RAG_CHAT_*`
 - `RAG_EMBEDDING_*`
 
-See [.env.example](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/.env.example) for the full template.
+See [.env.example](.env.example) for the full template.
 
 ## Useful Commands
 
