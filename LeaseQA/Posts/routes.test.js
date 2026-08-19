@@ -174,6 +174,85 @@ test("PUT /:postId sanitizes changed rich-text details before persistence", asyn
   assert.equal(storedUpdates.details, "<ul><li>Safe</li></ul><a>bad</a>");
 });
 
+test("PUT /:postId rejects controlled fields from a non-admin author", async () => {
+  const controlledUpdates = [
+    { isHidden: false },
+    { isPinned: true },
+    { authorId: "tenant-2" },
+    { viewCount: 999 },
+    { attachments: [] },
+  ];
+
+  for (const body of controlledUpdates) {
+    let updateCalls = 0;
+    const router = createPostsRouter({
+      postsDao: {
+        findPostById: async () => ({
+          _id: "post-1",
+          authorId: { toString: () => "tenant-1" },
+          isHidden: true,
+          isPinned: false,
+          isResolved: false,
+        }),
+        updatePost: async () => {
+          updateCalls += 1;
+          return { _id: "post-1", authorId: "tenant-1", ...body };
+        },
+      },
+      recordActivityFn: async () => {},
+    });
+    const handler = getRouteHandler(router, "put", "/:postId");
+    const req = {
+      params: { postId: "post-1" },
+      body,
+      session: { currentUser: { _id: "tenant-1", role: "tenant" } },
+    };
+    const res = createResponse();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 403, Object.keys(body)[0]);
+    assert.equal(res.payload.error.code, "FORBIDDEN", Object.keys(body)[0]);
+    assert.equal(updateCalls, 0, Object.keys(body)[0]);
+  }
+});
+
+test("PATCH /:postId/pin remains available to administrators", async () => {
+  let storedUpdates;
+  const router = createPostsRouter({
+    postsDao: {
+      findPostById: async () => ({
+        _id: "post-1",
+        authorId: { toString: () => "tenant-1" },
+        isPinned: false,
+        isResolved: false,
+      }),
+      updatePost: async (_id, updates) => {
+        storedUpdates = updates;
+        return {
+          _id: "post-1",
+          authorId: { toString: () => "tenant-1" },
+          isPinned: true,
+          isResolved: false,
+        };
+      },
+    },
+    recordActivityFn: async () => {},
+  });
+  const handler = getRouteHandler(router, "patch", "/:postId/pin");
+  const req = {
+    params: { postId: "post-1" },
+    body: { isPinned: true },
+    session: { currentUser: { _id: "admin-1", role: "admin" } },
+  };
+  const res = createResponse();
+
+  await handler(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(storedUpdates, { isPinned: true });
+});
+
 test("GET /:postId hides a moderated post from a non-admin viewer", async () => {
   let incrementCalls = 0;
   const router = createPostsRouter({
@@ -298,6 +377,53 @@ test("POST /:postId/attachments rejects a non-owner before writing a file", asyn
 
   assert.equal(response.status, 403);
   assert.deepEqual(await readdir(storageRoot), []);
+});
+
+test("POST /:postId/attachments removes newly written files when post persistence fails", async (t) => {
+  const storageRoot = await mkdtemp(path.join(os.tmpdir(), "leaseqa-route-failed-save-"));
+  t.after(() => rm(storageRoot, { recursive: true, force: true }));
+  const persistenceError = new Error("database unavailable");
+  const post = {
+    _id: "post-1",
+    authorId: { toString: () => "tenant-1" },
+    attachments: [],
+    async save() {
+      throw persistenceError;
+    },
+  };
+  const attachmentUpload = createAttachmentUpload({
+    SERVER_ENV: "development",
+    UPLOADS_DIR: storageRoot,
+  });
+  const app = express();
+  app.use((req, _res, next) => {
+    req.session = { currentUser: { _id: "tenant-1", role: "tenant" } };
+    next();
+  });
+  app.use(createPostsRouter({
+    postsDao: { findPostById: async () => post },
+    attachmentUpload,
+  }));
+  let observedError;
+  app.use((error, _req, res, _next) => {
+    observedError = error;
+    res.status(503).json({ error: { code: "PERSISTENCE_FAILED" } });
+  });
+  const server = app.listen(0, "127.0.0.1");
+  t.after(() => server.close());
+  await new Promise((resolve) => server.once("listening", resolve));
+
+  const body = new FormData();
+  body.append("files", new Blob(["%PDF-test"], { type: "application/pdf" }), "orphan.pdf");
+  const response = await fetch(
+    `http://127.0.0.1:${server.address().port}/post-1/attachments`,
+    { method: "POST", body },
+  );
+
+  assert.equal(response.status, 503);
+  assert.equal(observedError, persistenceError);
+  assert.deepEqual(await readdir(storageRoot), []);
+  assert.deepEqual(post.attachments, []);
 });
 
 test("GET / bulk-loads all post relations once and preserves the enriched JSON shape", async () => {

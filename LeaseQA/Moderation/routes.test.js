@@ -41,7 +41,7 @@ test("moderation state is represented by persisted schema defaults", () => {
   assert.equal(post.toObject().isHidden, false);
 });
 
-test("POST /posts/:postId/hide awaits and returns the resolved persisted post", async (t) => {
+test("POST /posts/:postId/hide directly awaits and returns the resolved update", async (t) => {
   const originalFindById = PostModel.findById;
   const originalFindByIdAndUpdate = PostModel.findByIdAndUpdate;
   t.after(() => {
@@ -50,8 +50,12 @@ test("POST /posts/:postId/hide awaits and returns the resolved persisted post", 
   });
 
   const persisted = { _id: "post-1", isHidden: true };
+  let findCalls = 0;
   let update;
-  PostModel.findById = async () => ({ _id: "post-1", isHidden: false });
+  PostModel.findById = async () => {
+    findCalls += 1;
+    return { _id: "post-1", isHidden: false };
+  };
   PostModel.findByIdAndUpdate = async (id, updates, options) => {
     update = { id, updates, options };
     return persisted;
@@ -72,11 +76,12 @@ test("POST /posts/:postId/hide awaits and returns the resolved persisted post", 
     updates: { isHidden: true },
     options: { new: true },
   });
+  assert.equal(findCalls, 0);
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.data, persisted);
 });
 
-test("POST /posts/:postId/hide returns 404 only after a resolved null lookup", async (t) => {
+test("POST /posts/:postId/hide returns 404 when the resolved update is null", async (t) => {
   const originalFindById = PostModel.findById;
   const originalFindByIdAndUpdate = PostModel.findByIdAndUpdate;
   t.after(() => {
@@ -84,8 +89,12 @@ test("POST /posts/:postId/hide returns 404 only after a resolved null lookup", a
     PostModel.findByIdAndUpdate = originalFindByIdAndUpdate;
   });
 
+  let findCalls = 0;
   let updateCalls = 0;
-  PostModel.findById = async () => null;
+  PostModel.findById = async () => {
+    findCalls += 1;
+    return { _id: "missing" };
+  };
   PostModel.findByIdAndUpdate = async () => {
     updateCalls += 1;
     return null;
@@ -103,5 +112,6 @@ test("POST /posts/:postId/hide returns 404 only after a resolved null lookup", a
 
   assert.equal(res.statusCode, 404);
   assert.equal(res.payload.error.code, "NOT_FOUND");
-  assert.equal(updateCalls, 0);
+  assert.equal(findCalls, 0);
+  assert.equal(updateCalls, 1);
 });

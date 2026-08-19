@@ -1,4 +1,5 @@
 import express from "express";
+import { rm } from "node:fs/promises";
 import * as postsDao from "./dao.js";
 import * as answersDao from "../Answers/dao.js";
 import * as discussionsDao from "../Discussions/dao.js";
@@ -12,6 +13,45 @@ import { sanitizeRichText } from "../utils/richText.js";
 import { createAttachmentUpload } from "./uploadPolicy.js";
 
 export const attachmentUpload = createAttachmentUpload(process.env);
+
+const AUTHOR_EDITABLE_POST_FIELDS = new Set([
+  "summary",
+  "details",
+  "folders",
+  "urgency",
+  "isAnonymous",
+  "lawyerOnly",
+  "audience",
+  "isResolved",
+]);
+
+const ADMIN_EDITABLE_POST_FIELDS = new Set([
+  ...AUTHOR_EDITABLE_POST_FIELDS,
+  "postType",
+  "isPinned",
+  "isHidden",
+]);
+
+const selectPostUpdates = (body, role) => {
+  const allowedFields = role === "admin"
+    ? ADMIN_EDITABLE_POST_FIELDS
+    : AUTHOR_EDITABLE_POST_FIELDS;
+  const entries = Object.entries(body || {});
+  return {
+    disallowedFields: entries
+      .filter(([field]) => !allowedFields.has(field))
+      .map(([field]) => field),
+    updates: Object.fromEntries(entries.filter(([field]) => allowedFields.has(field))),
+  };
+};
+
+const removeUploadedFiles = async (files) => {
+  await Promise.allSettled(
+    files
+      .filter((file) => typeof file.path === "string")
+      .map((file) => rm(file.path, { force: true })),
+  );
+};
 
 const buildUserMap = async (ids = [], usersDaoImpl = usersDao) => {
   const uniqueIds = [...new Set(ids.filter(Boolean).map((id) => id.toString()))];
@@ -270,10 +310,21 @@ export const createPostsRouter = ({
         });
       }
 
+      const { disallowedFields, updates: selectedUpdates } = selectPostUpdates(
+        req.body,
+        currentUser.role,
+      );
+      if ( disallowedFields.length ) {
+        return sendError(res, {
+          code: "FORBIDDEN",
+          message: "One or more post fields cannot be changed by this user.",
+          status: 403,
+        });
+      }
       const updates = {
-        ...req.body,
-        ...(typeof req.body.details === "string"
-          ? { details: sanitizeRichText(req.body.details) }
+        ...selectedUpdates,
+        ...(typeof selectedUpdates.details === "string"
+          ? { details: sanitizeRichText(selectedUpdates.details) }
           : {}),
       };
       const updated = await postsDaoImpl.updatePost(req.params.postId, updates);
@@ -346,8 +397,15 @@ export const createPostsRouter = ({
       uploadedAt: new Date(),
     }));
 
-    post.attachments = [...(post.attachments || []), ...newAttachments];
-    await post.save();
+    const previousAttachments = [...(post.attachments || [])];
+    post.attachments = [...previousAttachments, ...newAttachments];
+    try {
+      await post.save();
+    } catch ( error ) {
+      post.attachments = previousAttachments;
+      await removeUploadedFiles(files);
+      throw error;
+    }
 
     sendData(res, post);
   });

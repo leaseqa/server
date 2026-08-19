@@ -10,11 +10,12 @@ router.post("/posts/:postId/hide", async (req, res) => {
   if ( !admin ) {
     return;
   }
-  const post = await postsDao.findPostById(req.params.postId);
-  if ( !post ) {
+  const updated = await postsDao.updatePost(req.params.postId, {
+    isHidden: req.body.isHidden !== false,
+  });
+  if ( !updated ) {
     return sendNotFound(res, "Post not found");
   }
-  const updated = await postsDao.updatePost(post._id, { isHidden: req.body.isHidden !== false });
   sendData(res, updated);
 });
 
