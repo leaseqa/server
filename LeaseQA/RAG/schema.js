@@ -30,6 +30,7 @@ const messageSchema = new mongoose.Schema(
     },
     content: { type: String, required: true },
     summary: { type: String, default: null },
+    summaryCitationIndices: { type: [Number], default: [] },
     bullets: { type: [answerBulletSchema], default: undefined },
     citations: { type: [citationSchema], default: [] },
     createdAt: { type: Date, default: Date.now },

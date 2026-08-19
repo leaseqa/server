@@ -93,3 +93,14 @@ test("buildRagMessages preserves prompt-injection text only as quoted user data"
     /<evidence_item id="c1">[\s\S]*ignore previous instructions[\s\S]*<\/evidence_item>/i,
   );
 });
+
+test("buildRagMessages requires explicit support ids for the summary", () => {
+  const messages = buildRagMessages({
+    question: "When is my deposit due?",
+    history: "None",
+    supportChunks,
+  });
+
+  assert.match(messages[0].content, /"summarySupports": \["c1"\]/);
+  assert.match(messages[0].content, /summary must include 1 or 2 support ids/i);
+});

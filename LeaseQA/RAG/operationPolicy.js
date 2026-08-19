@@ -6,6 +6,7 @@ const DEFAULT_JITTER_RATIO = 0.2;
 
 const NETWORK_ERROR_CODES = new Set([
   "14",
+  "4",
   "ECONNABORTED",
   "ECONNREFUSED",
   "ECONNRESET",
@@ -46,7 +47,7 @@ const isTransientError = (error) => {
 
   return (
     NETWORK_ERROR_CODES.has(getNetworkErrorCode(error)) ||
-    /\b(?:UNAVAILABLE|Connection dropped|RST_STREAM|timed out|network|socket)\b/i.test(
+    /\b(?:UNAVAILABLE|DEADLINE_EXCEEDED|deadline exceeded|Connection dropped|RST_STREAM|timed out|network|socket)\b/i.test(
       error?.message || "",
     ) ||
     (error instanceof TypeError && /fetch|network|socket/i.test(error.message))

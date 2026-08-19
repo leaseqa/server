@@ -40,6 +40,7 @@ Security boundary:
 Return valid JSON only with this shape:
 {
   "summary": "one short sentence",
+  "summarySupports": ["c1"],
   "bullets": [
     {
       "text": "short bullet",
@@ -50,6 +51,7 @@ Return valid JSON only with this shape:
 
 Rules:
 - Summary: 1 sentence, at most 24 words.
+- Summary must include 1 or 2 support ids in summarySupports.
 - Bullets: 2 to 4 items, each under 18 words.
 - Every bullet must include 1 or 2 explicit support ids from the evidence list.
 - Use only evidence ids that appear in untrusted_evidence.

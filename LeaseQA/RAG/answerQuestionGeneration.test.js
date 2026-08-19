@@ -73,6 +73,7 @@ test("answerQuestion sends separated messages and returns only explicit retrieve
           return {
             content: JSON.stringify({
               summary: "The handbook describes a deposit deadline.",
+              summarySupports: ["c1"],
               bullets: [
                 {
                   text: "The handbook source states the deadline rule.",
@@ -106,6 +107,10 @@ test("answerQuestion sends separated messages and returns only explicit retrieve
   );
   assert.deepEqual(
     result.session.messages[1].bullets[0].citationIndices,
+    [0],
+  );
+  assert.deepEqual(
+    result.session.messages[1].summaryCitationIndices,
     [0],
   );
 });

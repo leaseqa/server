@@ -164,29 +164,20 @@ export const invokeChatModel = ({
     operation: (signal) => chatModel.invoke(messages, { signal }),
   });
 
-export const runVectorOperation = ({
-                                     config,
-                                     label,
-                                     operation,
-                                     retryPolicy,
-                                   }) =>
-  runBoundedOperation({
-    label,
-    timeoutMs: config.vectorTimeoutMs,
-    retryPolicy,
-    operation,
-  });
-
-const createChatClient = (config) => {
+export const createChatClient = (
+  config,
+  { ChatModelClass = ChatOpenAI } = {},
+) => {
   if ( !config.chatApiKey ) {
     throw new Error(
       "RAG_CHAT_API_KEY, GEMINI_CHAT_API_KEY, or GEMINI_API_KEY is not configured",
     );
   }
-  return new ChatOpenAI({
+  return new ChatModelClass({
     apiKey: config.chatApiKey,
     model: config.chatModel,
     temperature: 0.2,
+    maxRetries: 0,
     configuration: { baseURL: config.chatBaseUrl },
   });
 };
@@ -273,6 +264,7 @@ const normalizeCitationIndices = (
 const structuredAnswerSchema = z
   .object({
     summary: z.string().trim().min(1),
+    summarySupports: z.array(z.string().trim().min(1)).min(1).max(2),
     bullets: z
       .array(
         z
@@ -297,6 +289,10 @@ export const normalizeAssistantAnswer = ({
     );
     if ( parsed.success ) {
       const summary = cleanSentence(parsed.data.summary);
+      const summaryCitationIndices = normalizeCitationIndices(
+        parsed.data.summarySupports,
+        citationIdToIndex,
+      );
       const bullets = parsed.data.bullets.map((bullet) => ({
         text: cleanSentence(bullet.text),
         citationIndices: normalizeCitationIndices(
@@ -307,6 +303,7 @@ export const normalizeAssistantAnswer = ({
 
       return {
         summary,
+        summaryCitationIndices,
         bullets,
         content: buildAnswerContent({ summary, bullets }),
       };
@@ -329,6 +326,7 @@ const buildInsufficientSupportAnswer = () => {
   ];
   return {
     summary,
+    summaryCitationIndices: [],
     bullets,
     content: buildAnswerContent({ summary, bullets }),
   };
@@ -350,11 +348,20 @@ export const finalizeAssistantCitations = ({
       ),
     }))
     .filter((bullet) => bullet.citationIndices.length > 0);
+  const summaryCitationIndices = [
+    ...new Set(structuredAnswer?.summaryCitationIndices || []),
+  ].filter(
+    (index) =>
+      Number.isInteger(index) && index >= 0 && index < citations.length,
+  );
   const selectedIndices = [
-    ...new Set(supportedBullets.flatMap((bullet) => bullet.citationIndices)),
+    ...new Set([
+      ...summaryCitationIndices,
+      ...supportedBullets.flatMap((bullet) => bullet.citationIndices),
+    ]),
   ];
 
-  if ( selectedIndices.length === 0 ) {
+  if ( summaryCitationIndices.length === 0 || supportedBullets.length === 0 ) {
     return {
       structuredAnswer: buildInsufficientSupportAnswer(),
       citations: [],
@@ -372,6 +379,8 @@ export const finalizeAssistantCitations = ({
   }));
   const finalizedAnswer = {
     ...structuredAnswer,
+    summaryCitationIndices: summaryCitationIndices.map((index) =>
+      remappedIndices.get(index)),
     bullets,
     content: buildAnswerContent({
       summary: structuredAnswer.summary,
@@ -439,21 +448,16 @@ const getKnowledgeResults = async ({
   const searchPlan = buildKnowledgeSearchPlan(question, config);
   const groupedResults = await Promise.all(
     searchPlan.map(({ group, limit, chapterRef }) =>
-      runVectorOperation({
+      searchHybridChunksFn({
         config,
-        label: `knowledge vector search (${group})`,
+        collectionName: config.knowledgeCollection,
+        denseVector: vector,
+        sparseText: question,
+        limit,
+        filter: chapterRef
+          ? `source_group == "${group}" && chapter_ref == "${chapterRef}"`
+          : `source_group == "${group}"`,
         retryPolicy,
-        operation: () =>
-          searchHybridChunksFn({
-            config,
-            collectionName: config.knowledgeCollection,
-            denseVector: vector,
-            sparseText: question,
-            limit,
-            filter: chapterRef
-              ? `source_group == "${group}" && chapter_ref == "${chapterRef}"`
-              : `source_group == "${group}"`,
-          }),
       }),
     ),
   );
@@ -511,20 +515,15 @@ export const createRagSession = async ({
     const vectors = await embeddings.embedDocuments(
       documents.map((document) => document.pageContent),
     );
-    await runVectorOperation({
+    await insertChunkRows({
       config,
-      label: "session vector insert",
-      operation: () =>
-        insertChunkRows({
-          config,
-          collectionName: config.sessionCollection,
-          rows: buildChunkRows({
-            documents,
-            vectors,
-            sessionId: session._id.toString(),
-          }),
-          dimension: vectors[0]?.length || 0,
-        }),
+      collectionName: config.sessionCollection,
+      rows: buildChunkRows({
+        documents,
+        vectors,
+        sessionId: session._id.toString(),
+      }),
+      dimension: vectors[0]?.length || 0,
     });
 
     return dao.updateSession(session._id, {
@@ -582,19 +581,14 @@ export const answerQuestion = async ({
   });
   const questionVector = await embeddings.embedQuery(retrievalQuestion);
   const [sessionChunks, knowledgeChunks] = await Promise.all([
-    runVectorOperation({
+    searchHybridChunksFn({
       config,
-      label: "session vector search",
+      collectionName: config.sessionCollection,
+      denseVector: questionVector,
+      sparseText: retrievalQuestion,
+      limit: config.sessionTopK,
+      filter: `session_id == "${sessionId}"`,
       retryPolicy,
-      operation: () =>
-        searchHybridChunksFn({
-          config,
-          collectionName: config.sessionCollection,
-          denseVector: questionVector,
-          sparseText: retrievalQuestion,
-          limit: config.sessionTopK,
-          filter: `session_id == "${sessionId}"`,
-        }),
     }),
     getKnowledgeResults({
       config,
@@ -665,6 +659,7 @@ export const answerQuestion = async ({
       role: "assistant",
       content: structuredAnswer.content,
       summary: structuredAnswer.summary,
+      summaryCitationIndices: structuredAnswer.summaryCitationIndices,
       bullets: structuredAnswer.bullets,
       citations,
       createdAt: new Date(),
@@ -826,14 +821,9 @@ export const ingestKnowledgeCorpus = async ({
   const config = getRagConfig();
   const embeddings = createEmbeddingsClient(config);
   const manifest = await loadCorpusManifest();
-  const collectionExists = await runVectorOperation({
+  const collectionExists = await hasChunkCollection({
     config,
-    label: "knowledge collection lookup",
-    operation: () =>
-      hasChunkCollection({
-        config,
-        collectionName: config.knowledgeCollection,
-      }),
+    collectionName: config.knowledgeCollection,
   });
   const previousState = await readIngestState({
     statePath: config.ingestStatePath,
@@ -848,14 +838,9 @@ export const ingestKnowledgeCorpus = async ({
       reset,
     })
   ) {
-    await runVectorOperation({
+    await resetCollection({
       config,
-      label: "knowledge collection reset",
-      operation: () =>
-        resetCollection({
-          config,
-          collectionName: config.knowledgeCollection,
-        }),
+      collectionName: config.knowledgeCollection,
     });
     ingestState = await writeIngestState({
       statePath: config.ingestStatePath,
@@ -875,15 +860,10 @@ export const ingestKnowledgeCorpus = async ({
       `[RAG ingest] ${index + 1}/${manifest.length} ${item.file_name}`,
     );
 
-    await runVectorOperation({
+    await deleteChunkRows({
       config,
-      label: "knowledge vector delete",
-      operation: () =>
-        deleteChunkRows({
-          config,
-          collectionName: config.knowledgeCollection,
-          filter: `file_path == "${item.file_path}"`,
-        }),
+      collectionName: config.knowledgeCollection,
+      filter: `file_path == "${item.file_path}"`,
     });
 
     const absolutePath = path.resolve(config.corpusRoot, item.file_path);
@@ -909,16 +889,11 @@ export const ingestKnowledgeCorpus = async ({
     const vectors = await embeddings.embedDocuments(
       documents.map((document) => document.pageContent),
     );
-    await runVectorOperation({
+    await insertChunkRows({
       config,
-      label: "knowledge vector insert",
-      operation: () =>
-        insertChunkRows({
-          config,
-          collectionName: config.knowledgeCollection,
-          rows: buildKnowledgeChunkRows({ item, documents, vectors }),
-          dimension: vectors[0]?.length || 0,
-        }),
+      collectionName: config.knowledgeCollection,
+      rows: buildKnowledgeChunkRows({ item, documents, vectors }),
+      dimension: vectors[0]?.length || 0,
     });
 
     ingestState = await writeIngestState({

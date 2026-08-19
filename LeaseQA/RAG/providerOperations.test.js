@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  createChatClient,
   invokeChatModel,
   postGeminiEmbedding,
-  runVectorOperation,
 } from "./service.js";
 
 const retryPolicy = {
@@ -146,22 +146,49 @@ test("invokeChatModel retries transient model failures and passes the message ar
   assert.equal(attempts, 2);
 });
 
-test("runVectorOperation bounds and retries an injected vector operation", async () => {
-  let attempts = 0;
+test("createChatClient disables internal retries so total provider attempts stay capped at three", async () => {
+  let providerAttempts = 0;
 
-  const result = await runVectorOperation({
-    config: { vectorTimeoutMs: 100 },
-    label: "session vector search",
-    operation: async () => {
-      attempts += 1;
-      if ( attempts === 1 ) {
-        throw Object.assign(new Error("socket reset"), { code: "ECONNRESET" });
+  class RetryAwareFakeChatModel {
+    constructor(options) {
+      this.internalMaxRetries = options.maxRetries ?? 6;
+    }
+
+    async invoke() {
+      let lastError;
+      for (
+        let attempt = 0;
+        attempt <= this.internalMaxRetries;
+        attempt += 1
+      ) {
+        providerAttempts += 1;
+        lastError = Object.assign(new Error("provider unavailable"), {
+          status: 503,
+        });
       }
-      return ["chunk"];
-    },
-    retryPolicy,
-  });
+      throw lastError;
+    }
+  }
 
-  assert.deepEqual(result, ["chunk"]);
-  assert.equal(attempts, 2);
+  const chatModel = createChatClient(
+    {
+      chatApiKey: "fake-key",
+      chatModel: "fake-model",
+      chatBaseUrl: "https://chat.invalid/v1",
+      chatTimeoutMs: 100,
+    },
+    { ChatModelClass: RetryAwareFakeChatModel },
+  );
+
+  await assert.rejects(
+    invokeChatModel({
+      config: { chatTimeoutMs: 100 },
+      chatModel,
+      messages: [{ role: "user", content: "test" }],
+      retryPolicy,
+    }),
+    /provider unavailable/,
+  );
+
+  assert.equal(providerAttempts, 3);
 });

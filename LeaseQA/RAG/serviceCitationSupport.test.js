@@ -43,6 +43,7 @@ test("finalizeAssistantCitations returns only citations explicitly selected by t
   const result = finalizeAssistantCitations({
     structuredAnswer: {
       summary: "The handbook gives a deadline.",
+      summaryCitationIndices: [1],
       bullets: [
         {
           text: "The deadline is described in the handbook.",
@@ -66,6 +67,7 @@ test("finalizeAssistantCitations drops selected citations absent from retrieval 
   const result = finalizeAssistantCitations({
     structuredAnswer: {
       summary: "A fabricated answer.",
+      summaryCitationIndices: [9],
       bullets: [
         {
           text: "This cites an item that was not retrieved.",
@@ -87,6 +89,7 @@ test("finalizeAssistantCitations returns zero citations when no explicit support
   const result = finalizeAssistantCitations({
     structuredAnswer: {
       summary: "An uncited answer.",
+      summaryCitationIndices: [],
       bullets: [
         {
           text: "No model support ids resolved.",
@@ -103,4 +106,26 @@ test("finalizeAssistantCitations returns zero citations when no explicit support
 
   assert.equal(result.hasExplicitSupport, false);
   assert.deepEqual(result.citations, []);
+});
+
+test("finalizeAssistantCitations rejects an unsupported summary even when an unrelated bullet is supported", () => {
+  const result = finalizeAssistantCitations({
+    structuredAnswer: {
+      summary: "The landlord must pay triple damages.",
+      summaryCitationIndices: [9],
+      bullets: [
+        {
+          text: "The handbook mentions a deposit deadline.",
+          citationIndices: [0],
+        },
+      ],
+      content: "The landlord must pay triple damages.",
+    },
+    candidateCitations: [{ sourceName: "deposit-deadline.pdf" }],
+  });
+
+  assert.equal(result.hasExplicitSupport, false);
+  assert.deepEqual(result.citations, []);
+  assert.doesNotMatch(result.structuredAnswer.content, /triple damages/i);
+  assert.match(result.structuredAnswer.summary, /could not find enough support/i);
 });

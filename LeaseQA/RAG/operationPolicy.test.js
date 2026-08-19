@@ -127,6 +127,26 @@ test("retryTransient retries a Milvus gRPC unavailable failure", async () => {
   assert.equal(attempts, 2);
 });
 
+test("retryTransient retries a Milvus gRPC deadline failure", async () => {
+  let attempts = 0;
+
+  const result = await retryTransient(
+    async () => {
+      attempts += 1;
+      if ( attempts === 1 ) {
+        throw Object.assign(new Error("4 DEADLINE_EXCEEDED: deadline exceeded"), {
+          code: 4,
+        });
+      }
+      return "ok";
+    },
+    { sleep: async () => {}, random: () => 0.5 },
+  );
+
+  assert.equal(result, "ok");
+  assert.equal(attempts, 2);
+});
+
 test("retryTransient makes at most three total attempts", async () => {
   let attempts = 0;
 

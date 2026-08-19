@@ -7,6 +7,7 @@ test("normalizeAssistantAnswer maps model support ids to bullet citation indices
   const normalized = normalizeAssistantAnswer({
     rawAnswer: JSON.stringify({
       summary: "This clause is mostly consistent with the handbook.",
+      summarySupports: ["c1"],
       bullets: [
         {
           text: "The 30-day timeline matches the handbook rule.",
@@ -42,10 +43,33 @@ test("normalizeAssistantAnswer maps model support ids to bullet citation indices
   assert.match(normalized.content, /^This clause is mostly consistent/);
 });
 
+test("normalizeAssistantAnswer maps explicit summary support ids to citation indices", () => {
+  const normalized = normalizeAssistantAnswer({
+    rawAnswer: JSON.stringify({
+      summary: "The handbook states a deposit deadline.",
+      summarySupports: ["c2"],
+      bullets: [
+        {
+          text: "The deadline appears in the handbook source.",
+          supports: ["c2"],
+        },
+      ],
+    }),
+    citationIdToIndex: {
+      c1: 0,
+      c2: 1,
+    },
+  });
+
+  assert.equal(normalized.summary, "The handbook states a deposit deadline.");
+  assert.deepEqual(normalized.summaryCitationIndices, [1]);
+});
+
 test("normalizeAssistantAnswer leaves malformed support ids uncited instead of attaching every source", () => {
   const normalized = normalizeAssistantAnswer({
     rawAnswer: JSON.stringify({
       summary: "This clause needs more support.",
+      summarySupports: ["c1"],
       bullets: [
         {
           text: "This bullet had a bad support id.",
@@ -124,6 +148,7 @@ test("normalizeAssistantAnswer abstains when JSON sections fail schema validatio
   const normalized = normalizeAssistantAnswer({
     rawAnswer: JSON.stringify({
       summary: "An answer with the wrong bullets shape.",
+      summarySupports: ["c1"],
       bullets: "not-an-array",
     }),
     citationIdToIndex: { c1: 0 },
@@ -139,6 +164,7 @@ test("normalizeAssistantAnswer abstains when a bullet omits explicit support ids
   const normalized = normalizeAssistantAnswer({
     rawAnswer: JSON.stringify({
       summary: "An answer without explicit support ids.",
+      summarySupports: ["c1"],
       bullets: [{ text: "This assertion has no supports field." }],
     }),
     citationIdToIndex: { c1: 0 },
