@@ -144,3 +144,95 @@ test("POST /sessions propagates requestId and redacts provider failures", async 
     /PRIVATE_PROVIDER_RESPONSE|PRIVATE_PROVIDER_CODE|PRIVATE_QUESTION_TEXT|PRIVATE_EVIDENCE_TEXT|COOKIE_SECRET/,
   );
 });
+
+test("POST /sessions/:id/messages redacts provider failures", async (t) => {
+  const app = express();
+  const logs = [];
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.session = { currentUser: { _id: "user-1" } };
+    req.sessionID = "COOKIE_SECRET";
+    req.requestId = "request-message-1";
+    next();
+  });
+  app.use(
+    routes.createRagRouter({
+      logger: { error: (value) => logs.push(value) },
+      answerQuestion: async () => {
+        throw Object.assign(
+          new Error("Milvus UnexpectedError: PRIVATE_PROVIDER_REASON"),
+          { code: "RAG_MILVUS_STATUS_ERROR" },
+        );
+      },
+    }),
+  );
+
+  const server = await listen(app);
+  t.after(() => server.close());
+  const address = server.address();
+  const response = await fetch(
+    `http://127.0.0.1:${address.port}/sessions/rag-session-1/messages`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "PRIVATE_QUESTION_TEXT" }),
+    },
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(body, {
+    error: {
+      code: "RAG_MESSAGE_FAILED",
+      message: "Failed to answer question.",
+    },
+  });
+  assert.deepEqual(JSON.parse(logs[0]), {
+    event: "rag_message_failed",
+    requestId: "request-message-1",
+    errorCode: "RAG_MILVUS_STATUS_ERROR",
+  });
+  assert.doesNotMatch(
+    `${JSON.stringify(body)}${logs.join("\n")}`,
+    /PRIVATE_PROVIDER_REASON|PRIVATE_QUESTION_TEXT|COOKIE_SECRET/,
+  );
+});
+
+test("GET /sessions/:id redacts unexpected lookup failures", async (t) => {
+  const app = express();
+  const logs = [];
+  app.use((req, _res, next) => {
+    req.session = { currentUser: { _id: "user-1" } };
+    req.sessionID = "COOKIE_SECRET";
+    req.requestId = "request-get-1";
+    next();
+  });
+  app.use(
+    routes.createRagRouter({
+      logger: { error: (value) => logs.push(value) },
+      getViewerSession: async () => {
+        throw new Error("PRIVATE_MONGO_HOST lookup failed");
+      },
+    }),
+  );
+
+  const server = await listen(app);
+  t.after(() => server.close());
+  const address = server.address();
+  const response = await fetch(
+    `http://127.0.0.1:${address.port}/sessions/rag-session-1`,
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(body, {
+    error: {
+      code: "RAG_SESSION_FAILED",
+      message: "Failed to load chat session.",
+    },
+  });
+  assert.doesNotMatch(
+    `${JSON.stringify(body)}${logs.join("\n")}`,
+    /PRIVATE_MONGO_HOST|COOKIE_SECRET/,
+  );
+});

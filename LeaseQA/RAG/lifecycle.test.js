@@ -200,6 +200,44 @@ test("a session ownership lookup infrastructure failure is a stable retryable er
   assert.equal(mongoDeleted, false);
 });
 
+test("an invalid session id lookup is not a retryable deletion error", async () => {
+  let vectorsDeleted = false;
+  let mongoDeleted = false;
+
+  await assert.rejects(
+    service.deleteViewerSession(
+      {
+        sessionId: "not-an-object-id",
+        userId: "user-2",
+        clientSessionId: "browser-a",
+      },
+      {
+        config: { sessionCollection: "leaseqa_session_chunks" },
+        findSessionById: async () => {
+          throw Object.assign(new Error("Cast to ObjectId failed"), {
+            name: "CastError",
+            kind: "ObjectId",
+          });
+        },
+        deleteSessionChunks: async () => {
+          vectorsDeleted = true;
+        },
+        deleteSession: async () => {
+          mongoDeleted = true;
+        },
+      },
+    ),
+    (error) => {
+      assert.equal(error.message, "Session not found");
+      assert.notEqual(error.code, "RAG_SESSION_DELETE_RETRYABLE");
+      return true;
+    },
+  );
+
+  assert.equal(vectorsDeleted, false);
+  assert.equal(mongoDeleted, false);
+});
+
 test("a Mongo deletion failure is retryable after vectors were removed", async () => {
   let vectorsDeleted = false;
 

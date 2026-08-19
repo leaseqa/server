@@ -125,12 +125,19 @@ router.get("/sessions/:sessionId", async (req, res) => {
     sendData(res, session);
   } catch ( error ) {
     const status = getErrorStatus(error);
+    logRouteError({
+      event: "rag_get_failed",
+      requestId: req.requestId,
+      error,
+      fallbackCode: status === 403 ? "FORBIDDEN" : "RAG_SESSION_FAILED",
+    });
     if ( status === 404 ) {
       return sendNotFound(res, "Chat session not found");
     }
     sendError(res, {
       code: status === 403 ? "FORBIDDEN" : "RAG_SESSION_FAILED",
-      message: error.message,
+      message:
+        status === 403 ? error.message : "Failed to load chat session.",
       status,
     });
   }
@@ -190,6 +197,17 @@ router.post("/sessions/:sessionId/messages", async (req, res) => {
     sendData(res, result);
   } catch ( error ) {
     const status = getErrorStatus(error);
+    logRouteError({
+      event: "rag_message_failed",
+      requestId: req.requestId,
+      error,
+      fallbackCode:
+        status === 400
+          ? "VALIDATION_ERROR"
+          : status === 403
+            ? "FORBIDDEN"
+            : "RAG_MESSAGE_FAILED",
+    });
     if ( status === 404 ) {
       return sendNotFound(res, "Chat session not found");
     }
@@ -200,7 +218,10 @@ router.post("/sessions/:sessionId/messages", async (req, res) => {
           : status === 403
             ? "FORBIDDEN"
             : "RAG_MESSAGE_FAILED",
-      message: error.message || "Failed to answer question.",
+      message:
+        status === 400 || status === 403
+          ? error.message
+          : "Failed to answer question.",
       status,
     });
   }
@@ -216,6 +237,17 @@ router.delete("/sessions/:sessionId", async (req, res) => {
     sendData(res, result);
   } catch ( error ) {
     const status = getErrorStatus(error);
+    logRouteError({
+      event: "rag_delete_failed",
+      requestId: req.requestId,
+      error,
+      fallbackCode:
+        status === 403
+          ? "FORBIDDEN"
+          : status === 503
+            ? "RAG_SESSION_DELETE_RETRYABLE"
+            : "RAG_SESSION_DELETE_FAILED",
+    });
     if ( status === 404 ) {
       return sendNotFound(res, "Chat session not found");
     }
@@ -227,9 +259,11 @@ router.delete("/sessions/:sessionId", async (req, res) => {
             ? "RAG_SESSION_DELETE_RETRYABLE"
             : "RAG_SESSION_DELETE_FAILED",
       message:
-        status === 503
-          ? "Session deletion did not complete. Retry the request."
-          : error.message || "Failed to delete chat session.",
+        status === 403
+          ? error.message
+          : status === 503
+            ? "Session deletion did not complete. Retry the request."
+            : "Failed to delete chat session.",
       status,
     });
   }

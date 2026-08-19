@@ -582,6 +582,11 @@ export const getStableRagErrorCode = (error, fallback) => {
   return /^RAG_[A-Z0-9_]+$/.test(code) ? code : fallback;
 };
 
+const isInvalidSessionIdError = (error) =>
+  error?.name === "CastError" ||
+  error?.name === "BSONError" ||
+  error?.name === "BSONTypeError";
+
 export const deleteViewerSession = async (
   { sessionId, userId, clientSessionId },
   dependencies = {},
@@ -602,6 +607,9 @@ export const deleteViewerSession = async (
   try {
     session = await findSessionById(sessionId);
   } catch ( cause ) {
+    if ( isInvalidSessionIdError(cause) ) {
+      throw new Error("Session not found");
+    }
     throw createRetryableSessionDeleteError(cause);
   }
   ensureViewerCanAccess({ session, userId, clientSessionId });
