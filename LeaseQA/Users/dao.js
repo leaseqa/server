@@ -23,8 +23,8 @@ export const createUser = (payload) =>
     hashedPassword: payload.password ? bcrypt.hashSync(payload.password, 10) : undefined,
     googleId: payload.googleId || undefined,
     avatarUrl: payload.avatarUrl || undefined,
-    role: payload.role || "tenant",
-    lawyerVerification: payload.lawyerVerification || null,
+    role: "tenant",
+    lawyerVerification: null,
     banned: false,
   });
 

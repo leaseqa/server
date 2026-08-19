@@ -1,6 +1,5 @@
 import "dotenv/config";
 import express from "express";
-import cors from "cors";
 import session from "express-session";
 import MongoStore from "connect-mongo";
 import mongoose from "mongoose";
@@ -19,30 +18,22 @@ import statsRoutes from "./LeaseQA/Stats/routes.js";
 import moderationRoutes from "./LeaseQA/Moderation/routes.js";
 import activityRoutes from "./LeaseQA/Activity/routes.js";
 import { scrubBlockedDemoSession } from "./LeaseQA/utils/session.js";
+import {
+  applyHttpSecurity,
+  assertProductionSessionConfig,
+  unexpectedErrorHandler,
+} from "./LeaseQA/utils/httpSecurity.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const envClientUrls = (
-  process.env.CLIENT_URLS ||
-  process.env.CLIENT_URL ||
-  "http://localhost:3000"
-)
-  .split(",")
-  .map((url) => url.trim())
-  .filter(Boolean);
-const defaultClientOrigin = envClientUrls[0] || "http://localhost:3000";
-const allowedOrigins = new Set([
-  ...envClientUrls,
-  "https://leaseqa-client-web.vercel.app", // hosted frontend
-]);
-const isLocalClient = [...allowedOrigins].every(
-  (url) => url.includes("localhost") || url.includes("127.0.0.1"),
-);
 const isProdLikeEnv =
   process.env.SERVER_ENV && process.env.SERVER_ENV !== "development";
+const sessionSecret = assertProductionSessionConfig(process.env);
+
+applyHttpSecurity(app, process.env);
 
 const connectDB = async () => {
   try {
@@ -54,22 +45,9 @@ const connectDB = async () => {
   }
 };
 connectDB();
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if ( !origin ) return callback(null, true);
-      if ( allowedOrigins.has(origin) || origin.endsWith(".vercel.app") ) {
-        return callback(null, true);
-      }
-      return callback(new Error(`Not allowed by CORS: ${origin}`));
-    },
-    credentials: true,
-  }),
-);
 const useSecureCookies = isProdLikeEnv;
 const sessionOptions = {
-  secret: process.env.SESSION_SECRET || "leaseqa-secret",
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({
@@ -120,6 +98,7 @@ app.use("/api/folders", folderRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/moderation", moderationRoutes);
 app.use("/api/activity", activityRoutes);
+app.use(unexpectedErrorHandler);
 
 const port = process.env.PORT || 4050;
 app.listen(port, () => {

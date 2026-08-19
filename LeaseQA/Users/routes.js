@@ -2,6 +2,8 @@ import express from "express";
 import * as usersDao from "./dao.js";
 import { requireRole, requireUser } from "../utils/session.js";
 import { sendData, sendError, sendNotFound } from "../utils/responses.js";
+import { parseProfileUpdate } from "../Auth/input.js";
+import { ZodError } from "zod";
 
 const router = express.Router();
 
@@ -37,7 +39,22 @@ router.patch("/me", async (req, res) => {
   const current = requireUser(req, res);
   if ( !current ) return;
 
-  const updated = await usersDao.updateUser(current._id, req.body);
+  let updates;
+  try {
+    updates = parseProfileUpdate(req.body);
+  } catch ( error ) {
+    if ( error instanceof ZodError ) {
+      return sendError(res, {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request body.",
+        details: error.issues,
+        status: 400,
+      });
+    }
+    throw error;
+  }
+
+  const updated = await usersDao.updateUser(current._id, updates);
   req.session.currentUser = usersDao.sanitizeUser(updated);
   sendData(res, req.session.currentUser);
 });

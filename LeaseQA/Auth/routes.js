@@ -5,6 +5,15 @@ import * as usersDao from "../Users/dao.js";
 import { sendData, sendError } from "../utils/responses.js";
 import { isBlockedDemoAccount } from "../shared/demoAccounts.js";
 import { requireUser, scrubBlockedDemoSession } from "../utils/session.js";
+import { parseLogin, parseRegistration } from "./input.js";
+import { ZodError } from "zod";
+
+const sendValidationError = (res, error) => sendError(res, {
+  code: "VALIDATION_ERROR",
+  message: "Invalid request body.",
+  details: error.issues,
+  status: 400,
+});
 
 if ( process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ) passport.use(
   new GoogleStrategy(
@@ -45,88 +54,82 @@ if ( process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ) passport
 );
 
 const setSessionUser = (req, user, dao = usersDao) => {
-  try {
-    console.log("[Auth] Setting session for user:", user._id);
-    const sanitized = dao.sanitizeUser(user);
-    console.log("[Auth] Sanitized user:", sanitized);
-    req.session.currentUser = sanitized;
-    console.log("[Auth] Session set successfully");
-  } catch ( error ) {
-    console.error("[Auth] Error setting session:", error);
-    throw error;
-  }
+  const sanitized = dao.sanitizeUser(user);
+  req.session.currentUser = sanitized;
+  return sanitized;
 };
+
+const establishAuthenticatedSession = (req, user, dao) => new Promise((resolve, reject) => {
+  req.session.regenerate((regenerateError) => {
+    if ( regenerateError ) return reject(regenerateError);
+
+    let sanitized;
+    try {
+      sanitized = setSessionUser(req, user, dao);
+    } catch ( error ) {
+      return reject(error);
+    }
+
+    return req.session.save((saveError) => {
+      if ( saveError ) return reject(saveError);
+      return resolve(sanitized);
+    });
+  });
+});
 
 export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => {
   const router = express.Router();
 
   router.post("/register", async (req, res) => {
-    const { username, email, password, role, lawyerVerification } = req.body;
+    try {
+      const registration = parseRegistration(req.body);
+      const { email } = registration;
 
-    if ( !username || !email || !password ) {
-      return sendError(res, {
-        code: "VALIDATION_ERROR",
-        message: "Username, email, and password are required.",
-        status: 400,
-      });
-    }
-
-    const existingUser = await dao.findUserByEmail(email);
-    if ( existingUser ) {
-      return sendError(res, {
-        code: "USER_EXISTS",
-        message: "A user with that email already exists.",
-        status: 409,
-      });
-    }
-
-    if ( isBlockedDemoAccount(email, env) ) {
-      return sendError(res, {
-        code: "FORBIDDEN",
-        message: "This email is reserved.",
-        status: 403,
-      });
-    }
-
-    const user = await dao.createUser({
-      username,
-      email,
-      password,
-      role,
-      lawyerVerification,
-    });
-
-    setSessionUser(req, user, dao);
-    req.session.save((err) => {
-      if ( err ) {
-        console.error("[Auth] Session save error:", err);
+      const existingUser = await dao.findUserByEmail(email);
+      if ( existingUser ) {
         return sendError(res, {
-          code: "INTERNAL_ERROR",
-          message: "Failed to save session.",
-          status: 500
+          code: "USER_EXISTS",
+          message: "A user with that email already exists.",
+          status: 409,
         });
       }
-      return sendData(res, req.session.currentUser, 201);
-    });
+
+      if ( isBlockedDemoAccount(email, env) ) {
+        return sendError(res, {
+          code: "FORBIDDEN",
+          message: "This email is reserved.",
+          status: 403,
+        });
+      }
+
+      const user = await dao.createUser(registration);
+      const safeUser = await establishAuthenticatedSession(req, user, dao);
+      console.log("[Auth] registration_succeeded");
+      return sendData(res, safeUser, 201);
+    } catch ( error ) {
+      if ( error instanceof ZodError ) return sendValidationError(res, error);
+      console.error("[Auth] registration_error");
+      return sendError(res, {
+        code: "INTERNAL_ERROR",
+        message: "An internal server error occurred during registration.",
+        status: 500,
+      });
+    }
   });
 
   router.post("/login", async (req, res) => {
     try {
-      const { email, password } = req.body;
-      console.log(`[Auth] Login attempt for: ${email}`);
-
-      if ( !email || !password ) {
-        console.log("[Auth] Missing email or password");
-        return sendError(res, {
-          code: "VALIDATION_ERROR",
-          message: "Email and password are required.",
-          status: 400,
-        });
+      let login;
+      try {
+        login = parseLogin(req.body);
+      } catch ( error ) {
+        if ( error instanceof ZodError ) return sendValidationError(res, error);
+        throw error;
       }
+      const { email, password } = login;
 
       const user = await dao.findUserByEmail(email);
       if ( !user ) {
-        console.log("[Auth] User not found");
         return sendError(res, {
           code: "INVALID_CREDENTIALS",
           message: "Invalid login.",
@@ -135,7 +138,6 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
       }
 
       if ( isBlockedDemoAccount(email, env) ) {
-        console.log("[Auth] Blocked demo account outside development");
         return sendError(res, {
           code: "INVALID_CREDENTIALS",
           message: "Invalid login.",
@@ -145,7 +147,6 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
 
       const isValidPassword = dao.verifyPassword(password, user.hashedPassword);
       if ( !isValidPassword ) {
-        console.log("[Auth] Invalid password");
         return sendError(res, {
           code: "INVALID_CREDENTIALS",
           message: "Invalid login.",
@@ -154,7 +155,6 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
       }
 
       if ( user.banned ) {
-        console.log("[Auth] User banned");
         return sendError(res, {
           code: "FORBIDDEN",
           message: "This account has been disabled by an administrator.",
@@ -162,25 +162,11 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
         });
       }
 
-      const userObj = user.toObject ? user.toObject() : user;
-      const { hashedPassword, ...safeUser } = userObj;
-
-      req.session.currentUser = safeUser;
-
-      console.log(`[Auth] Login successful. Session ID: ${req.sessionID}`);
-      req.session.save((err) => {
-        if ( err ) {
-          console.error("[Auth] Session save error:", err);
-          return sendError(res, {
-            code: "INTERNAL_ERROR",
-            message: "Failed to save session.",
-            status: 500
-          });
-        }
-        return sendData(res, safeUser);
-      });
-    } catch ( error ) {
-      console.error("[Auth] CRITICAL ERROR in login route:", error);
+      const safeUser = await establishAuthenticatedSession(req, user, dao);
+      console.log("[Auth] login_succeeded");
+      return sendData(res, safeUser);
+    } catch ( _error ) {
+      console.error("[Auth] login_error");
       return sendError(res, {
         code: "INTERNAL_ERROR",
         message: "An internal server error occurred during login.",
@@ -194,10 +180,20 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
   router.get("/google/callback", passport.authenticate("google", {
     failureRedirect: "/auth/login",
     session: false
-  }), (req, res) => {
-    const clientUrl = process.env.CLIENT_URL || process.env.CLIENT_URLS?.split(",")[0] || "http://localhost:3000";
-    setSessionUser(req, req.user, dao);
-    req.session.save(() => res.redirect(clientUrl));
+  }), async (req, res) => {
+    try {
+      const clientUrl = env.CLIENT_URL || "http://localhost:3000";
+      await establishAuthenticatedSession(req, req.user, dao);
+      console.log("[Auth] google_login_succeeded");
+      return res.redirect(clientUrl);
+    } catch ( _error ) {
+      console.error("[Auth] google_login_error");
+      return sendError(res, {
+        code: "INTERNAL_ERROR",
+        message: "An internal server error occurred during login.",
+        status: 500,
+      });
+    }
   });
 
   router.post("/logout", (req, res) => {
@@ -208,15 +204,9 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
   });
 
   router.get("/session", (req, res) => {
-    console.log(`[Auth] Session check. SessionID: ${req.sessionID}`);
-    console.log(`[Auth] Session Data:`, req.session);
     scrubBlockedDemoSession(req, { env });
     const currentUser = requireUser(req, res, { env });
-    if ( !currentUser ) {
-      console.log("[Auth] No currentUser in session.");
-      return;
-    }
-    console.log(`[Auth] Session valid for user: ${currentUser.email}`);
+    if ( !currentUser ) return;
     return sendData(res, currentUser);
   });
 
