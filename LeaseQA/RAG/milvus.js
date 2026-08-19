@@ -33,40 +33,14 @@ const createClient = (config) => {
   return cachedClient;
 };
 
-const sleep = (milliseconds) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-
-const isTransientMilvusError = (error) => {
-  const message = error?.message || "";
-  return /UNAVAILABLE|Connection dropped|RST_STREAM|timed out|timeout/i.test(
-    message,
-  );
-};
-
-const withMilvusRetry = async (operation) => {
-  const maxAttempts = 5;
-
-  for ( let attempt = 1; attempt <= maxAttempts; attempt += 1 ) {
-    try {
-      return await operation();
-    } catch ( error ) {
-      if ( !isTransientMilvusError(error) || attempt === maxAttempts ) {
-        throw error;
-      }
-
-      await sleep(500 * 2 ** (attempt - 1));
-    }
-  }
-};
+const runMilvusCall = (operation) => operation();
 
 const getCollectionSupportsSparse = async ({ client, collectionName }) => {
   if ( collectionSparseSupport.has(collectionName) ) {
     return collectionSparseSupport.get(collectionName);
   }
 
-  const description = await withMilvusRetry(() =>
+  const description = await runMilvusCall(() =>
     client.describeCollection({
       collection_name: collectionName,
     }),
@@ -85,13 +59,13 @@ const createCollectionIfMissing = async ({
     return;
   }
 
-  const existing = await withMilvusRetry(() =>
+  const existing = await runMilvusCall(() =>
     client.hasCollection({
       collection_name: collectionName,
     }),
   );
   if ( !existing.value ) {
-    await withMilvusRetry(() =>
+    await runMilvusCall(() =>
       client.createCollection({
         collection_name: collectionName,
         enable_dynamic_field: false,
@@ -178,7 +152,7 @@ const createCollectionIfMissing = async ({
       }),
     );
 
-    await withMilvusRetry(() =>
+    await runMilvusCall(() =>
       client.createIndex({
         collection_name: collectionName,
         field_name: DENSE_FIELD,
@@ -187,7 +161,7 @@ const createCollectionIfMissing = async ({
       }),
     );
 
-    await withMilvusRetry(() =>
+    await runMilvusCall(() =>
       client.createIndex({
         collection_name: collectionName,
         field_name: SPARSE_FIELD,
@@ -201,7 +175,7 @@ const createCollectionIfMissing = async ({
 };
 
 const ensureCollectionLoaded = async ({ client, collectionName }) => {
-  await withMilvusRetry(() =>
+  await runMilvusCall(() =>
     client.loadCollection({ collection_name: collectionName }),
   );
 };
@@ -225,7 +199,7 @@ export const insertChunkRows = async ({
     batchStart += INSERT_BATCH_SIZE
   ) {
     const batch = rows.slice(batchStart, batchStart + INSERT_BATCH_SIZE);
-    await withMilvusRetry(() =>
+    await runMilvusCall(() =>
       client.insert({
         collection_name: collectionName,
         data: batch,
@@ -236,7 +210,7 @@ export const insertChunkRows = async ({
 
 export const resetCollection = async ({ config, collectionName }) => {
   const client = createClient(config);
-  const existing = await withMilvusRetry(() =>
+  const existing = await runMilvusCall(() =>
     client.hasCollection({
       collection_name: collectionName,
     }),
@@ -245,7 +219,7 @@ export const resetCollection = async ({ config, collectionName }) => {
     return;
   }
 
-  await withMilvusRetry(() =>
+  await runMilvusCall(() =>
     client.dropCollection({ collection_name: collectionName }),
   );
   collectionDimensions.delete(collectionName);
@@ -254,7 +228,7 @@ export const resetCollection = async ({ config, collectionName }) => {
 
 export const hasChunkCollection = async ({ config, collectionName }) => {
   const client = createClient(config);
-  const existing = await withMilvusRetry(() =>
+  const existing = await runMilvusCall(() =>
     client.hasCollection({
       collection_name: collectionName,
     }),
@@ -268,7 +242,7 @@ export const deleteChunkRows = async ({ config, collectionName, filter }) => {
   }
 
   const client = createClient(config);
-  const existing = await withMilvusRetry(() =>
+  const existing = await runMilvusCall(() =>
     client.hasCollection({
       collection_name: collectionName,
     }),
@@ -277,7 +251,7 @@ export const deleteChunkRows = async ({ config, collectionName, filter }) => {
     return;
   }
 
-  await withMilvusRetry(() =>
+  await runMilvusCall(() =>
     client.delete({
       collection_name: collectionName,
       filter,
@@ -293,7 +267,7 @@ export const searchChunks = async ({
                                      filter,
                                    }) => {
   const client = createClient(config);
-  const existing = await withMilvusRetry(() =>
+  const existing = await runMilvusCall(() =>
     client.hasCollection({
       collection_name: collectionName,
     }),
@@ -303,7 +277,7 @@ export const searchChunks = async ({
   }
 
   await ensureCollectionLoaded({ client, collectionName });
-  const response = await withMilvusRetry(() =>
+  const response = await runMilvusCall(() =>
     client.search({
       collection_name: collectionName,
       data: [vector],
@@ -328,7 +302,7 @@ export const searchHybridChunks = async ({
                                            filter,
                                          }) => {
   const client = createClient(config);
-  const existing = await withMilvusRetry(() =>
+  const existing = await runMilvusCall(() =>
     client.hasCollection({
       collection_name: collectionName,
     }),
@@ -353,7 +327,7 @@ export const searchHybridChunks = async ({
   }
 
   await ensureCollectionLoaded({ client, collectionName });
-  const response = await withMilvusRetry(() =>
+  const response = await runMilvusCall(() =>
     client.hybridSearch({
       collection_name: collectionName,
       data: [

@@ -6,6 +6,11 @@ const parseInteger = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const parsePositiveInteger = (value, fallback) => {
+  const parsed = parseInteger(value, fallback);
+  return parsed > 0 ? parsed : fallback;
+};
+
 const requireEnv = (name) => {
   const value = process.env[name];
   if ( !value ) {
@@ -58,5 +63,14 @@ export const getRagConfig = () => {
       12 * 1024 * 1024,
     ),
     maxHistoryMessages: parseInteger(process.env.RAG_HISTORY_MESSAGES, 6),
+    embeddingTimeoutMs: parsePositiveInteger(
+      process.env.RAG_EMBEDDING_TIMEOUT_MS,
+      15_000,
+    ),
+    chatTimeoutMs: parsePositiveInteger(process.env.RAG_CHAT_TIMEOUT_MS, 45_000),
+    vectorTimeoutMs: parsePositiveInteger(
+      process.env.RAG_VECTOR_TIMEOUT_MS,
+      10_000,
+    ),
   };
 };

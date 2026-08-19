@@ -68,7 +68,7 @@ test("normalizeAssistantAnswer leaves malformed support ids uncited instead of a
   ]);
 });
 
-test("normalizeAssistantAnswer falls back to a compact summary and bullets for plain text answers", () => {
+test("normalizeAssistantAnswer abstains without citations for plain text answers", () => {
   const normalized = normalizeAssistantAnswer({
     rawAnswer: [
       "### 1. Short Answer",
@@ -85,29 +85,17 @@ test("normalizeAssistantAnswer falls back to a compact summary and bullets for p
     fallbackCitationIndices: [0],
   });
 
-  assert.equal(
-    normalized.summary,
-    "This clause is mostly consistent with the handbook.",
-  );
+  assert.match(normalized.summary, /could not find enough support/i);
   assert.deepEqual(normalized.bullets, [
     {
-      text: "The 30-day timeline matches the handbook.",
-      citationIndices: [0],
-    },
-    {
-      text: "The clause leaves out the itemized deduction notice.",
-      citationIndices: [0],
-    },
-    {
-      text: "The clause does not mention interest.",
-      citationIndices: [0],
+      text: "Ask a narrower question or quote the specific clause you want reviewed.",
+      citationIndices: [],
     },
   ]);
-  assert.doesNotMatch(normalized.content, /Short Answer/);
-  assert.doesNotMatch(normalized.content, /\*/);
+  assert.doesNotMatch(normalized.content, /30-day timeline/);
 });
 
-test("normalizeAssistantAnswer strips broad markdown headings and legal-advice disclaimers in plain-text fallback", () => {
+test("normalizeAssistantAnswer abstains without echoing malformed plain-text answer sections", () => {
   const normalized = normalizeAssistantAnswer({
     rawAnswer: [
       "### Answer",
@@ -121,18 +109,44 @@ test("normalizeAssistantAnswer strips broad markdown headings and legal-advice d
     fallbackCitationIndices: [],
   });
 
-  assert.equal(
-    normalized.summary,
-    "This clause is mostly consistent with the handbook.",
-  );
+  assert.match(normalized.summary, /could not find enough support/i);
   assert.deepEqual(normalized.bullets, [
     {
-      text: "The 30-day rule matches the handbook.",
+      text: "Ask a narrower question or quote the specific clause you want reviewed.",
       citationIndices: [],
     },
   ]);
-  assert.doesNotMatch(normalized.content, /Answer/);
+  assert.doesNotMatch(normalized.content, /30-day rule/);
   assert.doesNotMatch(normalized.content, /not legal advice/i);
+});
+
+test("normalizeAssistantAnswer abstains when JSON sections fail schema validation", () => {
+  const normalized = normalizeAssistantAnswer({
+    rawAnswer: JSON.stringify({
+      summary: "An answer with the wrong bullets shape.",
+      bullets: "not-an-array",
+    }),
+    citationIdToIndex: { c1: 0 },
+    fallbackCitationIndices: [0],
+  });
+
+  assert.match(normalized.summary, /could not find enough support/i);
+  assert.deepEqual(normalized.bullets[0].citationIndices, []);
+  assert.doesNotMatch(normalized.content, /wrong bullets shape/);
+});
+
+test("normalizeAssistantAnswer abstains when a bullet omits explicit support ids", () => {
+  const normalized = normalizeAssistantAnswer({
+    rawAnswer: JSON.stringify({
+      summary: "An answer without explicit support ids.",
+      bullets: [{ text: "This assertion has no supports field." }],
+    }),
+    citationIdToIndex: { c1: 0 },
+    fallbackCitationIndices: [0],
+  });
+
+  assert.match(normalized.summary, /could not find enough support/i);
+  assert.deepEqual(normalized.bullets[0].citationIndices, []);
 });
 
 test("formatEvidenceSourceLabel makes uploaded clause evidence explicit", () => {

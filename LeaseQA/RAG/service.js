@@ -2,8 +2,15 @@ import path from "path";
 import fs from "fs/promises";
 import { v4 as uuidv4 } from "uuid";
 import { ChatOpenAI } from "@langchain/openai";
+import { z } from "zod";
 import * as dao from "./dao.js";
 import { getRagConfig } from "./config.js";
+import {
+  buildRagMessages,
+  formatEvidenceSourceLabel,
+  getEvidenceId,
+} from "./prompt.js";
+import { runBoundedOperation } from "./operationPolicy.js";
 import { createTextPreview, extractTextFromUpload, splitTextToChunks, } from "./text.js";
 import { buildKnowledgeSearchPlan, buildRetrievalQuestion, rankKnowledgeChunks, } from "./retrievalPolicy.js";
 import {
@@ -43,11 +50,6 @@ const dedupeById = (items) => {
   });
 };
 
-const sleep = (milliseconds) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-
 const getMessageText = (message) => {
   if ( typeof message.content === "string" ) {
     return message.content;
@@ -61,43 +63,64 @@ const getMessageText = (message) => {
   return "";
 };
 
-const postGeminiEmbedding = async ({ config, text, taskType, title }) => {
+export const postGeminiEmbedding = async ({
+                                            config,
+                                            text,
+                                            taskType,
+                                            title,
+                                            fetchFn = globalThis.fetch,
+                                            retryPolicy,
+                                          }) => {
   const requestUrl = `${config.embeddingBaseUrl}/${config.embeddingModel}:embedContent?key=${config.embeddingApiKey}`;
-  const maxAttempts = 5;
 
-  for ( let attempt = 1; attempt <= maxAttempts; attempt += 1 ) {
-    const response = await fetch(requestUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: {
-          parts: [{ text }],
-        },
-        taskType,
-        title: title || undefined,
-        outputDimensionality: config.embeddingDimension,
-      }),
-    });
+  return runBoundedOperation({
+    label: "embedding request",
+    timeoutMs: config.embeddingTimeoutMs,
+    retryPolicy,
+    operation: async (signal) => {
+      const response = await fetchFn(requestUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: {
+            parts: [{ text }],
+          },
+          taskType,
+          title: title || undefined,
+          outputDimensionality: config.embeddingDimension,
+        }),
+        signal,
+      });
 
-    const payload = await response.json();
-    if ( response.ok && Array.isArray(payload?.embedding?.values) ) {
-      return payload.embedding.values;
-    }
+      let payload;
+      try {
+        payload = await response.json();
+      } catch ( cause ) {
+        if ( response.ok ) {
+          throw new Error("Gemini embedding response was not valid JSON", {
+            cause,
+          });
+        }
+        const error = new Error("Gemini embedding request failed", { cause });
+        error.status = response.status;
+        throw error;
+      }
+      if ( response.ok && Array.isArray(payload?.embedding?.values) ) {
+        return payload.embedding.values;
+      }
 
-    const errorMessage =
-      payload?.error?.message || "Gemini embedding request failed";
-    const shouldRetry =
-      response.status === 429 || response.status >= 500 || !response.ok;
-
-    if ( !shouldRetry || attempt === maxAttempts ) {
-      throw new Error(errorMessage);
-    }
-
-    await sleep(500 * 2 ** (attempt - 1));
-  }
+      const error = new Error(
+        payload?.error?.message || "Gemini embedding request failed",
+      );
+      if ( !response.ok ) {
+        error.status = response.status;
+      }
+      throw error;
+    },
+  });
 };
 
-const createEmbeddingsClient = (config) => ({
+const createEmbeddingsClient = (config, dependencies = {}) => ({
   embedDocuments: async (texts) => {
     const vectors = [];
     const batchSize = 8;
@@ -110,6 +133,7 @@ const createEmbeddingsClient = (config) => ({
             config,
             text,
             taskType: "RETRIEVAL_DOCUMENT",
+            ...dependencies,
           }),
         ),
       );
@@ -123,8 +147,35 @@ const createEmbeddingsClient = (config) => ({
       config,
       text,
       taskType: "RETRIEVAL_QUERY",
+      ...dependencies,
     }),
 });
+
+export const invokeChatModel = ({
+                                  config,
+                                  chatModel,
+                                  messages,
+                                  retryPolicy,
+                                }) =>
+  runBoundedOperation({
+    label: "chat generation",
+    timeoutMs: config.chatTimeoutMs,
+    retryPolicy,
+    operation: (signal) => chatModel.invoke(messages, { signal }),
+  });
+
+export const runVectorOperation = ({
+                                     config,
+                                     label,
+                                     operation,
+                                     retryPolicy,
+                                   }) =>
+  runBoundedOperation({
+    label,
+    timeoutMs: config.vectorTimeoutMs,
+    retryPolicy,
+    operation,
+  });
 
 const createChatClient = (config) => {
   if ( !config.chatApiKey ) {
@@ -184,59 +235,7 @@ const buildCitation = (chunk) => ({
   snippet: createTextPreview(chunk.text, 180),
 });
 
-const getCitationRefId = (index) => `c${index + 1}`;
-
-export const formatEvidenceSourceLabel = (chunk) => {
-  if ( ["text", "upload"].includes(String(chunk.source_group || "")) ) {
-    return "Uploaded clause text";
-  }
-
-  return chunk.source_name;
-};
-
-const formatEvidenceBlock = (chunks) =>
-  chunks
-    .map(
-      (chunk, index) =>
-        `[${getCitationRefId(index)}] ${formatEvidenceSourceLabel(chunk)} | group=${chunk.source_group} | chapter=${chunk.chapter_ref || "n/a"}\n${chunk.text}`,
-    )
-    .join("\n\n");
-
-const buildPrompt = ({ question, history, supportChunks }) =>
-  `
-You are LeaseQA. Answer in simple, direct language for a low-reading-level user.
-Use only the supplied evidence. If the evidence is insufficient, say that clearly.
-Do not present yourself as a lawyer. Do not claim certainty beyond the sources.
-Keep the answer concise and easy to scan.
-
-Recent conversation:
-${history || "None"}
-
-Evidence:
-${supportChunks.length > 0 ? formatEvidenceBlock(supportChunks) : "None"}
-
-User question:
-${question}
-
-Return valid JSON only:
-{
-  "summary": "one short sentence",
-  "bullets": [
-    {
-      "text": "short bullet",
-      "supports": ["c1"]
-    }
-  ]
-}
-
-Rules:
-- If an evidence item is labeled "Uploaded clause text", treat it as the user-provided clause or document.
-- Summary: 1 sentence, at most 24 words.
-- Bullets: 2 to 4 items, each under 18 words.
-- Every bullet must include 1 or 2 support ids from the evidence list.
-- No markdown headings.
-- No disclaimer text.
-`.trim();
+export { formatEvidenceSourceLabel };
 
 const stripFence = (text) =>
   text
@@ -256,16 +255,6 @@ const cleanSentence = (text) =>
     .replace(/\s+/g, " ")
     .trim();
 
-const isFormattingLine = (line) =>
-  /^(?:#+\s*)?(?:\d+\.\s*)?(short answer|answer|key reasons?(?: or steps)?|disclaimer)\b/i.test(
-    line,
-  );
-
-const isDisclaimerLine = (line) =>
-  /(?:legal information,\s*not legal advice|this is not legal advice|not legal advice)/i.test(
-    line,
-  );
-
 const buildAnswerContent = ({ summary, bullets }) =>
   [summary, ...bullets.map((bullet) => `• ${bullet.text}`)]
     .filter(Boolean)
@@ -274,80 +263,48 @@ const buildAnswerContent = ({ summary, bullets }) =>
 const normalizeCitationIndices = (
   supports,
   citationIdToIndex,
-  fallbackCitationIndices,
 ) => {
   const resolved = (supports || [])
     .map((supportId) => citationIdToIndex[supportId])
     .filter((index) => Number.isInteger(index));
-  const indices =
-    supports && supports.length > 0
-      ? resolved
-      : fallbackCitationIndices;
-  return [...new Set(indices)].slice(0, 2);
+  return [...new Set(resolved)].slice(0, 2);
 };
 
-const buildStructuredFallback = ({ rawAnswer, fallbackCitationIndices }) => {
-  const lines = String(rawAnswer || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !isFormattingLine(line))
-    .filter((line) => !isDisclaimerLine(line));
-
-  const bulletLines = lines
-    .filter((line) => /^[-*•]\s+/.test(line))
-    .map((line) => cleanSentence(line))
-    .filter(Boolean)
-    .slice(0, 4);
-
-  const proseLines = lines
-    .filter((line) => !/^[-*•]\s+/.test(line))
-    .map((line) => cleanSentence(line))
-    .filter(Boolean);
-
-  const summary = proseLines[0] || bulletLines[0] || "I could not answer that clearly from the available materials.";
-  const remainingBullets =
-    bulletLines.length > 0
-      ? bulletLines
-      : proseLines.slice(1, 5);
-  const bullets = remainingBullets.slice(0, 4).map((text) => ({
-    text,
-    citationIndices: fallbackCitationIndices,
-  }));
-
-  return {
-    summary,
-    bullets,
-    content: buildAnswerContent({
-      summary,
-      bullets,
-    }),
-  };
-};
+const structuredAnswerSchema = z
+  .object({
+    summary: z.string().trim().min(1),
+    bullets: z
+      .array(
+        z
+          .object({
+            text: z.string().trim().min(1),
+            supports: z.array(z.string().trim().min(1)).min(1).max(2),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(4),
+  })
+  .strict();
 
 export const normalizeAssistantAnswer = ({
                                            rawAnswer,
                                            citationIdToIndex,
-                                           fallbackCitationIndices,
                                          }) => {
   try {
-    const parsed = JSON.parse(extractJsonObject(rawAnswer));
-    const summary = cleanSentence(parsed?.summary);
-    const bullets = Array.isArray(parsed?.bullets)
-      ? parsed.bullets
-        .map((bullet) => ({
-          text: cleanSentence(bullet?.text),
-          citationIndices: normalizeCitationIndices(
-            bullet?.supports,
-            citationIdToIndex,
-            fallbackCitationIndices,
-          ),
-        }))
-        .filter((bullet) => bullet.text)
-        .slice(0, 4)
-      : [];
+    const parsed = structuredAnswerSchema.safeParse(
+      JSON.parse(extractJsonObject(rawAnswer)),
+    );
+    if ( parsed.success ) {
+      const summary = cleanSentence(parsed.data.summary);
+      const bullets = parsed.data.bullets.map((bullet) => ({
+        text: cleanSentence(bullet.text),
+        citationIndices: normalizeCitationIndices(
+          bullet.supports,
+          citationIdToIndex,
+        ),
+      }));
 
-    if ( summary && bullets.length > 0 ) {
       return {
         summary,
         bullets,
@@ -355,13 +312,10 @@ export const normalizeAssistantAnswer = ({
       };
     }
   } catch ( error ) {
-    // Fall through to compact plain-text parsing.
+    // Invalid model output follows the deterministic abstention path below.
   }
 
-  return buildStructuredFallback({
-    rawAnswer,
-    fallbackCitationIndices,
-  });
+  return buildInsufficientSupportAnswer();
 };
 
 const buildInsufficientSupportAnswer = () => {
@@ -377,6 +331,58 @@ const buildInsufficientSupportAnswer = () => {
     summary,
     bullets,
     content: buildAnswerContent({ summary, bullets }),
+  };
+};
+
+export const finalizeAssistantCitations = ({
+                                             structuredAnswer,
+                                             candidateCitations,
+                                           }) => {
+  const citations = Array.isArray(candidateCitations)
+    ? candidateCitations
+    : [];
+  const supportedBullets = (structuredAnswer?.bullets || [])
+    .map((bullet) => ({
+      ...bullet,
+      citationIndices: [...new Set(bullet.citationIndices || [])].filter(
+        (index) =>
+          Number.isInteger(index) && index >= 0 && index < citations.length,
+      ),
+    }))
+    .filter((bullet) => bullet.citationIndices.length > 0);
+  const selectedIndices = [
+    ...new Set(supportedBullets.flatMap((bullet) => bullet.citationIndices)),
+  ];
+
+  if ( selectedIndices.length === 0 ) {
+    return {
+      structuredAnswer: buildInsufficientSupportAnswer(),
+      citations: [],
+      hasExplicitSupport: false,
+    };
+  }
+
+  const remappedIndices = new Map(
+    selectedIndices.map((originalIndex, newIndex) => [originalIndex, newIndex]),
+  );
+  const bullets = supportedBullets.map((bullet) => ({
+    ...bullet,
+    citationIndices: bullet.citationIndices.map((index) =>
+      remappedIndices.get(index)),
+  }));
+  const finalizedAnswer = {
+    ...structuredAnswer,
+    bullets,
+    content: buildAnswerContent({
+      summary: structuredAnswer.summary,
+      bullets,
+    }),
+  };
+
+  return {
+    structuredAnswer: finalizedAnswer,
+    citations: selectedIndices.map((index) => citations[index]),
+    hasExplicitSupport: true,
   };
 };
 
@@ -423,19 +429,31 @@ const ensureViewerCanAccess = ({ session, userId, clientSessionId }) => {
   }
 };
 
-const getKnowledgeResults = async ({ config, vector, question }) => {
+const getKnowledgeResults = async ({
+                                     config,
+                                     vector,
+                                     question,
+                                     searchHybridChunksFn = searchHybridChunks,
+                                     retryPolicy,
+                                   }) => {
   const searchPlan = buildKnowledgeSearchPlan(question, config);
   const groupedResults = await Promise.all(
     searchPlan.map(({ group, limit, chapterRef }) =>
-      searchHybridChunks({
+      runVectorOperation({
         config,
-        collectionName: config.knowledgeCollection,
-        denseVector: vector,
-        sparseText: question,
-        limit,
-        filter: chapterRef
-          ? `source_group == "${group}" && chapter_ref == "${chapterRef}"`
-          : `source_group == "${group}"`,
+        label: `knowledge vector search (${group})`,
+        retryPolicy,
+        operation: () =>
+          searchHybridChunksFn({
+            config,
+            collectionName: config.knowledgeCollection,
+            denseVector: vector,
+            sparseText: question,
+            limit,
+            filter: chapterRef
+              ? `source_group == "${group}" && chapter_ref == "${chapterRef}"`
+              : `source_group == "${group}"`,
+          }),
       }),
     ),
   );
@@ -493,15 +511,20 @@ export const createRagSession = async ({
     const vectors = await embeddings.embedDocuments(
       documents.map((document) => document.pageContent),
     );
-    await insertChunkRows({
+    await runVectorOperation({
       config,
-      collectionName: config.sessionCollection,
-      rows: buildChunkRows({
-        documents,
-        vectors,
-        sessionId: session._id.toString(),
-      }),
-      dimension: vectors[0]?.length || 0,
+      label: "session vector insert",
+      operation: () =>
+        insertChunkRows({
+          config,
+          collectionName: config.sessionCollection,
+          rows: buildChunkRows({
+            documents,
+            vectors,
+            sessionId: session._id.toString(),
+          }),
+          dimension: vectors[0]?.length || 0,
+        }),
     });
 
     return dao.updateSession(session._id, {
@@ -535,17 +558,23 @@ export const answerQuestion = async ({
                                        userId,
                                        clientSessionId,
                                        question,
-                                     }) => {
-  const config = getRagConfig();
-  const session = await dao.findSessionById(sessionId);
+                                     }, dependencies = {}) => {
+  const config = dependencies.config || getRagConfig();
+  const findSessionById = dependencies.findSessionById || dao.findSessionById;
+  const appendMessages = dependencies.appendMessages || dao.appendMessages;
+  const searchHybridChunksFn =
+    dependencies.searchHybridChunks || searchHybridChunks;
+  const retryPolicy = dependencies.retryPolicy;
+  const session = await findSessionById(sessionId);
   ensureViewerCanAccess({ session, userId, clientSessionId });
 
   if ( session.status !== "ready" ) {
     throw new Error("Session is not ready yet");
   }
 
-  const embeddings = createEmbeddingsClient(config);
-  const chatModel = createChatClient(config);
+  const embeddings =
+    dependencies.embeddingsClient || createEmbeddingsClient(config);
+  const chatModel = dependencies.chatModel || createChatClient(config);
   const retrievalQuestion = buildRetrievalQuestion({
     question,
     sourceTextPreview: session.sourceTextPreview,
@@ -553,18 +582,26 @@ export const answerQuestion = async ({
   });
   const questionVector = await embeddings.embedQuery(retrievalQuestion);
   const [sessionChunks, knowledgeChunks] = await Promise.all([
-    searchHybridChunks({
+    runVectorOperation({
       config,
-      collectionName: config.sessionCollection,
-      denseVector: questionVector,
-      sparseText: retrievalQuestion,
-      limit: config.sessionTopK,
-      filter: `session_id == "${sessionId}"`,
+      label: "session vector search",
+      retryPolicy,
+      operation: () =>
+        searchHybridChunksFn({
+          config,
+          collectionName: config.sessionCollection,
+          denseVector: questionVector,
+          sparseText: retrievalQuestion,
+          limit: config.sessionTopK,
+          filter: `session_id == "${sessionId}"`,
+        }),
     }),
     getKnowledgeResults({
       config,
       vector: questionVector,
       question: retrievalQuestion,
+      searchHybridChunksFn,
+      retryPolicy,
     }),
   ]);
 
@@ -584,28 +621,40 @@ export const answerQuestion = async ({
     citationChunks,
     knowledgeChunks,
   });
-  const citations =
+  const candidateCitations =
     supportedCitationChunks.length > 0
       ? supportedCitationChunks.map(buildCitation)
       : [];
   const citationIdToIndex = Object.fromEntries(
-    citations.map((citation, index) => [getCitationRefId(index), index]),
+    candidateCitations.map((citation, index) => [getEvidenceId(index), index]),
   );
-  const prompt = buildPrompt({
+  const messages = buildRagMessages({
     question,
     history,
     supportChunks: supportedCitationChunks,
   });
-  const structuredAnswer =
-    supportedCitationChunks.length > 0
+  const candidateAnswer =
+    candidateCitations.length > 0
       ? normalizeAssistantAnswer({
-        rawAnswer: getMessageText(await chatModel.invoke(prompt)),
+        rawAnswer: getMessageText(
+          await invokeChatModel({
+            config,
+            chatModel,
+            messages,
+            retryPolicy,
+          }),
+        ),
         citationIdToIndex,
-        fallbackCitationIndices: citations.map((_, index) => index),
       })
       : buildInsufficientSupportAnswer();
+  const finalized = finalizeAssistantCitations({
+    structuredAnswer: candidateAnswer,
+    candidateCitations,
+  });
+  const structuredAnswer = finalized.structuredAnswer;
+  const citations = finalized.citations;
 
-  const updatedSession = await dao.appendMessages(sessionId, [
+  const updatedSession = await appendMessages(sessionId, [
     {
       role: "user",
       content: question,
@@ -777,9 +826,14 @@ export const ingestKnowledgeCorpus = async ({
   const config = getRagConfig();
   const embeddings = createEmbeddingsClient(config);
   const manifest = await loadCorpusManifest();
-  const collectionExists = await hasChunkCollection({
+  const collectionExists = await runVectorOperation({
     config,
-    collectionName: config.knowledgeCollection,
+    label: "knowledge collection lookup",
+    operation: () =>
+      hasChunkCollection({
+        config,
+        collectionName: config.knowledgeCollection,
+      }),
   });
   const previousState = await readIngestState({
     statePath: config.ingestStatePath,
@@ -794,7 +848,15 @@ export const ingestKnowledgeCorpus = async ({
       reset,
     })
   ) {
-    await resetCollection({ config, collectionName: config.knowledgeCollection });
+    await runVectorOperation({
+      config,
+      label: "knowledge collection reset",
+      operation: () =>
+        resetCollection({
+          config,
+          collectionName: config.knowledgeCollection,
+        }),
+    });
     ingestState = await writeIngestState({
       statePath: config.ingestStatePath,
       state: buildFreshIngestState(config),
@@ -813,10 +875,15 @@ export const ingestKnowledgeCorpus = async ({
       `[RAG ingest] ${index + 1}/${manifest.length} ${item.file_name}`,
     );
 
-    await deleteChunkRows({
+    await runVectorOperation({
       config,
-      collectionName: config.knowledgeCollection,
-      filter: `file_path == "${item.file_path}"`,
+      label: "knowledge vector delete",
+      operation: () =>
+        deleteChunkRows({
+          config,
+          collectionName: config.knowledgeCollection,
+          filter: `file_path == "${item.file_path}"`,
+        }),
     });
 
     const absolutePath = path.resolve(config.corpusRoot, item.file_path);
@@ -842,11 +909,16 @@ export const ingestKnowledgeCorpus = async ({
     const vectors = await embeddings.embedDocuments(
       documents.map((document) => document.pageContent),
     );
-    await insertChunkRows({
+    await runVectorOperation({
       config,
-      collectionName: config.knowledgeCollection,
-      rows: buildKnowledgeChunkRows({ item, documents, vectors }),
-      dimension: vectors[0]?.length || 0,
+      label: "knowledge vector insert",
+      operation: () =>
+        insertChunkRows({
+          config,
+          collectionName: config.knowledgeCollection,
+          rows: buildKnowledgeChunkRows({ item, documents, vectors }),
+          dimension: vectors[0]?.length || 0,
+        }),
     });
 
     ingestState = await writeIngestState({
