@@ -58,6 +58,7 @@ export const applyHttpSecurity = (app, env = process.env) => {
   app.disable("x-powered-by");
   app.use(requestIdMiddleware);
   app.use(helmet());
+  app.use("/uploads", helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
   app.use(cors(buildCorsOptions(env)));
 };
 

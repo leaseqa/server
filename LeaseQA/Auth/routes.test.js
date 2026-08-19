@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import express from "express";
 
 import { createAuthRouter } from "./routes.js";
+import {
+  requestIdMiddleware,
+  unexpectedErrorHandler,
+} from "../utils/httpSecurity.js";
 
 const getRouteHandler = (router, method, routePath) => {
   const layer = router.stack.find(
@@ -308,7 +313,7 @@ test("POST /login regenerates before attaching a sanitized user and saves once",
   assert.equal(res.statusCode, 200);
 });
 
-test("POST /register returns the internal-error envelope when regeneration fails", async () => {
+test("POST /register forwards session regeneration failures", async () => {
   const router = createAuthRouter({
     findUserByEmail: async () => null,
     createUser: async () => ({ _id: "user-1", role: "tenant" }),
@@ -331,15 +336,17 @@ test("POST /register returns the internal-error envelope when regeneration fails
     },
   };
   const res = createResponse();
+  let forwardedError;
 
-  await handler(req, res);
+  await handler(req, res, (error) => {
+    forwardedError = error;
+  });
 
-  assert.equal(res.statusCode, 500);
-  assert.equal(res.payload.error.code, "INTERNAL_ERROR");
-  assert.doesNotMatch(JSON.stringify(res.payload), /session backend unavailable/);
+  assert.equal(res.payload, undefined);
+  assert.ok(forwardedError instanceof Error);
 });
 
-test("POST /login returns the internal-error envelope when session save fails", async () => {
+test("POST /login forwards session save failures", async () => {
   const router = createAuthRouter({
     findUserByEmail: async () => ({
       _id: "user-1",
@@ -367,12 +374,74 @@ test("POST /login returns the internal-error envelope when session save fails", 
     },
   };
   const res = createResponse();
+  let forwardedError;
 
-  await handler(req, res);
+  await handler(req, res, (error) => {
+    forwardedError = error;
+  });
 
-  assert.equal(res.statusCode, 500);
-  assert.equal(res.payload.error.code, "INTERNAL_ERROR");
-  assert.doesNotMatch(JSON.stringify(res.payload), /session write detail/);
+  assert.equal(res.payload, undefined);
+  assert.ok(forwardedError instanceof Error);
+});
+
+test("session save failures receive a correlated centralized error response", async (t) => {
+  const app = express();
+  app.use(requestIdMiddleware);
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.session = {
+      regenerate(callback) {
+        callback(null);
+      },
+      save(callback) {
+        callback(new Error("sensitive session store detail"));
+      },
+    };
+    next();
+  });
+  app.use(createAuthRouter({
+    findUserByEmail: async () => ({
+      _id: "user-1",
+      email: "tenant@example.com",
+      hashedPassword: "hashed-password",
+      role: "tenant",
+      banned: false,
+    }),
+    verifyPassword: () => true,
+    sanitizeUser: ({ hashedPassword: _hashedPassword, ...user }) => user,
+  }));
+  app.use(unexpectedErrorHandler);
+
+  const logLines = [];
+  const originalError = console.error;
+  console.error = (...values) => logLines.push(values.join(" "));
+  t.after(() => {
+    console.error = originalError;
+  });
+
+  const server = app.listen(0, "127.0.0.1");
+  t.after(() => server.close());
+  await new Promise((resolve) => server.once("listening", resolve));
+  const { port } = server.address();
+
+  const response = await fetch(`http://127.0.0.1:${port}/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email: "tenant@example.com",
+      password: "leaseqa-secret",
+    }),
+  });
+  const payload = await response.json();
+  const requestId = response.headers.get("x-request-id");
+  const logs = logLines.join("\n");
+
+  assert.equal(response.status, 500);
+  assert.equal(payload.error.code, "INTERNAL_ERROR");
+  assert.equal(payload.error.requestId, requestId);
+  assert.match(logs, new RegExp(requestId));
+  assert.doesNotMatch(JSON.stringify(payload), /sensitive session store detail/);
+  assert.doesNotMatch(logs, /sensitive session store detail/);
 });
 
 test("authentication logs omit PII, credentials, session IDs, and session contents", async (t) => {
@@ -446,6 +515,67 @@ test("GET /google/callback regenerates before attaching the authenticated user",
   assert.deepEqual(tracked.events, ["regenerate", "attach-after-regenerate", "save"]);
   assert.equal(req.session.currentUser.hashedPassword, undefined);
   assert.equal(res.redirectedTo, "https://leaseqa-client.example");
+});
+
+test("GET /google/callback rejects a banned Passport user before creating a session", async () => {
+  const tracked = createTrackedSession();
+  const router = createAuthRouter({
+    sanitizeUser: ({ hashedPassword: _hashedPassword, ...user }) => user,
+  });
+  const layer = router.stack.find((entry) => entry.route?.path === "/google/callback");
+  const handler = layer.route.stack.at(-1).handle;
+  const req = {
+    user: {
+      _id: "banned-admin-1",
+      email: "banned-admin@example.com",
+      hashedPassword: "hashed-password",
+      role: "admin",
+      banned: true,
+    },
+    session: tracked.session,
+  };
+  const res = createResponse();
+
+  await handler(req, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.payload.error.code, "FORBIDDEN");
+  assert.deepEqual(tracked.events, []);
+  assert.equal(res.redirectedTo, undefined);
+});
+
+test("GET /google/callback forwards session save failures", async () => {
+  const router = createAuthRouter({
+    sanitizeUser: ({ hashedPassword: _hashedPassword, ...user }) => user,
+  });
+  const layer = router.stack.find((entry) => entry.route?.path === "/google/callback");
+  const handler = layer.route.stack.at(-1).handle;
+  const req = {
+    user: {
+      _id: "user-1",
+      email: "oauth@example.com",
+      role: "tenant",
+      banned: false,
+    },
+    session: {
+      regenerate(callback) {
+        callback(null);
+      },
+      save(callback) {
+        callback(new Error("oauth session store detail"));
+      },
+    },
+  };
+  const res = createResponse();
+  let forwardedError;
+
+  await handler(req, res, (error) => {
+    forwardedError = error;
+  });
+
+  assert.equal(res.payload, undefined);
+  assert.equal(res.redirectedTo, undefined);
+  assert.ok(forwardedError instanceof Error);
 });
 
 test("POST /login rejects demo accounts outside development", async () => {

@@ -15,6 +15,24 @@ const sendValidationError = (res, error) => sendError(res, {
   status: 400,
 });
 
+const getAccountEligibilityError = (user, env) => {
+  if ( isBlockedDemoAccount(user.email, env) ) {
+    return {
+      code: "INVALID_CREDENTIALS",
+      message: "Invalid login.",
+      status: 401,
+    };
+  }
+  if ( user.banned ) {
+    return {
+      code: "FORBIDDEN",
+      message: "This account has been disabled by an administrator.",
+      status: 403,
+    };
+  }
+  return null;
+};
+
 if ( process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ) passport.use(
   new GoogleStrategy(
     {
@@ -80,7 +98,7 @@ const establishAuthenticatedSession = (req, user, dao) => new Promise((resolve, 
 export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => {
   const router = express.Router();
 
-  router.post("/register", async (req, res) => {
+  router.post("/register", async (req, res, next) => {
     try {
       const registration = parseRegistration(req.body);
       const { email } = registration;
@@ -103,21 +121,18 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
       }
 
       const user = await dao.createUser(registration);
+      const eligibilityError = getAccountEligibilityError(user, env);
+      if ( eligibilityError ) return sendError(res, eligibilityError);
       const safeUser = await establishAuthenticatedSession(req, user, dao);
       console.log("[Auth] registration_succeeded");
       return sendData(res, safeUser, 201);
     } catch ( error ) {
       if ( error instanceof ZodError ) return sendValidationError(res, error);
-      console.error("[Auth] registration_error");
-      return sendError(res, {
-        code: "INTERNAL_ERROR",
-        message: "An internal server error occurred during registration.",
-        status: 500,
-      });
+      return next(error);
     }
   });
 
-  router.post("/login", async (req, res) => {
+  router.post("/login", async (req, res, next) => {
     try {
       let login;
       try {
@@ -137,14 +152,6 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
         });
       }
 
-      if ( isBlockedDemoAccount(email, env) ) {
-        return sendError(res, {
-          code: "INVALID_CREDENTIALS",
-          message: "Invalid login.",
-          status: 401,
-        });
-      }
-
       const isValidPassword = dao.verifyPassword(password, user.hashedPassword);
       if ( !isValidPassword ) {
         return sendError(res, {
@@ -154,24 +161,14 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
         });
       }
 
-      if ( user.banned ) {
-        return sendError(res, {
-          code: "FORBIDDEN",
-          message: "This account has been disabled by an administrator.",
-          status: 403,
-        });
-      }
+      const eligibilityError = getAccountEligibilityError(user, env);
+      if ( eligibilityError ) return sendError(res, eligibilityError);
 
       const safeUser = await establishAuthenticatedSession(req, user, dao);
       console.log("[Auth] login_succeeded");
       return sendData(res, safeUser);
-    } catch ( _error ) {
-      console.error("[Auth] login_error");
-      return sendError(res, {
-        code: "INTERNAL_ERROR",
-        message: "An internal server error occurred during login.",
-        status: 500
-      });
+    } catch ( error ) {
+      return next(error);
     }
   });
 
@@ -180,19 +177,16 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
   router.get("/google/callback", passport.authenticate("google", {
     failureRedirect: "/auth/login",
     session: false
-  }), async (req, res) => {
+  }), async (req, res, next) => {
     try {
       const clientUrl = env.CLIENT_URL || "http://localhost:3000";
+      const eligibilityError = getAccountEligibilityError(req.user, env);
+      if ( eligibilityError ) return sendError(res, eligibilityError);
       await establishAuthenticatedSession(req, req.user, dao);
       console.log("[Auth] google_login_succeeded");
       return res.redirect(clientUrl);
-    } catch ( _error ) {
-      console.error("[Auth] google_login_error");
-      return sendError(res, {
-        code: "INTERNAL_ERROR",
-        message: "An internal server error occurred during login.",
-        status: 500,
-      });
+    } catch ( error ) {
+      return next(error);
     }
   });
 

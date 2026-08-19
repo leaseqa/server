@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
+import { readFile } from "node:fs/promises";
 
 import {
   applyHttpSecurity,
@@ -111,4 +112,44 @@ test("HTTP security returns a request ID without leaking unexpected errors", asy
   assert.equal(payload.error.requestId, response.headers.get("x-request-id"));
   assert.doesNotMatch(serialized, /database-password|process-v|stack/i);
   assert.doesNotMatch(logged.join("\n"), /database-password|process-v|stack/i);
+});
+
+test("HTTP security permits cross-origin uploads while keeping API resources same-origin", async (t) => {
+  const app = express();
+  applyHttpSecurity(app, {
+    CLIENT_URL: "https://leaseqa-client.vercel.app",
+  });
+  app.get("/uploads/example.pdf", (_req, res) => res.send("document"));
+  app.get("/api/example", (_req, res) => res.json({ ok: true }));
+
+  const server = app.listen(0, "127.0.0.1");
+  t.after(() => server.close());
+  await new Promise((resolve) => server.once("listening", resolve));
+  const { port } = server.address();
+
+  const [uploadResponse, apiResponse] = await Promise.all([
+    fetch(`http://127.0.0.1:${port}/uploads/example.pdf`, {
+      headers: { Origin: "https://leaseqa-client.vercel.app" },
+    }),
+    fetch(`http://127.0.0.1:${port}/api/example`, {
+      headers: { Origin: "https://leaseqa-client.vercel.app" },
+    }),
+  ]);
+
+  assert.equal(
+    uploadResponse.headers.get("cross-origin-resource-policy"),
+    "cross-origin",
+  );
+  assert.equal(
+    apiResponse.headers.get("cross-origin-resource-policy"),
+    "same-origin",
+  );
+});
+
+test("environment template documents the active CORS allowlist variable", async () => {
+  const template = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
+
+  assert.match(template, /^CORS_ALLOWED_ORIGINS=<comma-separated-client-origins>$/m);
+  assert.doesNotMatch(template, /^CLIENT_URLS=/m);
+  assert.match(template, /CLIENT_URLS is deprecated.*CORS_ALLOWED_ORIGINS/);
 });
