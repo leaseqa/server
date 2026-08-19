@@ -2,6 +2,10 @@ services:
   - type: web
     name: leaseqa-server
     env: node
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm start
     branch: main
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.19.0

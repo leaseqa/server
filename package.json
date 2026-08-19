@@ -4,10 +4,16 @@
   "description": "Express server for the LeaseQA project",
   "main": "index.js",
   "type": "module",
-  "packageManager": "npm@10.9.2",
+  "packageManager": "npm@11.17.0",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "node index.js",
     "start": "node index.js",
+    "lint": "eslint .",
+    "test": "node --test LeaseQA/*/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage LeaseQA/*/*.test.js",
     "test:rag": "node --test LeaseQA/RAG/*.test.js LeaseQA/shared/*.test.js",
     "eval:rag": "node scripts/run-rag-eval.js",
     "eval:rag:smoke": "node scripts/run-rag-eval.js --ids=ch03-security-deposit-return,ch06-heat-hot-water,ch09-lead-child,ch18-foreclosure-rights,form-repair-demand-letter,booklet-answer-summary-process",
@@ -31,6 +37,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^8.4.0",
     "express-session": "^1.18.2",
+    "helmet": "^8.3.0",
     "mammoth": "^1.11.0",
     "mongoose": "^9.0.0",
     "multer": "^2.0.2",
@@ -38,7 +45,13 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "pdf-parse": "^2.4.5",
+    "sanitize-html": "^2.17.7",
     "uuid": "^13.0.0",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.1",
+    "globals": "^17.11.0"
   }
 }
