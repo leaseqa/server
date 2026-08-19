@@ -1,8 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {
+  FAILOVER_HANDLER_KEY,
+  isGlobalEndpoint,
+  LoadState,
+  MilvusClient,
+} from "@zilliz/milvus2-sdk-node";
 
 import {
   createMilvusClient,
+  ensureCollectionLoaded,
   runMilvusMutation,
   runMilvusRead,
 } from "./milvus.js";
@@ -29,7 +36,32 @@ test("createMilvusClient disables SDK retries and configures the vector deadline
     token: "fake-token",
     maxRetries: 0,
     timeout: 10_000,
+    isGlobal: false,
   });
+});
+
+test("createMilvusClient disables SDK global failover replay even for an endpoint the SDK classifies as global", async () => {
+  const globalAddress = "https://tenant.global-cluster.example.invalid:19530";
+  assert.equal(isGlobalEndpoint(globalAddress), true);
+
+  class NoConnectMilvusClient extends MilvusClient {
+    constructor(options) {
+      super({ ...options, __SKIP_CONNECT__: true });
+    }
+  }
+
+  const client = createMilvusClient(
+    { ...config, milvusAddress: globalAddress },
+    { MilvusClientClass: NoConnectMilvusClient },
+  );
+
+  try {
+    assert.equal(client.isGlobal, false);
+    assert.equal(client.globalEndpoint, "");
+    assert.equal(client.channelPool[FAILOVER_HANDLER_KEY], undefined);
+  } finally {
+    await client.closeConnection();
+  }
 });
 
 test("runMilvusRead keeps total SDK attempts at three and passes a deadline to every RPC", async () => {
@@ -128,4 +160,85 @@ test("runMilvusMutation waits for the real RPC deadline and never starts a concu
   assert.equal(providerAttempts, 1);
   assert.equal(activeAttempts, 0);
   assert.equal(maximumConcurrentAttempts, 1);
+});
+
+test("ensureCollectionLoaded starts one async mutation and polls load state with the remaining total deadline", async () => {
+  let now = 0;
+  let loadAttempts = 0;
+  const loadTimeouts = [];
+  const stateTimeouts = [];
+  const sleeps = [];
+  const states = [LoadState.LoadStateLoading, LoadState.LoadStateLoaded];
+  const client = {
+    async loadCollectionAsync(request) {
+      loadAttempts += 1;
+      loadTimeouts.push(request.timeout);
+      now += 100;
+      return { error_code: "Success" };
+    },
+    async getLoadState(request) {
+      stateTimeouts.push(request.timeout);
+      now += 50;
+      return { state: states.shift() };
+    },
+  };
+
+  await ensureCollectionLoaded({
+    config: { ...config, vectorTimeoutMs: 1_000 },
+    client,
+    collectionName: "knowledge",
+    clock: { now: () => now },
+    sleep: async (milliseconds) => {
+      sleeps.push(milliseconds);
+      now += milliseconds;
+    },
+    pollIntervalMs: 100,
+  });
+
+  assert.equal(loadAttempts, 1);
+  assert.deepEqual(loadTimeouts, [1_000]);
+  assert.deepEqual(stateTimeouts, [900, 750]);
+  assert.deepEqual(sleeps, [100]);
+});
+
+test("ensureCollectionLoaded throws stable RAG_TIMEOUT at its absolute deadline", async () => {
+  let now = 0;
+  let loadAttempts = 0;
+  const stateTimeouts = [];
+  const sleeps = [];
+  const client = {
+    async loadCollectionAsync() {
+      loadAttempts += 1;
+      now += 100;
+      return { error_code: "Success" };
+    },
+    async getLoadState(request) {
+      stateTimeouts.push(request.timeout);
+      now += 100;
+      return { state: LoadState.LoadStateLoading };
+    },
+  };
+
+  await assert.rejects(
+    ensureCollectionLoaded({
+      config: { ...config, vectorTimeoutMs: 500 },
+      client,
+      collectionName: "knowledge",
+      clock: { now: () => now },
+      sleep: async (milliseconds) => {
+        sleeps.push(milliseconds);
+        now += milliseconds;
+      },
+      pollIntervalMs: 200,
+    }),
+    (error) => {
+      assert.equal(error.code, "RAG_TIMEOUT");
+      assert.equal(error.timeoutMs, 500);
+      return true;
+    },
+  );
+
+  assert.equal(loadAttempts, 1);
+  assert.deepEqual(stateTimeouts, [400, 100]);
+  assert.deepEqual(sleeps, [200]);
 });

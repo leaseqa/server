@@ -1,4 +1,13 @@
-import { DataType, FunctionType, IndexType, MetricType, MilvusClient, RRFRanker, } from "@zilliz/milvus2-sdk-node";
+import {
+  DataType,
+  ErrorCode,
+  FunctionType,
+  IndexType,
+  LoadState,
+  MetricType,
+  MilvusClient,
+  RRFRanker,
+} from "@zilliz/milvus2-sdk-node";
 import { retryTransient } from "./operationPolicy.js";
 
 const OUTPUT_FIELDS = [
@@ -19,6 +28,7 @@ const DENSE_FIELD = "embedding";
 const SPARSE_FIELD = "sparse_embedding";
 const BM25_FUNCTION_NAME = "text_bm25";
 const INSERT_BATCH_SIZE = 32;
+const LOAD_POLL_INTERVAL_MS = 400;
 
 let cachedClient = null;
 const collectionDimensions = new Map();
@@ -33,6 +43,7 @@ export const createMilvusClient = (
     token: config.milvusToken || undefined,
     maxRetries: 0,
     timeout: config.vectorTimeoutMs,
+    isGlobal: false,
   });
 
 const createClient = (config) => {
@@ -61,6 +72,84 @@ export const runMilvusRead = ({
 
 export const runMilvusMutation = ({ config, client, method, request }) =>
   client[method](withRpcDeadline(config, request));
+
+const defaultSleep = (milliseconds) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+
+const createVectorTimeoutError = (timeoutMs) => {
+  const error = new Error(`Milvus load timed out after ${timeoutMs}ms`);
+  error.code = "RAG_TIMEOUT";
+  error.timeoutMs = timeoutMs;
+  return error;
+};
+
+const assertSuccessfulStatus = (response) => {
+  const status = response?.status || response;
+  if ( status?.error_code && status.error_code !== ErrorCode.SUCCESS ) {
+    throw new Error(
+      `ErrorCode: ${status.error_code}. Reason: ${status.reason || "unknown"}`,
+    );
+  }
+};
+
+export const ensureCollectionLoaded = async ({
+                                               config,
+                                               client,
+                                               collectionName,
+                                               clock = { now: Date.now },
+                                               sleep = defaultSleep,
+                                               pollIntervalMs = LOAD_POLL_INTERVAL_MS,
+                                             }) => {
+  const timeoutMs = config.vectorTimeoutMs;
+  const deadline = clock.now() + timeoutMs;
+  const remainingTime = () => {
+    const remaining = deadline - clock.now();
+    if ( remaining <= 0 ) {
+      throw createVectorTimeoutError(timeoutMs);
+    }
+    return remaining;
+  };
+  const callBeforeDeadline = async (method, request) => {
+    const remaining = remainingTime();
+    try {
+      const response = await client[method]({
+        ...request,
+        timeout: remaining,
+      });
+      remainingTime();
+      return response;
+    } catch ( error ) {
+      if (
+        clock.now() >= deadline ||
+        String(error?.code || "") === "4" ||
+        /\b(?:DEADLINE_EXCEEDED|deadline exceeded)\b/i.test(error?.message || "")
+      ) {
+        throw createVectorTimeoutError(timeoutMs);
+      }
+      throw error;
+    }
+  };
+
+  const loadStatus = await callBeforeDeadline("loadCollectionAsync", {
+    collection_name: collectionName,
+  });
+  assertSuccessfulStatus(loadStatus);
+
+  while ( true ) {
+    const state = await callBeforeDeadline("getLoadState", {
+      collection_name: collectionName,
+    });
+    assertSuccessfulStatus(state);
+    if ( state.state === LoadState.LoadStateLoaded ) {
+      return loadStatus;
+    }
+
+    const remaining = remainingTime();
+    await sleep(Math.min(pollIntervalMs, remaining));
+  }
+};
 
 const getCollectionSupportsSparse = async ({
                                              config,
@@ -220,14 +309,6 @@ const createCollectionIfMissing = async ({
   collectionDimensions.set(collectionName, dimension);
   collectionSparseSupport.set(collectionName, true);
 };
-
-const ensureCollectionLoaded = ({ config, client, collectionName }) =>
-  runMilvusMutation({
-    config,
-    client,
-    method: "loadCollection",
-    request: { collection_name: collectionName },
-  });
 
 export const insertChunkRows = async ({
                                         config,
