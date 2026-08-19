@@ -1,7 +1,10 @@
 import mongoose, { Types } from "mongoose";
 
+const RAG_SESSION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
 const citationSchema = new mongoose.Schema(
   {
+    citationId: { type: String, default: null },
     sourceName: { type: String, required: true },
     sourceGroup: { type: String, required: true },
     sourceType: { type: String, required: true },
@@ -59,11 +62,17 @@ const ragSessionSchema = new mongoose.Schema(
     sourceTextPreview: { type: String, required: true },
     sourceCharCount: { type: Number, required: true },
     messages: { type: [messageSchema], default: [] },
+    expiresAt: {
+      type: Date,
+      default: () => new Date(Date.now() + RAG_SESSION_RETENTION_MS),
+    },
   },
   {
     timestamps: true,
     collection: "ragSessions",
   },
 );
+
+ragSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export default ragSessionSchema;

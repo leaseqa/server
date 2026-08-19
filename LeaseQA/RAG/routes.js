@@ -5,26 +5,26 @@ import { sendData, sendError, sendNotFound } from "../utils/responses.js";
 import {
   answerQuestion,
   createSessionWithOptionalInitialAnswer,
+  deleteViewerSession,
   getViewerSession,
   listViewerSessions,
 } from "./service.js";
 
-const router = express.Router();
 export const getUploadMaxBytes = (env = process.env) =>
   Number.parseInt(env.RAG_UPLOAD_MAX_BYTES || "", 10) || 20 * 1024 * 1024;
+
+const RAG_GUEST_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+export const createGuestSessionMetadata = (now = new Date()) => ({
+  createdAt: now.toISOString(),
+  expiresAt: new Date(now.getTime() + RAG_GUEST_RETENTION_MS).toISOString(),
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: getUploadMaxBytes(),
   },
-});
-
-router.use((req, _res, next) => {
-  if ( !req.session?.currentUser && !req.session?.ragGuest ) {
-    req.session.ragGuest = { createdAt: new Date().toISOString() };
-  }
-  next();
 });
 
 const createSessionSchema = z.object({
@@ -43,6 +43,9 @@ const getErrorStatus = (error) => {
   if ( error.message === "Session not found" ) {
     return 404;
   }
+  if ( error.code === "RAG_SESSION_DELETE_RETRYABLE" ) {
+    return 503;
+  }
   if ( error.message?.includes("access") ) {
     return 403;
   }
@@ -57,9 +60,27 @@ const getErrorStatus = (error) => {
   return 500;
 };
 
+export const createRagRouter = (dependencies = {}) => {
+  const router = express.Router();
+  const answerQuestionFn = dependencies.answerQuestion || answerQuestion;
+  const createSessionFn =
+    dependencies.createSessionWithOptionalInitialAnswer ||
+    createSessionWithOptionalInitialAnswer;
+  const deleteSessionFn =
+    dependencies.deleteViewerSession || deleteViewerSession;
+  const getSessionFn = dependencies.getViewerSession || getViewerSession;
+  const listSessionsFn = dependencies.listViewerSessions || listViewerSessions;
+
+  router.use((req, _res, next) => {
+    if ( !req.session?.currentUser && !req.session?.ragGuest ) {
+      req.session.ragGuest = createGuestSessionMetadata();
+    }
+    next();
+  });
+
 router.get("/sessions", async (req, res) => {
   try {
-    const sessions = await listViewerSessions({
+    const sessions = await listSessionsFn({
       userId: req.session?.currentUser?._id || null,
       clientSessionId: req.sessionID,
     });
@@ -76,7 +97,7 @@ router.get("/sessions", async (req, res) => {
 
 router.get("/sessions/:sessionId", async (req, res) => {
   try {
-    const session = await getViewerSession({
+    const session = await getSessionFn({
       sessionId: req.params.sessionId,
       userId: req.session?.currentUser?._id || null,
       clientSessionId: req.sessionID,
@@ -107,7 +128,7 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
       });
     }
 
-    const session = await createSessionWithOptionalInitialAnswer({
+    const session = await createSessionFn({
       userId: req.session?.currentUser?._id || null,
       clientSessionId: req.sessionID,
       sourceText,
@@ -129,11 +150,12 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
 router.post("/sessions/:sessionId/messages", async (req, res) => {
   try {
     const { message } = messageSchema.parse(req.body);
-    const result = await answerQuestion({
+    const result = await answerQuestionFn({
       sessionId: req.params.sessionId,
       userId: req.session?.currentUser?._id || null,
       clientSessionId: req.sessionID,
       question: message,
+      requestId: req.requestId,
     });
     sendData(res, result);
   } catch ( error ) {
@@ -153,5 +175,39 @@ router.post("/sessions/:sessionId/messages", async (req, res) => {
     });
   }
 });
+
+router.delete("/sessions/:sessionId", async (req, res) => {
+  try {
+    const result = await deleteSessionFn({
+      sessionId: req.params.sessionId,
+      userId: req.session?.currentUser?._id || null,
+      clientSessionId: req.sessionID,
+    });
+    sendData(res, result);
+  } catch ( error ) {
+    const status = getErrorStatus(error);
+    if ( status === 404 ) {
+      return sendNotFound(res, "Chat session not found");
+    }
+    sendError(res, {
+      code:
+        status === 403
+          ? "FORBIDDEN"
+          : status === 503
+            ? "RAG_SESSION_DELETE_RETRYABLE"
+            : "RAG_SESSION_DELETE_FAILED",
+      message:
+        status === 503
+          ? "Session deletion did not complete. Retry the request."
+          : error.message || "Failed to delete chat session.",
+      status,
+    });
+  }
+});
+
+  return router;
+};
+
+const router = createRagRouter();
 
 export default router;

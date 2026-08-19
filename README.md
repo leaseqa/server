@@ -72,20 +72,20 @@ These are exposed through:
 
 Requirements:
 
-- Node `20.x`
+- Node `24.x` (Node 26 is covered as a compatibility CI lane)
 - `npm`
 
 Setup:
 
 ```bash
 cp .env.example .env
-npm install
+npm ci
 npm run dev
 ```
 
 Default local server:
 
-- `http://localhost:4000`
+- `http://localhost:4050`
 
 Expected local client:
 
@@ -101,6 +101,11 @@ Expected local client:
 - `RAG_MILVUS_TOKEN`
 - `RAG_MILVUS_KNOWLEDGE_COLLECTION`
 - `RAG_MILVUS_SESSION_COLLECTION`
+- `RAG_CORPUS_MANIFEST` (optional; defaults to `corpus_manifest.csv` under the corpus root)
+- `RAG_INGEST_STATE_PATH` (optional; defaults to `.rag-knowledge-ingest-state.json`)
+- `RAG_EVAL_MIN_PASS_RATE` (committed default `0.90`)
+- `RAG_EVAL_MIN_SAFE_RATE` (committed default `0.98`)
+- `RAG_EVAL_OUTPUT` (optional JSON artifact path)
 - `GEMINI_API_KEY`
 - `GEMINI_CHAT_*`
 - `RAG_CHAT_*`
@@ -119,6 +124,52 @@ npm run ingest:rag
 npm run ingest:rag:reset
 npm run seed:demo-users
 ```
+
+## RAG lifecycle operations
+
+Delete a RAG session and its uploaded-source vectors with:
+
+```text
+DELETE /api/rag/sessions/:sessionId
+```
+
+The caller must own the authenticated session or present the same guest browser session. Deletion always attempts Milvus first and Mongo second. A `503 RAG_SESSION_DELETE_RETRYABLE` response means at least one store did not complete; retrying is safe. Mongo session records and guest RAG metadata expire after 30 days.
+
+Knowledge ingestion is content-addressed and resumable:
+
+```bash
+RAG_CORPUS_ROOT=/absolute/path/to/resources/rag-corpus/mass\ tenant\ rights npm run ingest:rag
+npm run ingest:rag -- --limit=5
+npm run ingest:rag:reset
+```
+
+`RAG_CORPUS_ROOT` takes precedence. Without it, the server discovers `../resources/rag-corpus/mass tenant rights` from either the original checkout or an isolated `.worktrees/*` checkout. Set the variable explicitly in deployed environments where the corpus is mounted elsewhere. The resolved worktree path is never persisted in production configuration; only the runtime manifest path appears in the local ingest-state file.
+
+Each ingest computes `sha256(manifest bytes + sorted source hashes)`, writes to `leaseqa_knowledge_chunks_<version-prefix>`, flushes and loads the complete staging collection, then atomically moves the stable alias configured by `RAG_MILVUS_KNOWLEDGE_COLLECTION`. Old versioned collections are removed only after activation. `--limit` leaves staging state without activating a partial corpus; a later run resumes it. `--reset` restarts only the current staging version and does not delete the active alias target.
+
+For deployments where `RAG_MILVUS_KNOWLEDGE_COLLECTION` is still a physical legacy collection, migrate without overwriting it:
+
+1. Set `RAG_MILVUS_KNOWLEDGE_COLLECTION` to a new unused stable alias, for example `leaseqa_knowledge`.
+2. Run `npm run ingest:rag` and verify the emitted `corpusVersion`, `collectionName`, and `alias` JSON.
+3. Deploy readers with the same alias setting.
+4. Remove the legacy physical collection only after the new alias has served verified queries.
+
+Run the deterministic contract/evaluation layer locally with no provider credentials:
+
+```bash
+npm run test:rag
+node scripts/run-rag-eval.js --help
+```
+
+The credentialed runner targets a live server and always writes a JSON artifact containing per-case latency, source matching, citation validity, abstention, content safety, and the aggregate pass/safe rates:
+
+```bash
+RAG_EVAL_BASE_URL=http://127.0.0.1:4050 \
+RAG_EVAL_OUTPUT=artifacts/rag-eval.json \
+npm run eval:rag
+```
+
+It exits `1` below pass rate `0.90` or safe rate `0.98`. GitHub's manually dispatched `Live RAG Evaluation` workflow requires its dedicated Mongo, Gemini, session-secret, and Milvus secrets and uploads the artifact even when the gate fails.
 
 ## Verification Used for the Current Release
 

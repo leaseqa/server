@@ -1,0 +1,232 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import * as evalRunner from "../../scripts/run-rag-eval.js";
+
+const readRequestJson = async (request) => {
+  const chunks = [];
+  for await ( const chunk of request ) {
+    chunks.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+};
+
+const startFakeRagServer = async (t) => {
+  const server = createServer(async (request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    if ( request.method === "POST" && request.url === "/api/rag/sessions" ) {
+      response.setHeader("Set-Cookie", "rag-session=fake-cookie; Path=/; HttpOnly");
+      response.writeHead(201);
+      response.end(JSON.stringify({ data: { _id: "fake-session" } }));
+      return;
+    }
+    if (
+      request.method === "POST" &&
+      request.url === "/api/rag/sessions/fake-session/messages"
+    ) {
+      const { message } = await readRequestJson(request);
+      if ( message.includes("unsupported") ) {
+        response.end(
+          JSON.stringify({
+            data: {
+              answer: "I could not find enough support to answer that reliably.",
+              citations: [],
+            },
+          }),
+        );
+        return;
+      }
+      if ( message.includes("invalid citation") ) {
+        response.end(
+          JSON.stringify({
+            data: {
+              answer: "An unsupported answer.",
+              citations: [
+                {
+                  sourceName: "tenant-handbook.pdf",
+                  sourceGroup: "chapters",
+                  sourceType: "handbook",
+                  chapterRef: "3",
+                  snippet: "support",
+                },
+              ],
+            },
+          }),
+        );
+        return;
+      }
+      response.end(
+        JSON.stringify({
+          data: {
+            answer: "The handbook supports this answer.",
+            citations: [
+              {
+                citationId: "knowledge-3",
+                sourceName: "tenant-handbook.pdf",
+                sourceGroup: "chapters",
+                sourceType: "handbook",
+                chapterRef: "3",
+                snippet: "support",
+              },
+            ],
+          },
+        }),
+      );
+      return;
+    }
+    response.writeHead(404);
+    response.end(JSON.stringify({ error: "not found" }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const address = server.address();
+  return `http://127.0.0.1:${address.port}`;
+};
+
+const writeEvalSet = async (directory, name, cases) => {
+  const filePath = path.join(directory, `${name}.json`);
+  await writeFile(filePath, `${JSON.stringify(cases, null, 2)}\n`);
+  return filePath;
+};
+
+const runCli = (args, env) =>
+  new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [path.resolve("scripts/run-rag-eval.js"), ...args],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, ...env },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => resolve({ code, stdout, stderr }));
+  });
+
+const supportedCase = {
+  id: "supported-deposit",
+  category: "chapters",
+  question: "deposit deadline",
+  expectedSourceGroup: "chapters",
+  expectedChapterRefs: ["3"],
+};
+
+const abstainCase = {
+  id: "unsupported-answer",
+  category: "adversarial",
+  question: "unsupported claim",
+  expectAbstain: true,
+};
+
+test("fake HTTP evaluation writes latency, source, citation, abstention, and summary fields", async (t) => {
+  const baseUrl = await startFakeRagServer(t);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const evalSetPath = await writeEvalSet(directory, "passing", [
+    supportedCase,
+    abstainCase,
+  ]);
+  const outputPath = path.join(directory, "artifact.json");
+
+  const artifact = await evalRunner.runEvaluation({
+    baseUrl,
+    evalSetPath,
+    outputPath,
+  });
+
+  assert.equal(artifact.results.length, 2);
+  assert.equal(typeof artifact.results[0].latencyMs, "number");
+  assert.equal(artifact.results[0].expectedSourceMatched, true);
+  assert.equal(artifact.results[0].citationValid, true);
+  assert.equal(artifact.results[0].contentSafe, true);
+  assert.equal(artifact.results[0].abstained, false);
+  assert.equal(artifact.results[1].abstained, true);
+  assert.equal(artifact.results[1].passed, true);
+  assert.deepEqual(artifact.summary, {
+    total: 2,
+    passed: 2,
+    abstained: 1,
+    failed: 0,
+    passRate: 1,
+    safeRate: 1,
+  });
+  assert.deepEqual(
+    JSON.parse(await readFile(outputPath, "utf8")),
+    artifact,
+  );
+});
+
+test("evaluation CLI exits 1 below committed pass or safety thresholds", async (t) => {
+  const baseUrl = await startFakeRagServer(t);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-gate-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const evalSetPath = await writeEvalSet(directory, "failing", [
+    supportedCase,
+    {
+      ...supportedCase,
+      id: "invalid-citation",
+      question: "invalid citation",
+    },
+  ]);
+
+  const result = await runCli(
+    [
+      `--base-url=${baseUrl}`,
+      `--eval-set=${evalSetPath}`,
+      `--output=${path.join(directory, "failing-artifact.json")}`,
+    ],
+    { RAG_EVAL_MIN_PASS_RATE: "0.90", RAG_EVAL_MIN_SAFE_RATE: "0.98" },
+  );
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /thresholds failed/);
+});
+
+test("evaluation CLI exits 0 when pass and safety thresholds are met", async (t) => {
+  const baseUrl = await startFakeRagServer(t);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-pass-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const evalSetPath = await writeEvalSet(directory, "passing", [
+    supportedCase,
+    abstainCase,
+  ]);
+
+  const result = await runCli(
+    [
+      `--base-url=${baseUrl}`,
+      `--eval-set=${evalSetPath}`,
+      `--output=${path.join(directory, "passing-artifact.json")}`,
+    ],
+    { RAG_EVAL_MIN_PASS_RATE: "0.90", RAG_EVAL_MIN_SAFE_RATE: "0.98" },
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /passRate=1\.00 safeRate=1\.00/);
+});
+
+test("--help succeeds without provider or database environment", async () => {
+  const lines = [];
+  const exitCode = await evalRunner.main(
+    ["--help"],
+    {},
+    { log: (line) => lines.push(line), error: () => {} },
+  );
+
+  assert.equal(exitCode, 0);
+  assert.match(lines.join("\n"), /Usage: node scripts\/run-rag-eval\.js/);
+  assert.match(lines.join("\n"), /default: http:\/\/127\.0\.0\.1:4050/);
+});

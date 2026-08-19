@@ -23,8 +23,17 @@ const main = async () => {
   await mongoose.connect(process.env.DATABASE_CONNECTION_STRING);
   try {
     const options = parseArguments(process.argv.slice(2));
-    await ingestKnowledgeCorpus(options);
-    console.log("Knowledge corpus ingestion complete.");
+    const state = await ingestKnowledgeCorpus(options);
+    console.log(
+      JSON.stringify({
+        event: "rag_ingest_complete",
+        status: state.status,
+        corpusVersion: state.corpusVersion,
+        collectionName: state.collectionName,
+        alias: state.alias,
+        nextIndex: state.nextIndex,
+      }),
+    );
   } finally {
     await mongoose.disconnect();
   }

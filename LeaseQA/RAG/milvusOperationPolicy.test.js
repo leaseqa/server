@@ -8,8 +8,12 @@ import {
 } from "@zilliz/milvus2-sdk-node";
 
 import {
+  activateCollectionAlias,
   createMilvusClient,
   ensureCollectionLoaded,
+  flushCollection,
+  getAliasTarget,
+  listCollections,
   runMilvusMutation,
   runMilvusRead,
 } from "./milvus.js";
@@ -241,4 +245,115 @@ test("ensureCollectionLoaded throws stable RAG_TIMEOUT at its absolute deadline"
   assert.equal(loadAttempts, 1);
   assert.deepEqual(stateTimeouts, [400, 100]);
   assert.deepEqual(sleeps, [200]);
+});
+
+test("alias discovery is a retryable read with the configured deadline", async () => {
+  const requests = [];
+  const client = {
+    async describeAlias(request) {
+      requests.push(request);
+      if ( requests.length === 1 ) {
+        throw Object.assign(new Error("14 UNAVAILABLE"), { code: 14 });
+      }
+      return { collection: "knowledge_version_a" };
+    },
+  };
+
+  const target = await getAliasTarget({
+    config,
+    alias: "knowledge",
+    client,
+    retryPolicy: { sleep: async () => {}, random: () => 0.5 },
+  });
+
+  assert.equal(target, "knowledge_version_a");
+  assert.deepEqual(requests, [
+    { alias: "knowledge", collection_name: "knowledge", timeout: 10_000 },
+    { alias: "knowledge", collection_name: "knowledge", timeout: 10_000 },
+  ]);
+});
+
+test("alias activation performs exactly one non-retried mutation", async () => {
+  const mutations = [];
+  const client = {
+    describeAlias: async () => ({ collection: "knowledge_version_a" }),
+    alterAlias: async (request) => {
+      mutations.push(request);
+      throw new Error("activation failed");
+    },
+  };
+
+  await assert.rejects(
+    activateCollectionAlias({
+      config,
+      alias: "knowledge",
+      collectionName: "knowledge_version_b",
+      client,
+    }),
+    /activation failed/,
+  );
+  assert.deepEqual(mutations, [
+    {
+      alias: "knowledge",
+      collection_name: "knowledge_version_b",
+      timeout: 10_000,
+    },
+  ]);
+});
+
+test("missing aliases are created once and collection topology uses read policy", async () => {
+  const calls = [];
+  const client = {
+    describeAlias: async () => ({
+      error_code: "UnexpectedError",
+      reason: "alias not found",
+    }),
+    createAlias: async (request) => {
+      calls.push(["createAlias", request]);
+      return { error_code: "Success" };
+    },
+    showCollections: async (request) => {
+      calls.push(["showCollections", request]);
+      return {
+        status: { error_code: "Success" },
+        data: [{ name: "knowledge_version_b" }],
+      };
+    },
+    flushSync: async (request) => {
+      calls.push(["flushSync", request]);
+      return { error_code: "Success" };
+    },
+  };
+
+  await activateCollectionAlias({
+    config,
+    alias: "knowledge",
+    collectionName: "knowledge_version_b",
+    client,
+  });
+  assert.deepEqual(
+    await listCollections({ config, client }),
+    ["knowledge_version_b"],
+  );
+  await flushCollection({
+    config,
+    collectionName: "knowledge_version_b",
+    client,
+  });
+
+  assert.deepEqual(calls, [
+    [
+      "createAlias",
+      {
+        alias: "knowledge",
+        collection_name: "knowledge_version_b",
+        timeout: 10_000,
+      },
+    ],
+    ["showCollections", { timeout: 10_000 }],
+    [
+      "flushSync",
+      { collection_names: ["knowledge_version_b"], timeout: 10_000 },
+    ],
+  ]);
 });

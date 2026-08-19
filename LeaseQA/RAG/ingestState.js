@@ -1,6 +1,19 @@
+import { createHash } from "node:crypto";
 import fs from "fs/promises";
 
-const STATE_VERSION = 1;
+const STATE_VERSION = 2;
+
+const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+
+export const buildCorpusIdentity = ({ manifestContents, sourceHashes }) => {
+  const sortedSourceHashes = [...sourceHashes].sort();
+  return {
+    manifestSha256: sha256(manifestContents),
+    corpusVersion: sha256(
+      `${manifestContents}\n${sortedSourceHashes.join("\n")}`,
+    ),
+  };
+};
 
 const buildInitialState = ({ collectionName, manifestPath }) => ({
   version: STATE_VERSION,
@@ -36,8 +49,15 @@ export const writeIngestState = async ({ statePath, state }) => {
     version: STATE_VERSION,
     updatedAt: new Date().toISOString(),
   };
-  await fs.writeFile(statePath, `${JSON.stringify(nextState, null, 2)}\n`);
+  const temporaryPath = `${statePath}.${process.pid}.tmp`;
+  await fs.writeFile(temporaryPath, `${JSON.stringify(nextState, null, 2)}\n`);
+  await fs.rename(temporaryPath, statePath);
   return nextState;
+};
+
+export const readActiveCorpusVersion = async ({ statePath }) => {
+  const state = await readIngestState({ statePath });
+  return state?.status === "active" ? state.corpusVersion || null : null;
 };
 
 export const clearIngestState = async ({ statePath }) => {

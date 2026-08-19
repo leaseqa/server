@@ -1,5 +1,18 @@
+import { existsSync } from "node:fs";
 import path from "path";
+import { fileURLToPath } from "node:url";
 import { getGeminiChatConfig } from "../shared/geminiOpenAI.js";
+
+const serverRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
+const CORPUS_RELATIVE_PATH = path.join(
+  "resources",
+  "rag-corpus",
+  "mass tenant rights",
+);
 
 const parseInteger = (value, fallback) => {
   const parsed = Number.parseInt(value || "", 10);
@@ -19,23 +32,43 @@ const requireEnv = (name) => {
   return value;
 };
 
+export const resolveCorpusRoot = ({
+  env = process.env,
+  serverRoot: providedServerRoot = serverRoot,
+  existsFn = existsSync,
+} = {}) => {
+  if ( env.RAG_CORPUS_ROOT ) {
+    return path.resolve(env.RAG_CORPUS_ROOT);
+  }
+
+  let current = path.resolve(providedServerRoot);
+  while ( true ) {
+    const parent = path.dirname(current);
+    const candidate = path.join(parent, CORPUS_RELATIVE_PATH);
+    if ( existsFn(candidate) ) {
+      return candidate;
+    }
+    if ( parent === current ) {
+      break;
+    }
+    current = parent;
+  }
+
+  return path.resolve(providedServerRoot, "..", CORPUS_RELATIVE_PATH);
+};
+
 export const getRagConfig = () => {
   const chat = getGeminiChatConfig();
+  const corpusRoot = resolveCorpusRoot();
 
   return {
     chatApiKey: chat.apiKey,
     chatModel: chat.model,
     chatBaseUrl: chat.baseURL,
-    corpusRoot:
-      process.env.RAG_CORPUS_ROOT ||
-      path.resolve(process.cwd(), "../source/mass tenant rights"),
+    corpusRoot,
     manifestPath:
       process.env.RAG_CORPUS_MANIFEST ||
-      path.resolve(
-        process.env.RAG_CORPUS_ROOT ||
-        path.resolve(process.cwd(), "../source/mass tenant rights"),
-        "corpus_manifest.csv",
-      ),
+      path.resolve(corpusRoot, "corpus_manifest.csv"),
     ingestStatePath:
       process.env.RAG_INGEST_STATE_PATH ||
       path.resolve(process.cwd(), ".rag-knowledge-ingest-state.json"),

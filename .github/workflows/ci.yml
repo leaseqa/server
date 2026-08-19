@@ -38,6 +38,10 @@ jobs:
         working-directory: leaseqa-server
         run: npm run lint
 
+      - name: Run deterministic RAG contract suite
+        working-directory: leaseqa-server
+        run: npm run test:rag
+
       - name: Run server test suite
         working-directory: leaseqa-server
         run: npm test

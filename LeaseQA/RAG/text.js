@@ -74,6 +74,38 @@ export const extractTextFromUpload = async ({
   );
 };
 
+export const extractCorpusPages = async (
+  { buffer, originalName, mimeType },
+  { PDFParseClass = PDFParse } = {},
+) => {
+  const extension = getExtension(originalName);
+  if ( PDF_EXTENSIONS.has(extension) || mimeType === "application/pdf" ) {
+    const parser = new PDFParseClass({ data: buffer });
+    try {
+      const result = await parser.getText();
+      const pages = (result.pages || [])
+        .map((page) => ({
+          text: normalizeText(page.text || ""),
+          pageNumber: page.num,
+        }))
+        .filter((page) => page.text.length > 0);
+      if ( pages.length === 0 ) {
+        ensureNonEmpty("", originalName);
+      }
+      return pages;
+    } finally {
+      await parser.destroy();
+    }
+  }
+
+  return [
+    {
+      text: await extractTextFromUpload({ buffer, originalName, mimeType }),
+      pageNumber: null,
+    },
+  ];
+};
+
 export const extractTextFromFilePath = async (filePath) => {
   const buffer = await fs.readFile(filePath);
   const fileName = path.basename(filePath);

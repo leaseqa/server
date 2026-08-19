@@ -21,6 +21,10 @@ const OUTPUT_FIELDS = [
   "session_id",
   "title_hint",
   "priority",
+  "source_hash",
+  "page",
+  "section",
+  "corpus_version",
 ];
 
 const TEXT_FIELD = "text";
@@ -259,6 +263,30 @@ const createCollectionIfMissing = async ({
             max_length: 16,
           },
           {
+            name: "source_hash",
+            data_type: DataType.VarChar,
+            max_length: 64,
+            default_value: "",
+          },
+          {
+            name: "page",
+            data_type: DataType.VarChar,
+            max_length: 32,
+            default_value: "",
+          },
+          {
+            name: "section",
+            data_type: DataType.VarChar,
+            max_length: 512,
+            default_value: "",
+          },
+          {
+            name: "corpus_version",
+            data_type: DataType.VarChar,
+            max_length: 64,
+            default_value: "",
+          },
+          {
             name: DENSE_FIELD,
             data_type: DataType.FloatVector,
             dim: dimension,
@@ -377,6 +405,107 @@ export const resetCollection = async ({
   collectionSparseSupport.delete(collectionName);
 };
 
+export const flushCollection = async ({
+                                        config,
+                                        collectionName,
+                                        client: providedClient,
+                                      }) => {
+  const client = providedClient || createClient(config);
+  return runMilvusMutation({
+    config,
+    client,
+    method: "flushSync",
+    request: { collection_names: [collectionName] },
+  });
+};
+
+const isMissingAlias = (value) =>
+  /alias.*(?:not found|not exist|can't find)|(?:not found|not exist).*alias/i.test(
+    String(value || ""),
+  );
+
+export const getAliasTarget = async ({
+                                      config,
+                                      alias,
+                                      client: providedClient,
+                                      retryPolicy,
+                                    }) => {
+  const client = providedClient || createClient(config);
+  try {
+    const response = await runMilvusRead({
+      config,
+      client,
+      method: "describeAlias",
+      request: { alias, collection_name: alias },
+      retryPolicy,
+    });
+    const status = response?.status || response;
+    if ( status?.error_code && status.error_code !== ErrorCode.SUCCESS ) {
+      if ( isMissingAlias(status.reason) ) {
+        return null;
+      }
+      assertSuccessfulStatus(response);
+    }
+    return response.collection || response.collection_name || null;
+  } catch ( error ) {
+    if ( isMissingAlias(error?.message) ) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+export const activateCollectionAlias = async ({
+                                               config,
+                                               alias,
+                                               collectionName,
+                                               client: providedClient,
+                                               retryPolicy,
+                                             }) => {
+  const client = providedClient || createClient(config);
+  const currentTarget = await getAliasTarget({
+    config,
+    alias,
+    client,
+    retryPolicy,
+  });
+  if ( currentTarget === collectionName ) {
+    return currentTarget;
+  }
+  await runMilvusMutation({
+    config,
+    client,
+    method: currentTarget ? "alterAlias" : "createAlias",
+    request: {
+      alias,
+      collection_name: collectionName,
+    },
+  });
+  return currentTarget;
+};
+
+export const listCollections = async ({
+                                       config,
+                                       client: providedClient,
+                                       retryPolicy,
+                                     }) => {
+  const client = providedClient || createClient(config);
+  const response = await runMilvusRead({
+    config,
+    client,
+    method: "showCollections",
+    request: {},
+    retryPolicy,
+  });
+  assertSuccessfulStatus(response);
+  if ( Array.isArray(response.collection_names) ) {
+    return response.collection_names;
+  }
+  return (response.data || [])
+    .map((collection) => collection.name || collection.collection_name)
+    .filter(Boolean);
+};
+
 export const hasChunkCollection = async ({
                                           config,
                                           collectionName,
@@ -427,6 +556,24 @@ export const deleteChunkRows = async ({
     },
   });
 };
+
+const escapeMilvusString = (value) =>
+  String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+
+export const deleteSessionChunks = ({
+                                      config,
+                                      collectionName = config.sessionCollection,
+                                      sessionId,
+                                      client,
+                                      retryPolicy,
+                                    }) =>
+  deleteChunkRows({
+    config,
+    collectionName,
+    filter: `session_id == "${escapeMilvusString(sessionId)}"`,
+    client,
+    retryPolicy,
+  });
 
 export const searchChunks = async ({
                                      config,

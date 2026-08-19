@@ -1,0 +1,79 @@
+name: Live RAG Evaluation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-rag-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_CONNECTION_STRING: ${{ secrets.RAG_EVAL_DATABASE_CONNECTION_STRING }}
+      SESSION_SECRET: ${{ secrets.RAG_EVAL_SESSION_SECRET }}
+      GEMINI_API_KEY: ${{ secrets.RAG_EVAL_GEMINI_API_KEY }}
+      RAG_MILVUS_ADDRESS: ${{ secrets.RAG_EVAL_MILVUS_ADDRESS }}
+      RAG_MILVUS_TOKEN: ${{ secrets.RAG_EVAL_MILVUS_TOKEN }}
+      RAG_EVAL_MIN_PASS_RATE: "0.90"
+      RAG_EVAL_MIN_SAFE_RATE: "0.98"
+      RAG_EVAL_OUTPUT: artifacts/rag-eval.json
+      SERVER_ENV: development
+      PORT: "4050"
+      CI_DISABLE_RATE_LIMIT: "true"
+      GOOGLE_CLIENT_ID: live-eval-placeholder
+      GOOGLE_CLIENT_SECRET: live-eval-placeholder
+    steps:
+      - name: Check out server
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Require live evaluation credentials
+        shell: bash
+        run: |
+          test -n "$DATABASE_CONNECTION_STRING"
+          test -n "$SESSION_SECRET"
+          test -n "$GEMINI_API_KEY"
+          test -n "$RAG_MILVUS_ADDRESS"
+
+      - name: Start local server
+        shell: bash
+        run: |
+          npm start > "$RUNNER_TEMP/leaseqa-rag-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/leaseqa-rag-server.pid"
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4050/api/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/leaseqa-rag-server.log"
+          exit 1
+
+      - name: Run credentialed live RAG evaluation
+        run: node scripts/run-rag-eval.js --base-url=http://127.0.0.1:4050
+
+      - name: Upload evaluation artifact
+        if: always()
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: rag-live-eval-${{ github.run_id }}
+          path: artifacts/rag-eval.json
+          if-no-files-found: warn
+
+      - name: Stop local server
+        if: always()
+        shell: bash
+        run: |
+          if test -f "$RUNNER_TEMP/leaseqa-rag-server.pid"; then
+            kill "$(cat "$RUNNER_TEMP/leaseqa-rag-server.pid")" || true
+          fi

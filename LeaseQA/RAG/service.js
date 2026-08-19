@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "path";
 import fs from "fs/promises";
 import { v4 as uuidv4 } from "uuid";
@@ -11,7 +12,12 @@ import {
   getEvidenceId,
 } from "./prompt.js";
 import { runBoundedOperation } from "./operationPolicy.js";
-import { createTextPreview, extractTextFromUpload, splitTextToChunks, } from "./text.js";
+import {
+  createTextPreview,
+  extractCorpusPages,
+  extractTextFromUpload,
+  splitTextToChunks,
+} from "./text.js";
 import { buildKnowledgeSearchPlan, buildRetrievalQuestion, rankKnowledgeChunks, } from "./retrievalPolicy.js";
 import {
   hasReliableCitationSupport,
@@ -20,12 +26,23 @@ import {
 } from "./citationSelection.js";
 import {
   deleteChunkRows,
+  deleteSessionChunks as deleteMilvusSessionChunks,
+  ensureCollectionLoaded,
+  flushCollection,
+  getAliasTarget,
   hasChunkCollection,
   insertChunkRows,
+  listCollections,
   resetCollection,
   searchHybridChunks,
+  activateCollectionAlias,
 } from "./milvus.js";
-import { clearIngestState, createInitialIngestState, readIngestState, writeIngestState, } from "./ingestState.js";
+import {
+  buildCorpusIdentity,
+  readActiveCorpusVersion,
+  readIngestState,
+  writeIngestState,
+} from "./ingestState.js";
 import { createActivity } from "../Activity/dao.js";
 import { buildActivity } from "../Activity/service.js";
 
@@ -217,6 +234,7 @@ const createUploadedSourceMetadata = ({
 });
 
 const buildCitation = (chunk) => ({
+  citationId: chunk.id || getChunkKey(chunk),
   sourceName: chunk.source_name,
   sourceGroup: chunk.source_group,
   sourceType: chunk.source_type,
@@ -552,11 +570,48 @@ export const getViewerSession = async ({
   return session;
 };
 
+const createRetryableSessionDeleteError = (cause) => {
+  const error = new Error("Session deletion did not complete", { cause });
+  error.code = "RAG_SESSION_DELETE_RETRYABLE";
+  error.retryable = true;
+  return error;
+};
+
+export const deleteViewerSession = async (
+  { sessionId, userId, clientSessionId },
+  dependencies = {},
+) => {
+  const config = dependencies.config || getRagConfig();
+  const findSessionById = dependencies.findSessionById || dao.findSessionById;
+  const deleteSessionChunks =
+    dependencies.deleteSessionChunks ||
+    ((id) =>
+      deleteMilvusSessionChunks({
+        config,
+        collectionName: config.sessionCollection,
+        sessionId: id,
+        retryPolicy: dependencies.retryPolicy,
+      }));
+  const deleteSession = dependencies.deleteSession || dao.deleteSession;
+  const session = await findSessionById(sessionId);
+  ensureViewerCanAccess({ session, userId, clientSessionId });
+
+  try {
+    await deleteSessionChunks(sessionId);
+    await deleteSession(sessionId);
+  } catch ( cause ) {
+    throw createRetryableSessionDeleteError(cause);
+  }
+
+  return { sessionId, deleted: true };
+};
+
 export const answerQuestion = async ({
                                        sessionId,
                                        userId,
                                        clientSessionId,
                                        question,
+                                       requestId,
                                      }, dependencies = {}) => {
   const config = dependencies.config || getRagConfig();
   const findSessionById = dependencies.findSessionById || dao.findSessionById;
@@ -564,23 +619,61 @@ export const answerQuestion = async ({
   const searchHybridChunksFn =
     dependencies.searchHybridChunks || searchHybridChunks;
   const retryPolicy = dependencies.retryPolicy;
-  const session = await findSessionById(sessionId);
-  ensureViewerCanAccess({ session, userId, clientSessionId });
-
-  if ( session.status !== "ready" ) {
-    throw new Error("Session is not ready yet");
+  const clock = dependencies.clock || { now: () => performance.now() };
+  const logger = dependencies.logger || console;
+  const readCorpusVersion =
+    dependencies.readActiveCorpusVersion || readActiveCorpusVersion;
+  let retrievalStartedAt = null;
+  let retrievalDurationMs = null;
+  let providerStartedAt = null;
+  let providerDurationMs = 0;
+  let selectedCitationIds = [];
+  let abstained = false;
+  let corpusVersion = null;
+  try {
+    corpusVersion = await readCorpusVersion({
+      statePath: config.ingestStatePath,
+    });
+  } catch ( error ) {
+    corpusVersion = null;
   }
+  const emitMetric = (errorCode = null) => {
+    const metric = {
+      event: "rag_request",
+      requestId: requestId || null,
+      retrievalDurationMs,
+      providerDurationMs,
+      selectedCitationIds,
+      corpusVersion,
+      abstained,
+      errorCode,
+    };
+    try {
+      logger.info(JSON.stringify(metric));
+    } catch ( error ) {
+      // Observability must not change request behavior.
+    }
+  };
 
-  const embeddings =
-    dependencies.embeddingsClient || createEmbeddingsClient(config);
-  const chatModel = dependencies.chatModel || createChatClient(config);
-  const retrievalQuestion = buildRetrievalQuestion({
-    question,
-    sourceTextPreview: session.sourceTextPreview,
-    messages: session.messages,
-  });
-  const questionVector = await embeddings.embedQuery(retrievalQuestion);
-  const [sessionChunks, knowledgeChunks] = await Promise.all([
+  try {
+    const session = await findSessionById(sessionId);
+    ensureViewerCanAccess({ session, userId, clientSessionId });
+
+    if ( session.status !== "ready" ) {
+      throw new Error("Session is not ready yet");
+    }
+
+    const embeddings =
+      dependencies.embeddingsClient || createEmbeddingsClient(config);
+    const chatModel = dependencies.chatModel || createChatClient(config);
+    const retrievalQuestion = buildRetrievalQuestion({
+      question,
+      sourceTextPreview: session.sourceTextPreview,
+      messages: session.messages,
+    });
+    retrievalStartedAt = clock.now();
+    const questionVector = await embeddings.embedQuery(retrievalQuestion);
+    const [sessionChunks, knowledgeChunks] = await Promise.all([
     searchHybridChunksFn({
       config,
       collectionName: config.sessionCollection,
@@ -597,7 +690,12 @@ export const answerQuestion = async ({
       searchHybridChunksFn,
       retryPolicy,
     }),
-  ]);
+    ]);
+    retrievalDurationMs = Math.max(0, clock.now() - retrievalStartedAt);
+    corpusVersion =
+      corpusVersion ||
+      knowledgeChunks.find((chunk) => chunk.corpus_version)?.corpus_version ||
+      null;
 
   const history = session.messages
     .slice(-config.maxHistoryMessages)
@@ -627,26 +725,32 @@ export const answerQuestion = async ({
     history,
     supportChunks: supportedCitationChunks,
   });
-  const candidateAnswer =
-    candidateCitations.length > 0
-      ? normalizeAssistantAnswer({
-        rawAnswer: getMessageText(
-          await invokeChatModel({
-            config,
-            chatModel,
-            messages,
-            retryPolicy,
-          }),
-        ),
-        citationIdToIndex,
-      })
-      : buildInsufficientSupportAnswer();
+  let candidateAnswer;
+  if ( candidateCitations.length > 0 ) {
+    providerStartedAt = clock.now();
+    const providerResponse = await invokeChatModel({
+      config,
+      chatModel,
+      messages,
+      retryPolicy,
+    });
+    providerDurationMs = Math.max(0, clock.now() - providerStartedAt);
+    providerStartedAt = null;
+    candidateAnswer = normalizeAssistantAnswer({
+      rawAnswer: getMessageText(providerResponse),
+      citationIdToIndex,
+    });
+  } else {
+    candidateAnswer = buildInsufficientSupportAnswer();
+  }
   const finalized = finalizeAssistantCitations({
     structuredAnswer: candidateAnswer,
     candidateCitations,
   });
   const structuredAnswer = finalized.structuredAnswer;
   const citations = finalized.citations;
+  selectedCitationIds = citations.map((citation) => citation.citationId);
+  abstained = citations.length === 0;
 
   const updatedSession = await appendMessages(sessionId, [
     {
@@ -666,11 +770,22 @@ export const answerQuestion = async ({
     },
   ]);
 
-  return {
-    session: updatedSession,
-    answer: structuredAnswer.content,
-    citations,
-  };
+    emitMetric();
+    return {
+      session: updatedSession,
+      answer: structuredAnswer.content,
+      citations,
+    };
+  } catch ( error ) {
+    if ( retrievalStartedAt !== null && retrievalDurationMs === null ) {
+      retrievalDurationMs = Math.max(0, clock.now() - retrievalStartedAt);
+    }
+    if ( providerStartedAt !== null ) {
+      providerDurationMs = Math.max(0, clock.now() - providerStartedAt);
+    }
+    emitMetric(error?.code || "RAG_REQUEST_FAILED");
+    throw error;
+  }
 };
 
 export const createSessionWithOptionalInitialAnswer = async ({
@@ -758,9 +873,7 @@ const parseManifestLine = (line) => {
   return values;
 };
 
-export const loadCorpusManifest = async () => {
-  const config = getRagConfig();
-  const raw = await fs.readFile(config.manifestPath, "utf-8");
+const parseCorpusManifest = (raw) => {
   const [headerLine, ...lines] = raw.split(/\r?\n/).filter(Boolean);
   const headers = parseManifestLine(headerLine);
 
@@ -776,9 +889,21 @@ export const loadCorpusManifest = async () => {
   });
 };
 
-const buildKnowledgeChunkRows = ({ item, documents, vectors }) =>
+export const loadCorpusManifest = async ({ manifestPath } = {}) => {
+  const resolvedManifestPath = manifestPath || getRagConfig().manifestPath;
+  const raw = await fs.readFile(resolvedManifestPath, "utf-8");
+  return parseCorpusManifest(raw);
+};
+
+const buildKnowledgeChunkRows = ({
+  item,
+  documents,
+  vectors,
+  sourceHash,
+  corpusVersion,
+}) =>
   documents.map((document, index) => ({
-    id: `kb:${item.file_name}:${index}`,
+    id: `kb:${corpusVersion.slice(0, 12)}:${sourceHash.slice(0, 12)}:${index}`,
     text: document.pageContent,
     source_name: item.file_name,
     source_group: item.source_group,
@@ -789,62 +914,144 @@ const buildKnowledgeChunkRows = ({ item, documents, vectors }) =>
     session_id: "",
     title_hint: item.title_hint || item.file_name,
     priority: item.priority || "",
+    source_hash: sourceHash,
+    page: String(document.metadata.pageNumber || document.metadata.page || ""),
+    section:
+      document.metadata.section ||
+      item.section ||
+      item.title_hint ||
+      item.chapter_ref ||
+      "",
+    corpus_version: corpusVersion,
     embedding: vectors[index],
   }));
 
-const buildFreshIngestState = (config) =>
-  createInitialIngestState({
-    collectionName: config.knowledgeCollection,
-    manifestPath: config.manifestPath,
-  });
-
-const shouldRestartIngest = ({ state, config, collectionExists, reset }) => {
-  if ( reset || !state ) {
-    return true;
-  }
-  if ( !collectionExists ) {
-    return true;
-  }
-  if ( state.collectionName !== config.knowledgeCollection ) {
-    return true;
-  }
-  if ( state.manifestPath !== config.manifestPath ) {
-    return true;
-  }
-  return false;
-};
+const hashBuffer = (buffer) =>
+  createHash("sha256").update(buffer).digest("hex");
 
 export const ingestKnowledgeCorpus = async ({
                                               reset = false,
                                               limit = null,
-                                            } = {}) => {
-  const config = getRagConfig();
-  const embeddings = createEmbeddingsClient(config);
-  const manifest = await loadCorpusManifest();
-  const collectionExists = await hasChunkCollection({
+                                            } = {}, dependencies = {}) => {
+  const config = dependencies.config || getRagConfig();
+  const readFile = dependencies.readFile || fs.readFile;
+  const extractPages =
+    dependencies.extractCorpusPages ||
+    (dependencies.extractTextFromUpload
+      ? async (input) => [
+          {
+            text: await dependencies.extractTextFromUpload(input),
+            pageNumber: null,
+          },
+        ]
+      : extractCorpusPages);
+  const splitText = dependencies.splitTextToChunks || splitTextToChunks;
+  const embeddings =
+    dependencies.embeddingsClient || createEmbeddingsClient(config);
+  const hasCollection =
+    dependencies.hasChunkCollection || hasChunkCollection;
+  const insertRows = dependencies.insertChunkRows || insertChunkRows;
+  const deleteRows = dependencies.deleteChunkRows || deleteChunkRows;
+  const resetCollectionFn = dependencies.resetCollection || resetCollection;
+  const flushCollectionFn = dependencies.flushCollection || flushCollection;
+  const loadCollectionFn =
+    dependencies.ensureCollectionLoaded || ensureCollectionLoaded;
+  const getAliasTargetFn = dependencies.getAliasTarget || getAliasTarget;
+  const activateAliasFn =
+    dependencies.activateCollectionAlias || activateCollectionAlias;
+  const listCollectionsFn = dependencies.listCollections || listCollections;
+  const readState = dependencies.readIngestState || readIngestState;
+  const writeState = dependencies.writeIngestState || writeIngestState;
+
+  const manifestContents = await readFile(config.manifestPath, "utf-8");
+  const manifest = parseCorpusManifest(manifestContents);
+  const sourceFiles = await Promise.all(
+    manifest.map(async (item) => {
+      const absolutePath = path.resolve(config.corpusRoot, item.file_path);
+      const buffer = await readFile(absolutePath);
+      return {
+        item,
+        absolutePath,
+        buffer,
+        sourceHash: hashBuffer(buffer),
+      };
+    }),
+  );
+  const identity = buildCorpusIdentity({
+    manifestContents,
+    sourceHashes: sourceFiles.map(({ sourceHash }) => sourceHash),
+  });
+  const alias = config.knowledgeCollection;
+  const collectionName = `${alias}_${identity.corpusVersion.slice(0, 12)}`;
+  const activeCollection = await getAliasTargetFn({ config, alias });
+  const previousState = await readState({ statePath: config.ingestStatePath });
+
+  if (
+    activeCollection === collectionName &&
+    previousState?.status === "active" &&
+    previousState.corpusVersion === identity.corpusVersion
+  ) {
+    return previousState;
+  }
+
+  if ( activeCollection === collectionName ) {
+    return writeState({
+      statePath: config.ingestStatePath,
+      state: {
+        status: "active",
+        alias,
+        collectionName,
+        corpusVersion: identity.corpusVersion,
+        manifestSha256: identity.manifestSha256,
+        manifestPath: config.manifestPath,
+        sourceHashes: sourceFiles.map(({ item, sourceHash }) => ({
+          filePath: item.file_path,
+          sha256: sourceHash,
+        })),
+        nextIndex: manifest.length,
+        lastCompletedFile: manifest.at(-1)?.file_name || null,
+        activatedAt: previousState?.activatedAt || new Date().toISOString(),
+        reconstructedAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  const stagingExists = await hasCollection({
     config,
-    collectionName: config.knowledgeCollection,
+    collectionName,
   });
-  const previousState = await readIngestState({
-    statePath: config.ingestStatePath,
-  });
+  const canResume =
+    !reset &&
+    stagingExists &&
+    previousState?.status === "staging" &&
+    previousState.corpusVersion === identity.corpusVersion &&
+    previousState.collectionName === collectionName;
+
+  if ( stagingExists && !canResume && activeCollection !== collectionName ) {
+    await resetCollectionFn({
+      config,
+      collectionName,
+    });
+  }
 
   let ingestState = previousState;
-  if (
-    shouldRestartIngest({
-      state: previousState,
-      config,
-      collectionExists,
-      reset,
-    })
-  ) {
-    await resetCollection({
-      config,
-      collectionName: config.knowledgeCollection,
-    });
-    ingestState = await writeIngestState({
+  if ( !canResume ) {
+    ingestState = await writeState({
       statePath: config.ingestStatePath,
-      state: buildFreshIngestState(config),
+      state: {
+        status: "staging",
+        alias,
+        collectionName,
+        corpusVersion: identity.corpusVersion,
+        manifestSha256: identity.manifestSha256,
+        manifestPath: config.manifestPath,
+        sourceHashes: sourceFiles.map(({ item, sourceHash }) => ({
+          filePath: item.file_path,
+          sha256: sourceHash,
+        })),
+        nextIndex: 0,
+        lastCompletedFile: null,
+      },
     });
   }
 
@@ -855,48 +1062,65 @@ export const ingestKnowledgeCorpus = async ({
       : manifest.length;
 
   for ( let index = startIndex; index < endIndex; index += 1 ) {
-    const item = manifest[index];
+    const { item, buffer, sourceHash } = sourceFiles[index];
     console.info(
       `[RAG ingest] ${index + 1}/${manifest.length} ${item.file_name}`,
     );
 
-    await deleteChunkRows({
-      config,
-      collectionName: config.knowledgeCollection,
-      filter: `file_path == "${item.file_path}"`,
-    });
+    if ( canResume && index === startIndex ) {
+      await deleteRows({
+        config,
+        collectionName,
+        filter: `file_path == "${item.file_path.replaceAll('"', '\\"')}"`,
+      });
+    }
 
-    const absolutePath = path.resolve(config.corpusRoot, item.file_path);
-    const text = await extractTextFromUpload({
-      buffer: await fs.readFile(absolutePath),
+    const pages = await extractPages({
+      buffer,
       originalName: item.file_name,
       mimeType: undefined,
     });
-    const documents = await splitTextToChunks({
-      text,
-      metadata: {
-        sourceName: item.file_name,
-        sourceGroup: item.source_group,
-        sourceType: item.source_type,
-        chapterRef: item.chapter_ref || null,
-        filePath: item.file_path,
-        titleHint: item.title_hint || item.file_name,
-        priority: item.priority || "",
-      },
-      chunkSize: config.chunkSize,
-      chunkOverlap: config.chunkOverlap,
-    });
+    const documents = (
+      await Promise.all(
+        pages.map(({ text, pageNumber }) =>
+          splitText({
+            text,
+            metadata: {
+              sourceName: item.file_name,
+              sourceGroup: item.source_group,
+              sourceType: item.source_type,
+              chapterRef: item.chapter_ref || null,
+              filePath: item.file_path,
+              titleHint: item.title_hint || item.file_name,
+              priority: item.priority || "",
+              sourceHash,
+              pageNumber,
+              section:
+                item.section || item.title_hint || item.chapter_ref || "",
+            },
+            chunkSize: config.chunkSize,
+            chunkOverlap: config.chunkOverlap,
+          }),
+        ),
+      )
+    ).flat();
     const vectors = await embeddings.embedDocuments(
       documents.map((document) => document.pageContent),
     );
-    await insertChunkRows({
+    await insertRows({
       config,
-      collectionName: config.knowledgeCollection,
-      rows: buildKnowledgeChunkRows({ item, documents, vectors }),
+      collectionName,
+      rows: buildKnowledgeChunkRows({
+        item,
+        documents,
+        vectors,
+        sourceHash,
+        corpusVersion: identity.corpusVersion,
+      }),
       dimension: vectors[0]?.length || 0,
     });
 
-    ingestState = await writeIngestState({
+    ingestState = await writeState({
       statePath: config.ingestStatePath,
       state: {
         ...ingestState,
@@ -906,7 +1130,51 @@ export const ingestKnowledgeCorpus = async ({
     });
   }
 
-  if ( endIndex >= manifest.length ) {
-    await clearIngestState({ statePath: config.ingestStatePath });
+  if ( endIndex < manifest.length ) {
+    return ingestState;
   }
+
+  await flushCollectionFn({ config, collectionName });
+  await loadCollectionFn({ config, collectionName });
+  await activateAliasFn({ config, alias, collectionName });
+
+  const activeState = await writeState({
+    statePath: config.ingestStatePath,
+    state: {
+      ...ingestState,
+      status: "active",
+      alias,
+      collectionName,
+      corpusVersion: identity.corpusVersion,
+      manifestSha256: identity.manifestSha256,
+      nextIndex: manifest.length,
+      activatedAt: new Date().toISOString(),
+    },
+  });
+
+  const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const versionedCollectionPattern = new RegExp(
+    `^${escapedAlias}_[a-f0-9]{12}$`,
+  );
+  const collections = await listCollectionsFn({ config });
+  for ( const oldCollection of collections ) {
+    if (
+      versionedCollectionPattern.test(oldCollection) &&
+      oldCollection !== collectionName
+    ) {
+      try {
+        await resetCollectionFn({ config, collectionName: oldCollection });
+      } catch ( error ) {
+        console.error(
+          JSON.stringify({
+            event: "rag_ingest_cleanup_failed",
+            collectionName: oldCollection,
+            errorCode: error?.code || "RAG_INGEST_CLEANUP_FAILED",
+          }),
+        );
+      }
+    }
+  }
+
+  return activeState;
 };

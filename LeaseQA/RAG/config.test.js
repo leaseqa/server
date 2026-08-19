@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { getRagConfig } from "./config.js";
+import * as ragConfig from "./config.js";
 
 const withEnv = (overrides, callback) => {
   const original = {
@@ -114,5 +115,38 @@ test("getRagConfig rejects non-positive timeout overrides in favor of bounded de
       assert.equal(config.chatTimeoutMs, 45_000);
       assert.equal(config.vectorTimeoutMs, 10_000);
     },
+  );
+});
+
+test("corpus root prefers an explicit environment override", () => {
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: { RAG_CORPUS_ROOT: "/srv/leaseqa-corpus" },
+      serverRoot: "/repo/.worktrees/server-engineering",
+      existsFn: () => false,
+    }),
+    "/srv/leaseqa-corpus",
+  );
+});
+
+test("corpus root discovery works from the original checkout and an isolated worktree", () => {
+  const corpusRoot = "/repo/resources/rag-corpus/mass tenant rights";
+  const existsFn = (candidate) => candidate === corpusRoot;
+
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/repo/server",
+      existsFn,
+    }),
+    corpusRoot,
+  );
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/repo/.worktrees/server-engineering",
+      existsFn,
+    }),
+    corpusRoot,
   );
 });

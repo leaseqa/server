@@ -16,3 +16,4 @@ create-admins.js
 server.log
 server.out
 server.err
+artifacts/
