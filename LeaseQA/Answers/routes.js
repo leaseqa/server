@@ -5,6 +5,18 @@ import { requireUser } from "../utils/session.js";
 import { sendData, sendError, sendNotFound } from "../utils/responses.js";
 import { createActivity } from "../Activity/dao.js";
 import { buildActivity } from "../Activity/service.js";
+import { sanitizeRichText } from "../utils/richText.js";
+
+const isVerifiedLawyer = (user) =>
+  user?.role === "lawyer" &&
+  user.lawyerVerification?.verifiedAt &&
+  !Number.isNaN(new Date(user.lawyerVerification.verifiedAt).getTime());
+
+const sendLawyerOpinionForbidden = (res) => sendError(res, {
+  code: "FORBIDDEN",
+  message: "Only verified lawyers can publish lawyer opinions.",
+  status: 403,
+});
 
 const recordAnswerActivity = async ({
                                       recordActivityFn,
@@ -57,12 +69,11 @@ export const createAnswersRouter = ({
       });
     }
 
-    if ( answerType === "lawyer_opinion" && currentUser.role !== "lawyer" ) {
-      return sendError(res, {
-        code: "FORBIDDEN",
-        message: "Only verified lawyers can publish lawyer opinions.",
-        status: 403,
-      });
+    if (
+      answerType === "lawyer_opinion" &&
+      !isVerifiedLawyer(currentUser)
+    ) {
+      return sendLawyerOpinionForbidden(res);
     }
 
     const post = await postsDaoImpl.findPostById(postId);
@@ -72,7 +83,7 @@ export const createAnswersRouter = ({
 
     const answer = await answersDaoImpl.createAnswer({
       postId,
-      content,
+      content: sanitizeRichText(content),
       answerType,
       authorId: currentUser._id,
     });
@@ -102,7 +113,17 @@ export const createAnswersRouter = ({
       });
     }
 
-    const updated = await answersDaoImpl.updateAnswer(answer._id, req.body);
+    if ( req.body.answerType === "lawyer_opinion" && !isVerifiedLawyer(currentUser) ) {
+      return sendLawyerOpinionForbidden(res);
+    }
+
+    const updates = {
+      ...req.body,
+      ...(typeof req.body.content === "string"
+        ? { content: sanitizeRichText(req.body.content) }
+        : {}),
+    };
+    const updated = await answersDaoImpl.updateAnswer(answer._id, updates);
     sendData(res, updated);
   });
 

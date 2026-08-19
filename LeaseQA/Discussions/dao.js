@@ -4,6 +4,40 @@ import { collectDiscussionSubtreeIds } from "./tree.js";
 export const findDiscussionsByPostId = (postId) =>
   model.find({ postId });
 
+const buildDiscussionTree = (threads) => {
+  const map = new Map();
+  threads.forEach((node) => {
+    map.set(node._id.toString(), { ...node.toObject(), replies: [] });
+  });
+
+  const roots = [];
+  map.forEach((node) => {
+    if ( node.parentId && map.has(node.parentId.toString()) ) {
+      map.get(node.parentId.toString()).replies.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+  return roots;
+};
+
+export const findDiscussionTreesByPostIds = async (postIds) => {
+  const groupedThreads = new Map(postIds.map((postId) => [postId.toString(), []]));
+  if ( !postIds.length ) return groupedThreads;
+
+  const discussions = await model.find({ postId: { $in: postIds } });
+  for (const discussion of discussions) {
+    const key = discussion.postId.toString();
+    const bucket = groupedThreads.get(key) || [];
+    bucket.push(discussion);
+    groupedThreads.set(key, bucket);
+  }
+
+  return new Map(
+    [...groupedThreads].map(([postId, threads]) => [postId, buildDiscussionTree(threads)]),
+  );
+};
+
 export const findDiscussionById = (id) =>
   model.findById(id);
 
@@ -41,20 +75,5 @@ export const deleteDiscussionSubtree = async (discussionId) => {
 
 export const findDiscussionTreeForPost = async (postId) => {
   const threads = await model.find({ postId });
-
-  const map = new Map();
-  threads.forEach((node) => {
-    map.set(node._id.toString(), { ...node.toObject(), replies: [] });
-  });
-
-  const roots = [];
-  map.forEach((node) => {
-    if ( node.parentId && map.has(node.parentId.toString()) ) {
-      map.get(node.parentId.toString()).replies.push(node);
-    } else {
-      roots.push(node);
-    }
-  });
-
-  return roots;
+  return buildDiscussionTree(threads);
 };

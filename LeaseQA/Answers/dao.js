@@ -3,6 +3,20 @@ import model from "./model.js";
 export const findAnswersByPostId = (postId) =>
   model.find({ postId });
 
+export const findAnswersByPostIds = async (postIds) => {
+  const grouped = new Map(postIds.map((postId) => [postId.toString(), []]));
+  if ( !postIds.length ) return grouped;
+
+  const answers = await model.find({ postId: { $in: postIds } });
+  for (const answer of answers) {
+    const key = answer.postId.toString();
+    const bucket = grouped.get(key) || [];
+    bucket.push(answer);
+    grouped.set(key, bucket);
+  }
+  return grouped;
+};
+
 export const findAnswerById = (id) =>
   model.findById(id);
 

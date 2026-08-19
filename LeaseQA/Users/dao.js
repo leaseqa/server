@@ -4,6 +4,9 @@ import bcrypt from "bcryptjs";
 export const findAllUsers = () =>
   model.find();
 
+export const findUsersByIds = (ids) =>
+  model.find({ _id: { $in: ids } });
+
 export const findUserById = (id) =>
   model.findById(id);
 

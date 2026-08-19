@@ -5,6 +5,7 @@ import { requireUser } from "../utils/session.js";
 import { sendData, sendError, sendNotFound } from "../utils/responses.js";
 import { createActivity } from "../Activity/dao.js";
 import { buildActivity } from "../Activity/service.js";
+import { sanitizeRichText } from "../utils/richText.js";
 
 const resolveDiscussionRecipient = ({
                                       actorId,
@@ -92,7 +93,7 @@ export const createDiscussionsRouter = ({
     const reply = await discussionsDaoImpl.createDiscussion({
       postId,
       parentId,
-      content,
+      content: sanitizeRichText(content),
       authorId: currentUser._id,
     });
     await recordDiscussionActivity({
@@ -127,7 +128,13 @@ export const createDiscussionsRouter = ({
       });
     }
 
-    const updated = await discussionsDaoImpl.updateDiscussion(discussion._id, req.body);
+    const updates = {
+      ...req.body,
+      ...(typeof req.body.content === "string"
+        ? { content: sanitizeRichText(req.body.content) }
+        : {}),
+    };
+    const updated = await discussionsDaoImpl.updateDiscussion(discussion._id, updates);
     sendData(res, updated);
   });
 

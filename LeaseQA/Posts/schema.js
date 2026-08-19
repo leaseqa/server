@@ -31,6 +31,7 @@ const PostSchema = new mongoose.Schema(
     viewCount: { type: Number, default: 0 },
     isPinned: { type: Boolean, default: false },
     isResolved: { type: Boolean, default: false },
+    isHidden: { type: Boolean, default: false },
     isAnonymous: { type: Boolean, default: false },
     lawyerOnly: { type: Boolean, default: false },
     lastActivityAt: { type: Date, default: Date.now },

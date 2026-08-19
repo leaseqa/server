@@ -26,6 +26,10 @@ export const listPosts = (filters = {}) => {
     query.audience = { $ne: "admin" };
   }
 
+  if ( viewerRole !== "admin" ) {
+    query.isHidden = { $ne: true };
+  }
+
   return model.find(query).sort({ lastActivityAt: -1 });
 };
 

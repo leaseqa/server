@@ -23,6 +23,7 @@ const UserSchema = new mongoose.Schema(
       required: true,
     },
     lawyerVerification: LawyerVerificationSchema,
+    banned: { type: Boolean, default: false },
   },
   {
     timestamps: true,
@@ -31,4 +32,3 @@ const UserSchema = new mongoose.Schema(
 );
 
 export default UserSchema;
-

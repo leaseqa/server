@@ -1,39 +1,14 @@
 import "dotenv/config";
-import express from "express";
 import session from "express-session";
 import MongoStore from "connect-mongo";
 import mongoose from "mongoose";
 
-import { rateLimit } from "express-rate-limit";
-import passport from "passport";
-import authRoutes from "./LeaseQA/Auth/routes.js";
-import userRoutes from "./LeaseQA/Users/routes.js";
-import aiReviewRoutes from "./LeaseQA/AIReviews/routes.js";
-import ragRoutes from "./LeaseQA/RAG/routes.js";
-import postRoutes from "./LeaseQA/Posts/routes.js";
-import answerRoutes from "./LeaseQA/Answers/routes.js";
-import discussionRoutes from "./LeaseQA/Discussions/routes.js";
-import folderRoutes from "./LeaseQA/Folders/routes.js";
-import statsRoutes from "./LeaseQA/Stats/routes.js";
-import moderationRoutes from "./LeaseQA/Moderation/routes.js";
-import activityRoutes from "./LeaseQA/Activity/routes.js";
-import { scrubBlockedDemoSession } from "./LeaseQA/utils/session.js";
-import {
-  applyHttpSecurity,
-  assertProductionSessionConfig,
-  unexpectedErrorHandler,
-} from "./LeaseQA/utils/httpSecurity.js";
-import path from "path";
-import { fileURLToPath } from "url";
+import { createApplication } from "./LeaseQA/app.js";
+import { assertProductionSessionConfig } from "./LeaseQA/utils/httpSecurity.js";
 
-const app = express();
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const isProdLikeEnv =
   process.env.SERVER_ENV && process.env.SERVER_ENV !== "development";
 const sessionSecret = assertProductionSessionConfig(process.env);
-
-applyHttpSecurity(app, process.env);
 
 const connectDB = async () => {
   try {
@@ -45,60 +20,34 @@ const connectDB = async () => {
   }
 };
 connectDB();
-const useSecureCookies = isProdLikeEnv;
+
 const sessionOptions = {
   secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({
     mongoUrl: process.env.DATABASE_CONNECTION_STRING,
-    ttl: 24 * 60 * 60, // 24 hours
+    ttl: 24 * 60 * 60,
   }),
   cookie: {
-    secure: useSecureCookies,
-    sameSite: useSecureCookies ? "none" : "lax",
+    secure: isProdLikeEnv,
+    sameSite: isProdLikeEnv ? "none" : "lax",
     maxAge: 24 * 60 * 60 * 1000,
   },
 };
 
-if ( useSecureCookies ) {
-  // ensure secure cookies work correctly behind proxies/load balancers in prod/staging
-  app.set("trust proxy", 1);
+if ( isProdLikeEnv ) {
   sessionOptions.proxy = true;
 }
 
-app.use(session(sessionOptions));
-app.use((req, _res, next) => {
-  scrubBlockedDemoSession(req);
-  next();
+const app = createApplication({
+  env: process.env,
+  sessionMiddleware: session(sessionOptions),
 });
 
-app.use(passport.initialize());
-app.use(express.json());
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, timestamp: new Date().toISOString() });
-});
-
-const isTest = process.env.CI_DISABLE_RATE_LIMIT === "true";
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: isTest ? 1000 : 10 });
-const ragLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: isTest ? 1000 : 5 });
-const generalLimiter = rateLimit({ windowMs: 60 * 1000, max: isTest ? 10000 : 100 });
-
-app.use("/api", generalLimiter);
-app.use("/api/auth", authLimiter);
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/ai-reviews", aiReviewRoutes);
-app.use("/api/rag", ragLimiter, ragRoutes);
-app.use("/api/posts", postRoutes);
-app.use("/api/answers", answerRoutes);
-app.use("/api/discussions", discussionRoutes);
-app.use("/api/folders", folderRoutes);
-app.use("/api/stats", statsRoutes);
-app.use("/api/moderation", moderationRoutes);
-app.use("/api/activity", activityRoutes);
-app.use(unexpectedErrorHandler);
+if ( isProdLikeEnv ) {
+  app.set("trust proxy", 1);
+}
 
 const port = process.env.PORT || 4050;
 app.listen(port, () => {

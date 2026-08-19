@@ -154,20 +154,30 @@ git commit -m "fix: enforce server authentication boundaries"
 **Files:**
 - Create: `LeaseQA/utils/richText.js`
 - Create: `LeaseQA/utils/richText.test.js`
+- Create: `LeaseQA/app.js`
+- Create: `LeaseQA/config/app.test.js`
 - Create: `LeaseQA/Posts/uploadPolicy.js`
 - Create: `LeaseQA/Posts/uploadPolicy.test.js`
+- Create: `LeaseQA/Posts/dao.test.js`
 - Modify: `LeaseQA/Users/schema.js`
 - Modify: `LeaseQA/Posts/schema.js`
 - Modify: `LeaseQA/Posts/routes.js`
 - Modify: `LeaseQA/Posts/routes.test.js`
+- Modify: `LeaseQA/Answers/dao.js`
+- Create: `LeaseQA/Answers/dao.test.js`
 - Modify: `LeaseQA/Answers/routes.js`
 - Modify: `LeaseQA/Answers/routes.test.js`
+- Modify: `LeaseQA/Discussions/dao.js`
+- Create: `LeaseQA/Discussions/dao.test.js`
 - Modify: `LeaseQA/Discussions/routes.js`
+- Modify: `LeaseQA/Users/dao.js`
+- Create: `LeaseQA/Users/dao.test.js`
 - Modify: `LeaseQA/Moderation/routes.js`
 - Create: `LeaseQA/Moderation/routes.test.js`
 - Modify: `LeaseQA/Stats/routes.js`
 - Create: `LeaseQA/Stats/routes.test.js`
 - Modify: `index.js`
+- Modify: `.env.example`
 
 **Interfaces:**
 - Produces: `sanitizeRichText(html)`, `createAttachmentUpload(env)`, persisted `User.banned`, persisted `Post.isHidden`, and bulk DAO contracts for post enrichment.
@@ -195,15 +205,15 @@ Assert files over 10 MiB, executable/HTML/SVG MIME types, and mismatched extensi
 
 - [ ] **Step 6: Implement bounded attachment storage**
 
-Use `UPLOADS_DIR` when present and a local development fallback only outside production. In production, fail startup if attachments are enabled without a configured persistent directory. Never expose original filenames as paths. Add `X-Content-Type-Options: nosniff` on attachment responses.
+Use `UPLOADS_DIR` when present and require it to be absolute. `UPLOADS_ENABLED` defaults to `false` in production and `true` in development; in production, fail startup if attachments are explicitly enabled without a configured persistent directory. A local absolute fallback is allowed only outside production. Do not provision external storage in this task. Never expose original filenames as paths. Add `X-Content-Type-Options: nosniff` on attachment responses.
 
 - [ ] **Step 7: Write failing bounded-query tests, then bulk-load post relations**
 
-For multiple posts assert one answers query, one discussions query, and one users query rather than one set per post. Add DAO bulk methods keyed by post ID and preserve the existing JSON shape.
+For multiple posts assert one answers query, one discussions query, and one users query rather than one set per post. Task 3 may modify the Answers, Discussions, and Users DAOs to add bulk methods keyed by post ID and preserve the existing JSON shape.
 
 - [ ] **Step 8: Retire the unused legacy AI review router**
 
-Remove its mount from `index.js`; add an HTTP integration assertion that `/api/ai-reviews/*` returns 404. Delete the legacy module only after repository search confirms no production imports.
+Remove its mount from the application assembly used by `index.js`; add an HTTP integration assertion that `/api/ai-reviews/*` returns 404. Delete the legacy module only after repository search confirms no production imports.
 
 - [ ] **Step 9: Run focused and full tests, then commit**
 
@@ -212,7 +222,7 @@ Run: `PATH=/opt/homebrew/opt/node@24/bin:$PATH node --test LeaseQA/Posts/*.test.
 Run: `PATH=/opt/homebrew/opt/node@24/bin:$PATH npm test`
 
 ```bash
-git add LeaseQA index.js package.json package-lock.json
+git add LeaseQA index.js .env.example docs/superpowers/plans/2026-08-19-server-rag-engineering-refresh.md package.json package-lock.json
 git commit -m "fix: harden community content and moderation"
 ```
 

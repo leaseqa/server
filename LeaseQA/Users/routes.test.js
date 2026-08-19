@@ -78,3 +78,40 @@ test("createUser enforces tenant role at the persistence boundary", async () => 
     userModel.create = originalCreate;
   }
 });
+
+test("PATCH /:userId/ban persists banned state and returns the resolved user", async () => {
+  const originalFindById = userModel.findById;
+  const originalFindByIdAndUpdate = userModel.findByIdAndUpdate;
+  let update;
+  userModel.findById = async () => ({ _id: "user-1", banned: false });
+  userModel.findByIdAndUpdate = async (id, updates, options) => {
+    update = { id, updates, options };
+    return { _id: id, username: "Tenant", banned: true };
+  };
+
+  try {
+    const handler = getRouteHandler("patch", "/:userId/ban");
+    const req = {
+      params: { userId: "user-1" },
+      body: { banned: true },
+      session: { currentUser: { _id: "admin-1", role: "admin" } },
+    };
+    const res = createResponse();
+
+    await handler(req, res);
+
+    assert.deepEqual(update, {
+      id: "user-1",
+      updates: { banned: true },
+      options: { new: true },
+    });
+    assert.deepEqual(res.payload.data, {
+      _id: "user-1",
+      username: "Tenant",
+      banned: true,
+    });
+  } finally {
+    userModel.findById = originalFindById;
+    userModel.findByIdAndUpdate = originalFindByIdAndUpdate;
+  }
+});
