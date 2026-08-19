@@ -30,6 +30,18 @@ const startFakeRagServer = async (t) => {
       request.url === "/api/rag/sessions/fake-session/messages"
     ) {
       const { message } = await readRequestJson(request);
+      if ( message.includes("runtime failure") ) {
+        response.writeHead(503);
+        response.end(
+          JSON.stringify({
+            error: {
+              code: "PRIVATE_PROVIDER_CODE",
+              message: "PRIVATE_PROVIDER_RESPONSE",
+            },
+          }),
+        );
+        return;
+      }
       if ( message.includes("unsupported") ) {
         response.end(
           JSON.stringify({
@@ -163,6 +175,7 @@ test("fake HTTP evaluation writes latency, source, citation, abstention, and sum
     failed: 0,
     passRate: 1,
     safeRate: 1,
+    runtimeFailures: 0,
   });
   assert.deepEqual(
     JSON.parse(await readFile(outputPath, "utf8")),
@@ -216,6 +229,57 @@ test("evaluation CLI exits 0 when pass and safety thresholds are met", async (t)
 
   assert.equal(result.code, 0);
   assert.match(result.stdout, /passRate=1\.00 safeRate=1\.00/);
+});
+
+test("runtime case failures produce a redacted partial artifact, continue, and exit 1", async (t) => {
+  const baseUrl = await startFakeRagServer(t);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-runtime-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const evalSetPath = await writeEvalSet(directory, "runtime", [
+    supportedCase,
+    {
+      ...supportedCase,
+      id: "runtime-failure",
+      question: "runtime failure PRIVATE_QUESTION_TEXT",
+    },
+    { ...supportedCase, id: "supported-after-runtime" },
+  ]);
+  const outputPath = path.join(directory, "partial-artifact.json");
+
+  const result = await runCli(
+    [
+      `--base-url=${baseUrl}`,
+      `--eval-set=${evalSetPath}`,
+      `--output=${outputPath}`,
+    ],
+    { RAG_EVAL_MIN_PASS_RATE: "0", RAG_EVAL_MIN_SAFE_RATE: "0" },
+  );
+  const artifactText = await readFile(outputPath, "utf8");
+  const artifact = JSON.parse(artifactText);
+
+  assert.equal(result.code, 1);
+  assert.equal(artifact.results.length, 3);
+  assert.equal(artifact.results[2].passed, true);
+  assert.deepEqual(artifact.results[1], {
+    id: "runtime-failure",
+    category: "chapters",
+    latencyMs: artifact.results[1].latencyMs,
+    answerPresent: false,
+    expectedSourceMatched: false,
+    citationValid: false,
+    contentSafe: false,
+    abstained: false,
+    passed: false,
+    safe: false,
+    actualCitationIds: [],
+    actualSourceGroups: [],
+    errorCode: "RAG_EVAL_HTTP_503",
+  });
+  assert.equal(artifact.summary.runtimeFailures, 1);
+  assert.doesNotMatch(
+    `${artifactText}${result.stdout}${result.stderr}`,
+    /PRIVATE_PROVIDER_RESPONSE|PRIVATE_PROVIDER_CODE|PRIVATE_QUESTION_TEXT/,
+  );
 });
 
 test("--help succeeds without provider or database environment", async () => {

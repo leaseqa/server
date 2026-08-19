@@ -40,6 +40,9 @@ const getNetworkErrorCode = (error) =>
   String(error?.code || error?.cause?.code || error?.error?.code || "");
 
 const isTransientError = (error) => {
+  if ( error?.retryable === true ) {
+    return true;
+  }
   const status = getHttpStatus(error);
   if ( status !== null ) {
     return status === 429 || status >= 500;

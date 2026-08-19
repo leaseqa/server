@@ -93,6 +93,40 @@ test("pasted text sessions still return the created session if the automatic ans
   assert.equal(result.messages.length, 0);
 });
 
+test("initial answer receives the request id and logs only stable redacted failure fields", async () => {
+  const session = buildSession("session-observed-bootstrap");
+  const logs = [];
+
+  const result = await createSessionWithOptionalInitialAnswer({
+    userId: "user-observed",
+    clientSessionId: "COOKIE_SECRET",
+    requestId: "request-bootstrap-1",
+    sourceText: "PRIVATE_EVIDENCE_TEXT",
+    file: null,
+    initialQuestion: "PRIVATE_QUESTION_TEXT",
+    createSessionFn: async () => session,
+    answerFn: async (input) => {
+      assert.equal(input.requestId, "request-bootstrap-1");
+      throw Object.assign(new Error("PRIVATE_PROVIDER_RESPONSE"), {
+        code: "RAG_CHAT_FAILED",
+      });
+    },
+    recordActivityFn: async () => {},
+    logger: { error: (value) => logs.push(value) },
+  });
+
+  assert.equal(result, session);
+  assert.deepEqual(JSON.parse(logs[0]), {
+    event: "rag_initial_question_failed",
+    requestId: "request-bootstrap-1",
+    errorCode: "RAG_CHAT_FAILED",
+  });
+  assert.doesNotMatch(
+    logs[0],
+    /PRIVATE_PROVIDER_RESPONSE|PRIVATE_QUESTION_TEXT|PRIVATE_EVIDENCE_TEXT|COOKIE_SECRET/,
+  );
+});
+
 test("logged-in sessions write an ai review activity after creation", async () => {
   const session = buildSession("session-activity");
   const recorded = [];

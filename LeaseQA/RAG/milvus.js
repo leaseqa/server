@@ -10,7 +10,7 @@ import {
 } from "@zilliz/milvus2-sdk-node";
 import { retryTransient } from "./operationPolicy.js";
 
-const OUTPUT_FIELDS = [
+export const SESSION_OUTPUT_FIELDS = [
   "text",
   "source_name",
   "source_group",
@@ -21,6 +21,10 @@ const OUTPUT_FIELDS = [
   "session_id",
   "title_hint",
   "priority",
+];
+
+export const KNOWLEDGE_OUTPUT_FIELDS = [
+  ...SESSION_OUTPUT_FIELDS,
   "source_hash",
   "page",
   "section",
@@ -62,6 +66,33 @@ const withRpcDeadline = (config, request) => ({
   timeout: config.vectorTimeoutMs,
 });
 
+const getOutputFields = (config, collectionName) =>
+  collectionName === config.knowledgeCollection ||
+  collectionName.startsWith(`${config.knowledgeCollection}_`)
+    ? KNOWLEDGE_OUTPUT_FIELDS
+    : SESSION_OUTPUT_FIELDS;
+
+const createMilvusStatusError = (status) => {
+  const providerStatus = String(status?.error_code || "UnknownError");
+  const reason = String(status?.reason || "unknown");
+  const error = new Error(`Milvus ${providerStatus}: ${reason}`);
+  error.code = "RAG_MILVUS_STATUS_ERROR";
+  error.status = providerStatus;
+  error.providerReason = reason;
+  error.retryable = /(?:RateLimit|Unavailable|Timeout|DeadlineExceeded)/i.test(
+    providerStatus,
+  );
+  return error;
+};
+
+const assertSuccessfulStatus = (response) => {
+  const status = response?.status || response;
+  if ( status?.error_code && status.error_code !== ErrorCode.SUCCESS ) {
+    throw createMilvusStatusError(status);
+  }
+  return response;
+};
+
 export const runMilvusRead = ({
                                 config,
                                 client,
@@ -70,12 +101,17 @@ export const runMilvusRead = ({
                                 retryPolicy,
                               }) =>
   retryTransient(
-    () => client[method](withRpcDeadline(config, request)),
+    async () =>
+      assertSuccessfulStatus(
+        await client[method](withRpcDeadline(config, request)),
+      ),
     retryPolicy,
   );
 
-export const runMilvusMutation = ({ config, client, method, request }) =>
-  client[method](withRpcDeadline(config, request));
+export const runMilvusMutation = async ({ config, client, method, request }) =>
+  assertSuccessfulStatus(
+    await client[method](withRpcDeadline(config, request)),
+  );
 
 const defaultSleep = (milliseconds) =>
   new Promise((resolve) => {
@@ -87,15 +123,6 @@ const createVectorTimeoutError = (timeoutMs) => {
   error.code = "RAG_TIMEOUT";
   error.timeoutMs = timeoutMs;
   return error;
-};
-
-const assertSuccessfulStatus = (response) => {
-  const status = response?.status || response;
-  if ( status?.error_code && status.error_code !== ErrorCode.SUCCESS ) {
-    throw new Error(
-      `ErrorCode: ${status.error_code}. Reason: ${status.reason || "unknown"}`,
-    );
-  }
 };
 
 export const ensureCollectionLoaded = async ({
@@ -608,7 +635,7 @@ export const searchChunks = async ({
       limit,
       metric_type: MetricType.COSINE,
       params: { nprobe: 10 },
-      output_fields: OUTPUT_FIELDS,
+      output_fields: getOutputFields(config, collectionName),
       filter: filter || undefined,
     },
     retryPolicy,
@@ -681,7 +708,7 @@ export const searchHybridChunks = async ({
       ],
       filter: filter || undefined,
       limit,
-      output_fields: OUTPUT_FIELDS,
+      output_fields: getOutputFields(config, collectionName),
       rerank: RRFRanker(60),
     },
     retryPolicy,

@@ -95,6 +95,19 @@ const appendCookies = (cookieJar, response) => {
 const buildCookieHeader = (cookieJar) =>
   [...cookieJar.entries()].map(([name, value]) => `${name}=${value}`).join("; ");
 
+const createEvalError = (code) => {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+};
+
+const getSafeEvalErrorCode = (error) => {
+  const code = String(error?.code || "");
+  return /^RAG_EVAL_[A-Z0-9_]+$/.test(code)
+    ? code
+    : "RAG_EVAL_RUNTIME_ERROR";
+};
+
 const requestJson = async ({
   baseUrl,
   cookieJar,
@@ -104,20 +117,29 @@ const requestJson = async ({
   body,
 }) => {
   const cookieHeader = buildCookieHeader(cookieJar);
-  const response = await fetch(`${baseUrl}${pathname}`, {
-    method,
-    headers: {
-      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-      ...headers,
-    },
-    body,
-  });
+  let response;
+  try {
+    response = await fetch(`${baseUrl}${pathname}`, {
+      method,
+      headers: {
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        ...headers,
+      },
+      body,
+    });
+  } catch {
+    throw createEvalError("RAG_EVAL_NETWORK_ERROR");
+  }
   appendCookies(cookieJar, response);
   const text = await response.text();
   if ( !response.ok ) {
-    throw new Error(`${method} ${pathname} failed (${response.status})`);
+    throw createEvalError(`RAG_EVAL_HTTP_${response.status}`);
   }
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw createEvalError("RAG_EVAL_RESPONSE_INVALID");
+  }
 };
 
 const createSession = async ({ baseUrl, cookieJar }) => {
@@ -242,6 +264,7 @@ export const summarize = (results) => {
     failed: results.length - passed,
     passRate: results.length === 0 ? 0 : passed / results.length,
     safeRate: results.length === 0 ? 0 : safe / results.length,
+    runtimeFailures: results.filter((result) => result.errorCode).length,
   };
 };
 
@@ -268,7 +291,27 @@ export const runEvaluation = async ({
 
   const results = [];
   for ( const evalCase of selectedCases ) {
-    const result = await runEvalCase({ baseUrl, evalCase });
+    const startedAt = performance.now();
+    let result;
+    try {
+      result = await runEvalCase({ baseUrl, evalCase });
+    } catch ( error ) {
+      result = {
+        id: evalCase.id,
+        category: evalCase.category,
+        latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        answerPresent: false,
+        expectedSourceMatched: false,
+        citationValid: false,
+        contentSafe: false,
+        abstained: false,
+        passed: false,
+        safe: false,
+        actualCitationIds: [],
+        actualSourceGroups: [],
+        errorCode: getSafeEvalErrorCode(error),
+      };
+    }
     results.push(result);
     output.log(
       `${result.passed ? "PASS" : result.abstained ? "ABSTAIN" : "FAIL"} ${result.id} latencyMs=${result.latencyMs} sourceMatch=${result.expectedSourceMatched} citationValid=${result.citationValid}`,
@@ -308,7 +351,11 @@ export const main = async (
   output.log(
     `SUMMARY total=${summary.total} passed=${summary.passed} abstained=${summary.abstained} failed=${summary.failed} passRate=${summary.passRate.toFixed(2)} safeRate=${summary.safeRate.toFixed(2)} artifact=${options.outputPath}`,
   );
-  if ( summary.passRate < minPassRate || summary.safeRate < minSafeRate ) {
+  if (
+    summary.runtimeFailures > 0 ||
+    summary.passRate < minPassRate ||
+    summary.safeRate < minSafeRate
+  ) {
     output.error(
       `RAG evaluation thresholds failed: pass>=${minPassRate.toFixed(2)} safe>=${minSafeRate.toFixed(2)}`,
     );
@@ -326,7 +373,12 @@ if ( isExecutedDirectly ) {
       process.exitCode = exitCode;
     })
     .catch((error) => {
-      console.error("[RAG eval] Failed:", error?.message || "unknown error");
+      console.error(
+        JSON.stringify({
+          event: "rag_eval_failed",
+          errorCode: getSafeEvalErrorCode(error),
+        }),
+      );
       process.exitCode = 1;
     });
 }

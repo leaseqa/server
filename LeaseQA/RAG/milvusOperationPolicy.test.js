@@ -10,12 +10,15 @@ import {
 import {
   activateCollectionAlias,
   createMilvusClient,
+  deleteSessionChunks,
   ensureCollectionLoaded,
   flushCollection,
   getAliasTarget,
+  hasChunkCollection,
   listCollections,
   runMilvusMutation,
   runMilvusRead,
+  searchChunks,
 } from "./milvus.js";
 
 const config = {
@@ -112,6 +115,168 @@ test("runMilvusRead keeps total SDK attempts at three and passes a deadline to e
 
   assert.equal(providerAttempts, 3);
   assert.deepEqual(deadlines, [10_000, 10_000, 10_000]);
+});
+
+test("runMilvusRead rejects resolved Milvus errors and retries transient statuses", async () => {
+  let attempts = 0;
+  const client = {
+    async hasCollection() {
+      attempts += 1;
+      if ( attempts === 1 ) {
+        return {
+          status: {
+            error_code: "RateLimit",
+            reason: "capacity exceeded",
+          },
+        };
+      }
+      return { status: { error_code: "Success" }, value: true };
+    },
+  };
+
+  const response = await runMilvusRead({
+    config,
+    client,
+    method: "hasCollection",
+    request: { collection_name: "knowledge" },
+    retryPolicy: { sleep: async () => {}, random: () => 0.5 },
+  });
+
+  assert.equal(response.value, true);
+  assert.equal(attempts, 2);
+});
+
+test("runMilvusMutation rejects a resolved Milvus error without retrying", async () => {
+  let attempts = 0;
+  const client = {
+    async delete() {
+      attempts += 1;
+      return {
+        status: {
+          error_code: "UnexpectedError",
+          reason: "delete rejected",
+        },
+      };
+    },
+  };
+
+  await assert.rejects(
+    runMilvusMutation({
+      config,
+      client,
+      method: "delete",
+      request: { collection_name: "sessions", filter: 'session_id == "s1"' },
+    }),
+    (error) => {
+      assert.equal(error.code, "RAG_MILVUS_STATUS_ERROR");
+      assert.equal(error.status, "UnexpectedError");
+      return true;
+    },
+  );
+  assert.equal(attempts, 1);
+});
+
+test("resolved Milvus errors fail delete, alias activation, collection checks, and search", async () => {
+  const unexpected = {
+    status: { error_code: "UnexpectedError", reason: "operation rejected" },
+  };
+
+  await assert.rejects(
+    deleteSessionChunks({
+      config: { ...config, sessionCollection: "sessions" },
+      sessionId: "session-1",
+      client: {
+        hasCollection: async () => ({
+          status: { error_code: "Success" },
+          value: true,
+        }),
+        delete: async () => unexpected,
+      },
+    }),
+    (error) => error.code === "RAG_MILVUS_STATUS_ERROR",
+  );
+
+  await assert.rejects(
+    activateCollectionAlias({
+      config,
+      alias: "knowledge",
+      collectionName: "knowledge_v2",
+      client: {
+        describeAlias: async () => ({ collection: "knowledge_v1" }),
+        alterAlias: async () => unexpected,
+      },
+    }),
+    (error) => error.code === "RAG_MILVUS_STATUS_ERROR",
+  );
+
+  await assert.rejects(
+    hasChunkCollection({
+      config,
+      collectionName: "sessions",
+      client: { hasCollection: async () => unexpected },
+    }),
+    (error) => error.code === "RAG_MILVUS_STATUS_ERROR",
+  );
+
+  await assert.rejects(
+    searchChunks({
+      config,
+      collectionName: "sessions",
+      vector: [0.1, 0.2],
+      limit: 3,
+      client: {
+        hasCollection: async () => ({ value: true }),
+        loadCollectionAsync: async () => ({ error_code: "Success" }),
+        getLoadState: async () => ({ state: LoadState.LoadStateLoaded }),
+        search: async () => unexpected,
+      },
+    }),
+    (error) => error.code === "RAG_MILVUS_STATUS_ERROR",
+  );
+});
+
+test("session searches only request legacy fields while knowledge searches request corpus metadata", async () => {
+  const searchRequests = [];
+  const client = {
+    hasCollection: async () => ({ value: true }),
+    loadCollectionAsync: async () => ({ error_code: "Success" }),
+    getLoadState: async () => ({ state: LoadState.LoadStateLoaded }),
+    search: async (request) => {
+      searchRequests.push(request);
+      return { results: [] };
+    },
+  };
+  const fieldConfig = {
+    ...config,
+    sessionCollection: "legacy_sessions",
+    knowledgeCollection: "knowledge_active",
+  };
+
+  await searchChunks({
+    config: fieldConfig,
+    collectionName: "legacy_sessions",
+    vector: [0.1, 0.2],
+    limit: 3,
+    client,
+  });
+  await searchChunks({
+    config: fieldConfig,
+    collectionName: "knowledge_active",
+    vector: [0.1, 0.2],
+    limit: 3,
+    client,
+  });
+
+  const knowledgeOnlyFields = [
+    "source_hash",
+    "page",
+    "section",
+    "corpus_version",
+  ];
+  for ( const field of knowledgeOnlyFields ) {
+    assert.equal(searchRequests[0].output_fields.includes(field), false);
+    assert.equal(searchRequests[1].output_fields.includes(field), true);
+  }
 });
 
 test("runMilvusMutation waits for the real RPC deadline and never starts a concurrent retry", async () => {

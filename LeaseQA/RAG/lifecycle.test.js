@@ -113,6 +113,93 @@ test("a vector deletion failure keeps Mongo data and returns a stable retryable 
   assert.equal(mongoDeleted, false);
 });
 
+test("a resolved Milvus delete error keeps Mongo session data", async () => {
+  let mongoDeleted = false;
+  let vectorDeleteAttempts = 0;
+  const config = {
+    sessionCollection: "leaseqa_session_chunks",
+    vectorTimeoutMs: 100,
+  };
+
+  await assert.rejects(
+    service.deleteViewerSession(
+      {
+        sessionId: "rag-session-resolved-error",
+        userId: "user-2",
+        clientSessionId: "browser-a",
+      },
+      {
+        config,
+        findSessionById: async () => ({
+          _id: "rag-session-resolved-error",
+          userId: { toString: () => "user-2" },
+        }),
+        deleteSessionChunks: (sessionId) =>
+          milvus.deleteSessionChunks({
+            config,
+            sessionId,
+            client: {
+              hasCollection: async () => ({ value: true }),
+              delete: async () => {
+                vectorDeleteAttempts += 1;
+                return {
+                  status: {
+                    error_code: "UnexpectedError",
+                    reason: "delete rejected",
+                  },
+                };
+              },
+            },
+          }),
+        deleteSession: async () => {
+          mongoDeleted = true;
+        },
+      },
+    ),
+    (error) => error.code === "RAG_SESSION_DELETE_RETRYABLE",
+  );
+
+  assert.equal(vectorDeleteAttempts, 1);
+  assert.equal(mongoDeleted, false);
+});
+
+test("a session ownership lookup infrastructure failure is a stable retryable error", async () => {
+  let vectorsDeleted = false;
+  let mongoDeleted = false;
+
+  await assert.rejects(
+    service.deleteViewerSession(
+      {
+        sessionId: "rag-session-lookup-failure",
+        userId: "user-2",
+        clientSessionId: "browser-a",
+      },
+      {
+        config: { sessionCollection: "leaseqa_session_chunks" },
+        findSessionById: async () => {
+          throw new Error("PRIVATE_MONGO_HOST lookup failed");
+        },
+        deleteSessionChunks: async () => {
+          vectorsDeleted = true;
+        },
+        deleteSession: async () => {
+          mongoDeleted = true;
+        },
+      },
+    ),
+    (error) => {
+      assert.equal(error.code, "RAG_SESSION_DELETE_RETRYABLE");
+      assert.equal(error.retryable, true);
+      assert.equal(error.message, "Session deletion did not complete");
+      assert.equal(error.message.includes("PRIVATE_MONGO_HOST"), false);
+      return true;
+    },
+  );
+
+  assert.equal(vectorsDeleted, false);
+  assert.equal(mongoDeleted, false);
+});
+
 test("a Mongo deletion failure is retryable after vectors were removed", async () => {
   let vectorsDeleted = false;
 

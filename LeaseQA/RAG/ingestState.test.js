@@ -126,6 +126,37 @@ for ( const failureStage of ["parse", "embedding", "insert"] ) {
   });
 }
 
+test("alias activation failure leaves staging state and skips cleanup", async (t) => {
+  const root = await createCorpusFixture(t);
+  let cleanupDiscovered = false;
+  const dependencies = createIngestDependencies({
+    activateCollectionAlias: async () => {
+      throw Object.assign(new Error("alias rejected"), {
+        code: "RAG_MILVUS_STATUS_ERROR",
+        status: "UnexpectedError",
+      });
+    },
+    listCollections: async () => {
+      cleanupDiscovered = true;
+      return [];
+    },
+  });
+
+  await assert.rejects(
+    service.ingestKnowledgeCorpus(
+      {},
+      { ...dependencies, config: createConfig(root) },
+    ),
+    (error) => error.code === "RAG_MILVUS_STATUS_ERROR",
+  );
+
+  const savedState = JSON.parse(
+    await readFile(createConfig(root).ingestStatePath, "utf8"),
+  );
+  assert.equal(savedState.status, "staging");
+  assert.equal(cleanupDiscovered, false);
+});
+
 test("successful ingest stages every chunk, activates the alias, then cleans old versions", async (t) => {
   const root = await createCorpusFixture(t);
   const dependencies = createIngestDependencies();
@@ -217,3 +248,57 @@ test("an active version is reconstructed from the alias when local state is abse
   assert.equal(reconstructed.collectionName, first.collectionName);
   assert.equal(reconstructed.corpusVersion, first.corpusVersion);
 });
+
+for ( const cleanupFailure of ["list", "drop"] ) {
+  test(`active corpus cleanup retries a ${cleanupFailure} failure on the next ingest`, async (t) => {
+    const root = await createCorpusFixture(t);
+    const config = createConfig(root);
+    const oldCollection = "leaseqa_knowledge_chunks_aaaaaaaaaaaa";
+    let firstCleanupAttempt = true;
+    const firstDependencies = createIngestDependencies({
+      listCollections: async () => {
+        if ( cleanupFailure === "list" && firstCleanupAttempt ) {
+          firstCleanupAttempt = false;
+          throw Object.assign(new Error("PRIVATE_LIST_FAILURE"), {
+            code: "RAG_MILVUS_STATUS_ERROR",
+          });
+        }
+        return [oldCollection];
+      },
+      resetCollection: async ({ collectionName }) => {
+        if ( cleanupFailure === "drop" && firstCleanupAttempt ) {
+          firstCleanupAttempt = false;
+          throw Object.assign(new Error("PRIVATE_DROP_FAILURE"), {
+            code: "RAG_MILVUS_STATUS_ERROR",
+          });
+        }
+        firstDependencies.order.push(`drop:${collectionName}`);
+      },
+    });
+
+    const first = await service.ingestKnowledgeCorpus(
+      {},
+      { ...firstDependencies, config },
+    );
+    assert.equal(first.status, "active");
+    assert.equal(first.cleanupPending, true);
+    assert.deepEqual(
+      first.pendingCollections,
+      cleanupFailure === "drop" ? [oldCollection] : [],
+    );
+
+    const secondDependencies = createIngestDependencies({
+      getAliasTarget: async () => first.collectionName,
+      listCollections: async () => [oldCollection, first.collectionName],
+    });
+    const second = await service.ingestKnowledgeCorpus(
+      {},
+      { ...secondDependencies, config },
+    );
+
+    assert.equal(second.collectionName, first.collectionName);
+    assert.equal(second.cleanupPending, false);
+    assert.deepEqual(second.pendingCollections, []);
+    assert.deepEqual(secondDependencies.order, [`drop:${oldCollection}`]);
+  });
+}

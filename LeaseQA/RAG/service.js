@@ -577,6 +577,11 @@ const createRetryableSessionDeleteError = (cause) => {
   return error;
 };
 
+export const getStableRagErrorCode = (error, fallback) => {
+  const code = String(error?.code || "");
+  return /^RAG_[A-Z0-9_]+$/.test(code) ? code : fallback;
+};
+
 export const deleteViewerSession = async (
   { sessionId, userId, clientSessionId },
   dependencies = {},
@@ -593,7 +598,12 @@ export const deleteViewerSession = async (
         retryPolicy: dependencies.retryPolicy,
       }));
   const deleteSession = dependencies.deleteSession || dao.deleteSession;
-  const session = await findSessionById(sessionId);
+  let session;
+  try {
+    session = await findSessionById(sessionId);
+  } catch ( cause ) {
+    throw createRetryableSessionDeleteError(cause);
+  }
   ensureViewerCanAccess({ session, userId, clientSessionId });
 
   try {
@@ -783,7 +793,7 @@ export const answerQuestion = async ({
     if ( providerStartedAt !== null ) {
       providerDurationMs = Math.max(0, clock.now() - providerStartedAt);
     }
-    emitMetric(error?.code || "RAG_REQUEST_FAILED");
+    emitMetric(getStableRagErrorCode(error, "RAG_REQUEST_FAILED"));
     throw error;
   }
 };
@@ -794,9 +804,11 @@ export const createSessionWithOptionalInitialAnswer = async ({
                                                                sourceText,
                                                                file,
                                                                initialQuestion,
+                                                               requestId,
                                                                createSessionFn = createRagSession,
                                                                answerFn = answerQuestion,
                                                                recordActivityFn = createActivity,
+                                                               logger = console,
                                                              }) => {
   const session = await createSessionFn({
     userId,
@@ -821,7 +833,20 @@ export const createSessionWithOptionalInitialAnswer = async ({
         }),
       );
     } catch ( error ) {
-      console.error("[RAG] Failed to record ai review activity:", error);
+      try {
+        logger.error(
+          JSON.stringify({
+            event: "rag_activity_record_failed",
+            requestId: requestId || null,
+            errorCode: getStableRagErrorCode(
+              error,
+              "RAG_ACTIVITY_RECORD_FAILED",
+            ),
+          }),
+        );
+      } catch {
+        // Observability must not change request behavior.
+      }
     }
   }
   const trimmedQuestion = initialQuestion?.trim();
@@ -834,13 +859,24 @@ export const createSessionWithOptionalInitialAnswer = async ({
       userId,
       clientSessionId,
       question: trimmedQuestion,
+      requestId,
     });
     return result.session;
   } catch ( error ) {
-    console.error(
-      "[RAG] Initial question failed after session creation:",
-      error,
-    );
+    try {
+      logger.error(
+        JSON.stringify({
+          event: "rag_initial_question_failed",
+          requestId: requestId || null,
+          errorCode: getStableRagErrorCode(
+            error,
+            "RAG_INITIAL_QUESTION_FAILED",
+          ),
+        }),
+      );
+    } catch {
+      // Observability must not change request behavior.
+    }
     return session;
   }
 };
@@ -983,19 +1019,80 @@ export const ingestKnowledgeCorpus = async ({
   });
   const alias = config.knowledgeCollection;
   const collectionName = `${alias}_${identity.corpusVersion.slice(0, 12)}`;
+  const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const versionedCollectionPattern = new RegExp(
+    `^${escapedAlias}_[a-f0-9]{12}$`,
+  );
   const activeCollection = await getAliasTargetFn({ config, alias });
   const previousState = await readState({ statePath: config.ingestStatePath });
+
+  const cleanupInactiveVersions = async (activeState) => {
+    const pendingCollections = new Set(
+      (activeState.pendingCollections || []).filter(
+        (candidate) =>
+          versionedCollectionPattern.test(candidate) &&
+          candidate !== collectionName,
+      ),
+    );
+    let discoveryFailed = false;
+    try {
+      const collections = await listCollectionsFn({ config });
+      for ( const candidate of collections ) {
+        if (
+          versionedCollectionPattern.test(candidate) &&
+          candidate !== collectionName
+        ) {
+          pendingCollections.add(candidate);
+        }
+      }
+    } catch ( error ) {
+      discoveryFailed = true;
+      console.error(
+        JSON.stringify({
+          event: "rag_ingest_cleanup_discovery_failed",
+          errorCode: error?.code || "RAG_INGEST_CLEANUP_FAILED",
+        }),
+      );
+    }
+
+    const failedCollections = [];
+    for ( const oldCollection of pendingCollections ) {
+      try {
+        await resetCollectionFn({ config, collectionName: oldCollection });
+      } catch ( error ) {
+        failedCollections.push(oldCollection);
+        console.error(
+          JSON.stringify({
+            event: "rag_ingest_cleanup_failed",
+            collectionName: oldCollection,
+            errorCode: error?.code || "RAG_INGEST_CLEANUP_FAILED",
+          }),
+        );
+      }
+    }
+
+    return writeState({
+      statePath: config.ingestStatePath,
+      state: {
+        ...activeState,
+        cleanupPending: discoveryFailed || failedCollections.length > 0,
+        pendingCollections: failedCollections,
+      },
+    });
+  };
 
   if (
     activeCollection === collectionName &&
     previousState?.status === "active" &&
     previousState.corpusVersion === identity.corpusVersion
   ) {
-    return previousState;
+    return previousState.cleanupPending === false
+      ? previousState
+      : cleanupInactiveVersions(previousState);
   }
 
   if ( activeCollection === collectionName ) {
-    return writeState({
+    const reconstructedState = await writeState({
       statePath: config.ingestStatePath,
       state: {
         status: "active",
@@ -1012,8 +1109,11 @@ export const ingestKnowledgeCorpus = async ({
         lastCompletedFile: manifest.at(-1)?.file_name || null,
         activatedAt: previousState?.activatedAt || new Date().toISOString(),
         reconstructedAt: new Date().toISOString(),
+        cleanupPending: true,
+        pendingCollections: previousState?.pendingCollections || [],
       },
     });
+    return cleanupInactiveVersions(reconstructedState);
   }
 
   const stagingExists = await hasCollection({
@@ -1149,32 +1249,9 @@ export const ingestKnowledgeCorpus = async ({
       manifestSha256: identity.manifestSha256,
       nextIndex: manifest.length,
       activatedAt: new Date().toISOString(),
+      cleanupPending: true,
+      pendingCollections: [],
     },
   });
-
-  const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const versionedCollectionPattern = new RegExp(
-    `^${escapedAlias}_[a-f0-9]{12}$`,
-  );
-  const collections = await listCollectionsFn({ config });
-  for ( const oldCollection of collections ) {
-    if (
-      versionedCollectionPattern.test(oldCollection) &&
-      oldCollection !== collectionName
-    ) {
-      try {
-        await resetCollectionFn({ config, collectionName: oldCollection });
-      } catch ( error ) {
-        console.error(
-          JSON.stringify({
-            event: "rag_ingest_cleanup_failed",
-            collectionName: oldCollection,
-            errorCode: error?.code || "RAG_INGEST_CLEANUP_FAILED",
-          }),
-        );
-      }
-    }
-  }
-
-  return activeState;
+  return cleanupInactiveVersions(activeState);
 };

@@ -6,6 +6,7 @@ import {
   answerQuestion,
   createSessionWithOptionalInitialAnswer,
   deleteViewerSession,
+  getStableRagErrorCode,
   getViewerSession,
   listViewerSessions,
 } from "./service.js";
@@ -70,6 +71,20 @@ export const createRagRouter = (dependencies = {}) => {
     dependencies.deleteViewerSession || deleteViewerSession;
   const getSessionFn = dependencies.getViewerSession || getViewerSession;
   const listSessionsFn = dependencies.listViewerSessions || listViewerSessions;
+  const logger = dependencies.logger || console;
+  const logRouteError = ({ event, requestId, error, fallbackCode }) => {
+    try {
+      logger.error(
+        JSON.stringify({
+          event,
+          requestId: requestId || null,
+          errorCode: getStableRagErrorCode(error, fallbackCode),
+        }),
+      );
+    } catch {
+      // Observability must not change request behavior.
+    }
+  };
 
   router.use((req, _res, next) => {
     if ( !req.session?.currentUser && !req.session?.ragGuest ) {
@@ -86,7 +101,12 @@ router.get("/sessions", async (req, res) => {
     });
     sendData(res, sessions);
   } catch ( error ) {
-    console.error("[RAG] Failed to list sessions:", error);
+    logRouteError({
+      event: "rag_list_failed",
+      requestId: req.requestId,
+      error,
+      fallbackCode: "RAG_LIST_FAILED",
+    });
     sendError(res, {
       code: "RAG_LIST_FAILED",
       message: "Failed to load chat sessions.",
@@ -134,14 +154,24 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
       sourceText,
       file: req.file || null,
       initialQuestion: rawInitialQuestion,
+      requestId: req.requestId,
+      logger,
     });
     sendData(res, session, 201);
   } catch ( error ) {
-    console.error("[RAG] Failed to create session:", error);
     const status = getErrorStatus(error);
+    logRouteError({
+      event: "rag_create_failed",
+      requestId: req.requestId,
+      error,
+      fallbackCode: status === 400 ? "VALIDATION_ERROR" : "RAG_CREATE_FAILED",
+    });
     sendError(res, {
       code: status === 400 ? "VALIDATION_ERROR" : "RAG_CREATE_FAILED",
-      message: error.message || "Failed to start chat session.",
+      message:
+        status === 400
+          ? error.message
+          : "Failed to start chat session.",
       status,
     });
   }

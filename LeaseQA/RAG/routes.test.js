@@ -91,3 +91,56 @@ test("DELETE returns a stable retryable envelope when either store fails", async
     },
   });
 });
+
+test("POST /sessions propagates requestId and redacts provider failures", async (t) => {
+  const app = express();
+  const logs = [];
+  let received;
+  app.use((req, _res, next) => {
+    req.session = { currentUser: { _id: "user-1" } };
+    req.sessionID = "COOKIE_SECRET";
+    req.requestId = "request-create-1";
+    next();
+  });
+  app.use(
+    routes.createRagRouter({
+      logger: { error: (value) => logs.push(value) },
+      createSessionWithOptionalInitialAnswer: async (input) => {
+        received = input;
+        throw Object.assign(new Error("PRIVATE_PROVIDER_RESPONSE"), {
+          code: "PRIVATE_PROVIDER_CODE",
+        });
+      },
+    }),
+  );
+
+  const server = await listen(app);
+  t.after(() => server.close());
+  const address = server.address();
+  const form = new FormData();
+  form.set("sourceText", "PRIVATE_EVIDENCE_TEXT");
+  form.set("initialQuestion", "PRIVATE_QUESTION_TEXT");
+  const response = await fetch(
+    `http://127.0.0.1:${address.port}/sessions`,
+    { method: "POST", body: form },
+  );
+  const body = await response.json();
+
+  assert.equal(received.requestId, "request-create-1");
+  assert.equal(response.status, 500);
+  assert.deepEqual(body, {
+    error: {
+      code: "RAG_CREATE_FAILED",
+      message: "Failed to start chat session.",
+    },
+  });
+  assert.deepEqual(JSON.parse(logs[0]), {
+    event: "rag_create_failed",
+    requestId: "request-create-1",
+    errorCode: "RAG_CREATE_FAILED",
+  });
+  assert.doesNotMatch(
+    `${JSON.stringify(body)}${logs.join("\n")}`,
+    /PRIVATE_PROVIDER_RESPONSE|PRIVATE_PROVIDER_CODE|PRIVATE_QUESTION_TEXT|PRIVATE_EVIDENCE_TEXT|COOKIE_SECRET/,
+  );
+});
