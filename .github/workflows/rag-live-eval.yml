@@ -58,6 +58,12 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.RAG_EVAL_GEMINI_API_KEY }}
           RAG_MILVUS_ADDRESS: ${{ secrets.RAG_EVAL_MILVUS_ADDRESS }}
           RAG_MILVUS_TOKEN: ${{ secrets.RAG_EVAL_MILVUS_TOKEN }}
+          RAG_CHAT_BASE_URL: ${{ secrets.RAG_EVAL_CHAT_BASE_URL }}
+          RAG_EMBEDDING_BASE_URL: ${{ secrets.RAG_EVAL_EMBEDDING_BASE_URL }}
+          RAG_CHAT_MODEL: ${{ secrets.RAG_EVAL_CHAT_MODEL }}
+          RAG_EMBEDDING_MODEL: ${{ secrets.RAG_EVAL_EMBEDDING_MODEL }}
+          RAG_EMBEDDING_DIMENSIONS: ${{ secrets.RAG_EVAL_EMBEDDING_DIMENSIONS }}
+          RAG_EMBEDDING_PROVIDER: ${{ secrets.RAG_EVAL_EMBEDDING_PROVIDER }}
         run: |
           if [ -z "$DASHSCOPE_API_KEY" ] && [ -n "$GEMINI_API_KEY" ]; then
             export RAG_EMBEDDING_PROVIDER=gemini
