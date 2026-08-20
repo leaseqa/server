@@ -5,13 +5,22 @@ const STATE_VERSION = 2;
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
-export const buildCorpusIdentity = ({ manifestContents, sourceHashes }) => {
+export const buildCorpusIdentity = ({
+  manifestContents,
+  sourceHashes,
+  embeddingFingerprint = "",
+}) => {
   const sortedSourceHashes = [...sourceHashes].sort();
+  const identityParts = [
+    manifestContents,
+    sortedSourceHashes.join("\n"),
+  ];
+  if ( embeddingFingerprint ) {
+    identityParts.push(embeddingFingerprint);
+  }
   return {
     manifestSha256: sha256(manifestContents),
-    corpusVersion: sha256(
-      `${manifestContents}\n${sortedSourceHashes.join("\n")}`,
-    ),
+    corpusVersion: sha256(identityParts.join("\n")),
   };
 };
 

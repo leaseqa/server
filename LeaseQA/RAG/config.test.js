@@ -2,18 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { getRagConfig } from "./config.js";
 import * as ragConfig from "./config.js";
+import {
+  DASHSCOPE_COMPATIBLE_BASE_URL,
+  DASHSCOPE_DEFAULT_CHAT_MODEL,
+  DASHSCOPE_DEFAULT_EMBEDDING_DIMENSION,
+  DASHSCOPE_DEFAULT_EMBEDDING_MODEL,
+  GEMINI_DEFAULT_EMBEDDING_DIMENSION,
+  GEMINI_DEFAULT_EMBEDDING_MODEL,
+  GEMINI_EMBEDDING_BASE_URL,
+} from "../shared/geminiOpenAI.js";
 
 const withEnv = (overrides, callback) => {
-  const original = {
-    RAG_MILVUS_ADDRESS: process.env.RAG_MILVUS_ADDRESS,
-    GEMINI_CHAT_API_KEY: process.env.GEMINI_CHAT_API_KEY,
-    GEMINI_CHAT_MODEL: process.env.GEMINI_CHAT_MODEL,
-    GEMINI_CHAT_BASE_URL: process.env.GEMINI_CHAT_BASE_URL,
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-    RAG_EMBEDDING_TIMEOUT_MS: process.env.RAG_EMBEDDING_TIMEOUT_MS,
-    RAG_CHAT_TIMEOUT_MS: process.env.RAG_CHAT_TIMEOUT_MS,
-    RAG_VECTOR_TIMEOUT_MS: process.env.RAG_VECTOR_TIMEOUT_MS,
-  };
+  const original = Object.fromEntries(
+    Object.keys(overrides).map((key) => [key, process.env[key]]),
+  );
 
   Object.entries(overrides).forEach(([key, value]) => {
     if ( value === undefined ) {
@@ -36,6 +38,43 @@ const withEnv = (overrides, callback) => {
   }
 };
 
+test("getRagConfig defaults chat and embedding to DashScope OpenAI-compatible APIs", () => {
+  withEnv(
+    {
+      RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+      DASHSCOPE_API_KEY: "dashscope-key",
+      RAG_CHAT_API_KEY: undefined,
+      RAG_CHAT_MODEL: undefined,
+      RAG_CHAT_BASE_URL: undefined,
+      RAG_EMBEDDING_API_KEY: undefined,
+      RAG_EMBEDDING_MODEL: undefined,
+      RAG_EMBEDDING_BASE_URL: undefined,
+      RAG_EMBEDDING_DIMENSION: undefined,
+      RAG_EMBEDDING_DIMENSIONS: undefined,
+      RAG_EMBEDDING_PROVIDER: undefined,
+      GEMINI_CHAT_API_KEY: undefined,
+      GEMINI_CHAT_MODEL: undefined,
+      GEMINI_CHAT_BASE_URL: undefined,
+      GEMINI_API_KEY: undefined,
+    },
+    () => {
+      const config = getRagConfig();
+
+      assert.equal(config.chatApiKey, "dashscope-key");
+      assert.equal(config.chatModel, DASHSCOPE_DEFAULT_CHAT_MODEL);
+      assert.equal(config.chatBaseUrl, DASHSCOPE_COMPATIBLE_BASE_URL);
+      assert.equal(config.embeddingProvider, "openai");
+      assert.equal(config.embeddingApiKey, "dashscope-key");
+      assert.equal(config.embeddingModel, DASHSCOPE_DEFAULT_EMBEDDING_MODEL);
+      assert.equal(config.embeddingBaseUrl, DASHSCOPE_COMPATIBLE_BASE_URL);
+      assert.equal(
+        config.embeddingDimension,
+        DASHSCOPE_DEFAULT_EMBEDDING_DIMENSION,
+      );
+    },
+  );
+});
+
 test("getRagConfig maps Gemini chat settings onto RAG chat fields", () => {
   withEnv(
     {
@@ -44,6 +83,10 @@ test("getRagConfig maps Gemini chat settings onto RAG chat fields", () => {
       GEMINI_CHAT_MODEL: "gemini-2.5-pro",
       GEMINI_CHAT_BASE_URL: "https://generativelanguage.googleapis.com/v1beta/openai/",
       GEMINI_API_KEY: "shared-gemini-key",
+      DASHSCOPE_API_KEY: undefined,
+      RAG_CHAT_API_KEY: undefined,
+      RAG_CHAT_MODEL: undefined,
+      RAG_CHAT_BASE_URL: undefined,
     },
     () => {
       const config = getRagConfig();
@@ -53,6 +96,47 @@ test("getRagConfig maps Gemini chat settings onto RAG chat fields", () => {
       assert.equal(
         config.chatBaseUrl,
         "https://generativelanguage.googleapis.com/v1beta/openai/",
+      );
+    },
+  );
+});
+
+test("getRagConfig prefers RAG_EMBEDDING_DIMENSIONS over the singular alias", () => {
+  withEnv(
+    {
+      RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+      DASHSCOPE_API_KEY: "dashscope-key",
+      RAG_EMBEDDING_DIMENSIONS: "768",
+      RAG_EMBEDDING_DIMENSION: "512",
+    },
+    () => {
+      const config = getRagConfig();
+      assert.equal(config.embeddingDimension, 768);
+    },
+  );
+});
+
+test("getRagConfig uses Gemini embedding defaults when the provider is gemini", () => {
+  withEnv(
+    {
+      RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+      GEMINI_API_KEY: "shared-gemini-key",
+      RAG_EMBEDDING_PROVIDER: "gemini",
+      DASHSCOPE_API_KEY: undefined,
+      RAG_EMBEDDING_MODEL: undefined,
+      RAG_EMBEDDING_BASE_URL: undefined,
+      RAG_EMBEDDING_DIMENSION: undefined,
+      RAG_EMBEDDING_DIMENSIONS: undefined,
+    },
+    () => {
+      const config = getRagConfig();
+
+      assert.equal(config.embeddingProvider, "gemini");
+      assert.equal(config.embeddingModel, GEMINI_DEFAULT_EMBEDDING_MODEL);
+      assert.equal(config.embeddingBaseUrl, GEMINI_EMBEDDING_BASE_URL);
+      assert.equal(
+        config.embeddingDimension,
+        GEMINI_DEFAULT_EMBEDDING_DIMENSION,
       );
     },
   );

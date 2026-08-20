@@ -65,7 +65,7 @@ These are exposed through:
 - MongoDB Atlas
 - `npm`
 - Milvus / Zilliz for vector search
-- OpenAI-compatible chat and embedding clients
+- Alibaba Cloud DashScope (百炼) OpenAI-compatible chat (`qwen-plus`) and embeddings (`text-embedding-v3`, 1024-d)
 - Render for production hosting
 
 ## Local Development
@@ -106,10 +106,10 @@ Expected local client:
 - `RAG_EVAL_MIN_PASS_RATE` (committed default `0.90`)
 - `RAG_EVAL_MIN_SAFE_RATE` (committed default `0.98`)
 - `RAG_EVAL_OUTPUT` (optional JSON artifact path)
-- `GEMINI_API_KEY`
-- `GEMINI_CHAT_*`
-- `RAG_CHAT_*`
-- `RAG_EMBEDDING_*`
+- `DASHSCOPE_API_KEY` (Alibaba Cloud Model Studio / 百炼; used for both chat and embedding)
+- `RAG_CHAT_*` (defaults: `qwen-plus` at `https://dashscope.aliyuncs.com/compatible-mode/v1`)
+- `RAG_EMBEDDING_*` (defaults: OpenAI-compatible `text-embedding-v3`, 1024 dimensions)
+- `GEMINI_API_KEY` / `GEMINI_CHAT_*` (optional override; set `RAG_EMBEDDING_PROVIDER=gemini` to restore Gemini `embedContent`)
 
 See [.env.example](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/.env.example) for the full template.
 
@@ -145,7 +145,9 @@ npm run ingest:rag:reset
 
 `RAG_CORPUS_ROOT` takes precedence. Without it, the server discovers `../resources/rag-corpus/mass tenant rights` from either the original checkout or an isolated `.worktrees/*` checkout. Set the variable explicitly in deployed environments where the corpus is mounted elsewhere. The resolved worktree path is never persisted in production configuration; only the runtime manifest path appears in the local ingest-state file.
 
-Each ingest computes `sha256(manifest bytes + sorted source hashes)`, writes to `leaseqa_knowledge_chunks_<version-prefix>`, flushes and loads the complete staging collection, then atomically moves the stable alias configured by `RAG_MILVUS_KNOWLEDGE_COLLECTION`. Old versioned collections are removed only after activation. `--limit` leaves staging state without activating a partial corpus; a later run resumes it. `--reset` restarts only the current staging version and does not delete the active alias target.
+Each ingest computes `sha256(manifest bytes + sorted source hashes + embedding provider/model/dimension)`, writes to `leaseqa_knowledge_chunks_<version-prefix>`, flushes and loads the complete staging collection, then atomically moves the stable alias configured by `RAG_MILVUS_KNOWLEDGE_COLLECTION`. Old versioned collections are removed only after activation. `--limit` leaves staging state without activating a partial corpus; a later run resumes it. `--reset` restarts only the current staging version and does not delete the active alias target.
+
+Switching embedding vendor or dimension (for example Gemini `gemini-embedding-001` at 768-d to DashScope `text-embedding-v3` at 1024-d) produces a new corpus version automatically. Existing Gemini collections cannot serve DashScope vectors; run `npm run ingest:rag` after changing provider config. Session collections use a stable name (`RAG_MILVUS_SESSION_COLLECTION`); drop or recreate that collection after a dimension change, because new session uploads will not fit a 768-d schema.
 
 For deployments where `RAG_MILVUS_KNOWLEDGE_COLLECTION` is still a physical legacy collection, migrate without overwriting it:
 
@@ -169,7 +171,7 @@ RAG_EVAL_OUTPUT=artifacts/rag-eval.json \
 npm run eval:rag
 ```
 
-It exits `1` below pass rate `0.90` or safe rate `0.98`. GitHub's manually dispatched `Live RAG Evaluation` workflow requires its dedicated Mongo, Gemini, session-secret, and Milvus secrets and uploads the artifact even when the gate fails.
+It exits `1` below pass rate `0.90` or safe rate `0.98`. GitHub's manually dispatched `Live RAG Evaluation` workflow requires its dedicated Mongo, DashScope (`RAG_EVAL_DASHSCOPE_API_KEY`), session-secret, and Milvus secrets and uploads the artifact even when the gate fails. `RAG_EVAL_GEMINI_API_KEY` remains an optional Gemini override.
 
 ## Verification Used for the Current Release
 

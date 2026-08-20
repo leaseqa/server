@@ -80,6 +80,78 @@ const getMessageText = (message) => {
   return "";
 };
 
+const joinUrl = (base, suffix) =>
+  `${String(base || "").replace(/\/+$/, "")}/${String(suffix || "").replace(
+    /^\/+/,
+    "",
+  )}`;
+
+const toEmbeddingTextType = (taskType) => {
+  if ( taskType === "RETRIEVAL_QUERY" || taskType === "query" ) {
+    return "query";
+  }
+  return "document";
+};
+
+const parseEmbeddingErrorMessage = (payload, fallback) =>
+  payload?.error?.message || fallback;
+
+export const postOpenAICompatibleEmbedding = async ({
+                                                      config,
+                                                      text,
+                                                      taskType,
+                                                      fetchFn = globalThis.fetch,
+                                                      retryPolicy,
+                                                    }) => {
+  const requestUrl = joinUrl(config.embeddingBaseUrl, "embeddings");
+
+  return runBoundedOperation({
+    label: "embedding request",
+    timeoutMs: config.embeddingTimeoutMs,
+    retryPolicy,
+    operation: async (signal) => {
+      const response = await fetchFn(requestUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.embeddingApiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.embeddingModel,
+          input: text,
+          dimensions: config.embeddingDimension,
+          encoding_format: "float",
+          text_type: toEmbeddingTextType(taskType),
+        }),
+        signal,
+      });
+
+      let payload;
+      try {
+        payload = await response.json();
+      } catch ( cause ) {
+        if ( response.ok ) {
+          throw new Error("Embedding response was not valid JSON", { cause });
+        }
+        const error = new Error("Embedding request failed", { cause });
+        error.status = response.status;
+        throw error;
+      }
+      if ( response.ok && Array.isArray(payload?.data?.[0]?.embedding) ) {
+        return payload.data[0].embedding;
+      }
+
+      const error = new Error(
+        parseEmbeddingErrorMessage(payload, "Embedding request failed"),
+      );
+      if ( !response.ok ) {
+        error.status = response.status;
+      }
+      throw error;
+    },
+  });
+};
+
 export const postGeminiEmbedding = async ({
                                             config,
                                             text,
@@ -137,6 +209,11 @@ export const postGeminiEmbedding = async ({
   });
 };
 
+const embedText = (args) =>
+  args.config?.embeddingProvider === "gemini"
+    ? postGeminiEmbedding(args)
+    : postOpenAICompatibleEmbedding(args);
+
 const createEmbeddingsClient = (config, dependencies = {}) => ({
   embedDocuments: async (texts) => {
     const vectors = [];
@@ -146,7 +223,7 @@ const createEmbeddingsClient = (config, dependencies = {}) => ({
       const batch = texts.slice(index, index + batchSize);
       const embeddedBatch = await Promise.all(
         batch.map((text) =>
-          postGeminiEmbedding({
+          embedText({
             config,
             text,
             taskType: "RETRIEVAL_DOCUMENT",
@@ -160,7 +237,7 @@ const createEmbeddingsClient = (config, dependencies = {}) => ({
     return vectors;
   },
   embedQuery: async (text) =>
-    postGeminiEmbedding({
+    embedText({
       config,
       text,
       taskType: "RETRIEVAL_QUERY",
@@ -187,7 +264,7 @@ export const createChatClient = (
 ) => {
   if ( !config.chatApiKey ) {
     throw new Error(
-      "RAG_CHAT_API_KEY, GEMINI_CHAT_API_KEY, or GEMINI_API_KEY is not configured",
+      "RAG_CHAT_API_KEY, DASHSCOPE_API_KEY, GEMINI_CHAT_API_KEY, or GEMINI_API_KEY is not configured",
     );
   }
   return new ChatModelClass({
@@ -1024,6 +1101,11 @@ export const ingestKnowledgeCorpus = async ({
   const identity = buildCorpusIdentity({
     manifestContents,
     sourceHashes: sourceFiles.map(({ sourceHash }) => sourceHash),
+    embeddingFingerprint: [
+      config.embeddingProvider || "",
+      config.embeddingModel || "",
+      String(config.embeddingDimension ?? ""),
+    ].join(":"),
   });
   const alias = config.knowledgeCollection;
   const collectionName = `${alias}_${identity.corpusVersion.slice(0, 12)}`;

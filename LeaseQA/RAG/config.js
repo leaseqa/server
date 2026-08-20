@@ -1,7 +1,15 @@
 import { existsSync } from "node:fs";
 import path from "path";
 import { fileURLToPath } from "node:url";
-import { getGeminiChatConfig } from "../shared/geminiOpenAI.js";
+import {
+  DASHSCOPE_COMPATIBLE_BASE_URL,
+  DASHSCOPE_DEFAULT_EMBEDDING_DIMENSION,
+  DASHSCOPE_DEFAULT_EMBEDDING_MODEL,
+  GEMINI_DEFAULT_EMBEDDING_DIMENSION,
+  GEMINI_DEFAULT_EMBEDDING_MODEL,
+  GEMINI_EMBEDDING_BASE_URL,
+  getRagChatConfig,
+} from "../shared/geminiOpenAI.js";
 
 const serverRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -32,6 +40,29 @@ const requireEnv = (name) => {
   return value;
 };
 
+const firstConfigured = (names) => {
+  for ( const name of names ) {
+    const value = process.env[name];
+    if ( value ) {
+      return value;
+    }
+  }
+  return "";
+};
+
+const requireFirstEnv = (names) => {
+  const value = firstConfigured(names);
+  if ( !value ) {
+    throw new Error(`${names.join(", ")} is not configured`);
+  }
+  return value;
+};
+
+const resolveEmbeddingProvider = (value) => {
+  const provider = String(value || "openai").toLowerCase();
+  return provider === "gemini" ? "gemini" : "openai";
+};
+
 export const resolveCorpusRoot = ({
   env = process.env,
   serverRoot: providedServerRoot = serverRoot,
@@ -58,8 +89,12 @@ export const resolveCorpusRoot = ({
 };
 
 export const getRagConfig = () => {
-  const chat = getGeminiChatConfig();
+  const chat = getRagChatConfig();
   const corpusRoot = resolveCorpusRoot();
+  const embeddingProvider = resolveEmbeddingProvider(
+    process.env.RAG_EMBEDDING_PROVIDER,
+  );
+  const embeddingUsesGemini = embeddingProvider === "gemini";
 
   return {
     chatApiKey: chat.apiKey,
@@ -78,15 +113,31 @@ export const getRagConfig = () => {
       process.env.RAG_MILVUS_KNOWLEDGE_COLLECTION || "leaseqa_knowledge_chunks",
     milvusAddress: requireEnv("RAG_MILVUS_ADDRESS"),
     milvusToken: process.env.RAG_MILVUS_TOKEN || "",
-    embeddingApiKey:
-      process.env.GEMINI_API_KEY ||
-      process.env.RAG_EMBEDDING_API_KEY ||
-      requireEnv("GEMINI_API_KEY"),
-    embeddingModel: process.env.RAG_EMBEDDING_MODEL || "gemini-embedding-001",
+    embeddingProvider,
+    embeddingApiKey: requireFirstEnv([
+      "RAG_EMBEDDING_API_KEY",
+      "DASHSCOPE_API_KEY",
+      "RAG_CHAT_API_KEY",
+      "GEMINI_API_KEY",
+      "GEMINI_CHAT_API_KEY",
+    ]),
+    embeddingModel:
+      process.env.RAG_EMBEDDING_MODEL ||
+      (embeddingUsesGemini
+        ? GEMINI_DEFAULT_EMBEDDING_MODEL
+        : DASHSCOPE_DEFAULT_EMBEDDING_MODEL),
     embeddingBaseUrl:
       process.env.RAG_EMBEDDING_BASE_URL ||
-      "https://generativelanguage.googleapis.com/v1beta/models",
-    embeddingDimension: parseInteger(process.env.RAG_EMBEDDING_DIMENSION, 768),
+      (embeddingUsesGemini
+        ? GEMINI_EMBEDDING_BASE_URL
+        : DASHSCOPE_COMPATIBLE_BASE_URL),
+    embeddingDimension: parseInteger(
+      process.env.RAG_EMBEDDING_DIMENSIONS ||
+        process.env.RAG_EMBEDDING_DIMENSION,
+      embeddingUsesGemini
+        ? GEMINI_DEFAULT_EMBEDDING_DIMENSION
+        : DASHSCOPE_DEFAULT_EMBEDDING_DIMENSION,
+    ),
     chunkSize: parseInteger(process.env.RAG_CHUNK_SIZE, 1200),
     chunkOverlap: parseInteger(process.env.RAG_CHUNK_OVERLAP, 200),
     knowledgeTopK: parseInteger(process.env.RAG_KNOWLEDGE_TOP_K, 8),

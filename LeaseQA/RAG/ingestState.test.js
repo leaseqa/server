@@ -87,6 +87,24 @@ test("corpus version hashes manifest bytes plus sorted source hashes", () => {
   });
 });
 
+test("corpus version changes when the embedding fingerprint changes", () => {
+  const shared = {
+    manifestContents: "manifest-bytes",
+    sourceHashes: ["hash-b", "hash-a"],
+  };
+  const gemini = ingestState.buildCorpusIdentity({
+    ...shared,
+    embeddingFingerprint: "gemini:gemini-embedding-001:768",
+  });
+  const dashscope = ingestState.buildCorpusIdentity({
+    ...shared,
+    embeddingFingerprint: "openai:text-embedding-v3:1024",
+  });
+
+  assert.equal(gemini.manifestSha256, dashscope.manifestSha256);
+  assert.notEqual(gemini.corpusVersion, dashscope.corpusVersion);
+});
+
 for ( const failureStage of ["parse", "embedding", "insert"] ) {
   test(`${failureStage} failure leaves the active corpus untouched`, async (t) => {
     const root = await createCorpusFixture(t);
