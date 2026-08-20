@@ -51,6 +51,21 @@ test("buildKnowledgeSearchPlan adds chapter 9 targeted searches for lead questio
   );
 });
 
+test("buildKnowledgeSearchPlan adds chapter 11 targeted searches for moving-out questions", () => {
+  const plan = buildKnowledgeSearchPlan(
+    "What should I do before moving out to protect my security deposit?",
+    config,
+  );
+
+  assert.deepEqual(
+    plan.slice(0, 2).map(({ group, chapterRef }) => ({ group, chapterRef })),
+    [
+      { group: "chapters", chapterRef: "11" },
+      { group: "handouts", chapterRef: "11" },
+    ],
+  );
+});
+
 test("buildKnowledgeSearchPlan adds chapter 3 targeted searches for security deposit clause questions", () => {
   const plan = buildKnowledgeSearchPlan(
     "Is this clause legal under the tenant-rights handbook if it says the landlord returns the security deposit within 30 days after move-out?",
@@ -111,6 +126,30 @@ test("rankKnowledgeChunks prioritizes chapter 9 for lead questions", () => {
   );
 
   assert.equal(ranked[0].id, "lead");
+});
+
+test("rankKnowledgeChunks prioritizes chapter 11 over chapter 3 for moving-out deposit questions", () => {
+  const ranked = rankKnowledgeChunks(
+    "What should I do before moving out to protect my security deposit?",
+    [
+      createChunk({
+        id: "deposits",
+        sourceGroup: "chapters",
+        sourceName: "ch03_security_deposits.pdf",
+        chapterRef: "3",
+        score: 0.99,
+      }),
+      createChunk({
+        id: "moving-out",
+        sourceGroup: "chapters",
+        sourceName: "ch11_moving_out.pdf",
+        chapterRef: "11",
+        score: 0.7,
+      }),
+    ],
+  );
+
+  assert.equal(ranked[0].id, "moving-out");
 });
 
 test("rankKnowledgeChunks prioritizes chapter 3 for security deposit clause questions", () => {
