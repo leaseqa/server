@@ -11,6 +11,8 @@ const LEAD_PATTERN = /\b(?:lead|delead|poisoning|child under 6)\b/i;
 const ORGANIZING_PATTERN = /\b(?:organizing|organize|retaliat(?:e|ion)|tenant association|collective bargaining)\b/i;
 const SECURITY_DEPOSIT_PATTERN =
   /\b(?:security deposit|deposit return|return the deposit|deposit within 30 days)\b/i;
+const MOVING_OUT_PATTERN =
+  /\bmoving out\b|\bbefore (?:i |you )?move out\b|\bwhen (?:i |you )?move out\b/i;
 const CONTEXTUAL_REFERENCE_PATTERN =
   /\b(?:this|that|it|they|them|these|those)\b|\b(?:clause|provision|term|section|paragraph|part)\b/i;
 const VAGUE_FOLLOW_UP_PATTERN =
@@ -78,7 +80,11 @@ export const questionTargetsOrganizingChapter = (question) =>
   ORGANIZING_PATTERN.test(question || "");
 
 export const questionTargetsSecurityDepositChapter = (question) =>
-  SECURITY_DEPOSIT_PATTERN.test(question || "");
+  SECURITY_DEPOSIT_PATTERN.test(question || "") &&
+  !questionTargetsMovingOutChapter(question);
+
+export const questionTargetsMovingOutChapter = (question) =>
+  MOVING_OUT_PATTERN.test(question || "");
 
 const questionTargetsEvictionProcedures = (question) =>
   EVICTION_PATTERN.test(question || "");
@@ -111,6 +117,16 @@ export const buildKnowledgeSearchPlan = (question, config) => {
     return [
       { group: "chapters", limit: primaryLimit, chapterRef: "10" },
       { group: "handouts", limit: 2, chapterRef: "10" },
+      { group: "chapters", limit: secondaryLimit },
+      { group: "handouts", limit: 2 },
+      { group: "forms", limit: 1 },
+    ];
+  }
+
+  if ( questionTargetsMovingOutChapter(question) ) {
+    return [
+      { group: "chapters", limit: primaryLimit, chapterRef: "11" },
+      { group: "handouts", limit: 2, chapterRef: "11" },
       { group: "chapters", limit: secondaryLimit },
       { group: "handouts", limit: 2 },
       { group: "forms", limit: 1 },
@@ -176,6 +192,11 @@ const isOrganizingPreferredChunk = (question, chunk) =>
   (String(chunk.chapter_ref || "") === "10" ||
     /organiz/i.test(String(chunk.source_name || "")));
 
+const isMovingOutPreferredChunk = (question, chunk) =>
+  questionTargetsMovingOutChapter(question) &&
+  (String(chunk.chapter_ref || "") === "11" ||
+    /moving[_\s-]?out/i.test(String(chunk.source_name || "")));
+
 const isSecurityDepositPreferredChunk = (question, chunk) =>
   questionTargetsSecurityDepositChapter(question) &&
   (String(chunk.chapter_ref || "") === "3" ||
@@ -200,6 +221,12 @@ export const rankKnowledgeChunks = (question, chunks) => {
     const rightOrganizingBoost = isOrganizingPreferredChunk(question, right) ? 1 : 0;
     if ( leftOrganizingBoost !== rightOrganizingBoost ) {
       return rightOrganizingBoost - leftOrganizingBoost;
+    }
+
+    const leftMovingOutBoost = isMovingOutPreferredChunk(question, left) ? 1 : 0;
+    const rightMovingOutBoost = isMovingOutPreferredChunk(question, right) ? 1 : 0;
+    if ( leftMovingOutBoost !== rightMovingOutBoost ) {
+      return rightMovingOutBoost - leftMovingOutBoost;
     }
 
     const leftSecurityDepositBoost = isSecurityDepositPreferredChunk(question, left)
