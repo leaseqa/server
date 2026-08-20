@@ -96,6 +96,27 @@ const toEmbeddingTextType = (taskType) => {
 const parseEmbeddingErrorMessage = (payload, fallback) =>
   payload?.error?.message || fallback;
 
+const usesMultimodalEmbeddings = (config) =>
+  /embedding-vision/i.test(String(config.embeddingModel || "")) ||
+  /embeddings\/multimodal/i.test(String(config.embeddingBaseUrl || ""));
+
+const unwrapEmbedding = (value) => {
+  if ( !Array.isArray(value) || value.length === 0 ) {
+    return null;
+  }
+  if ( typeof value[0] === "number" ) {
+    return value;
+  }
+  if ( Array.isArray(value[0]) && typeof value[0][0] === "number" ) {
+    return value[0];
+  }
+  return null;
+};
+
+const extractEmbeddingVector = (payload) =>
+  unwrapEmbedding(payload?.data?.[0]?.embedding) ||
+  unwrapEmbedding(payload?.data?.embedding);
+
 export const postOpenAICompatibleEmbedding = async ({
                                                       config,
                                                       text,
@@ -103,7 +124,11 @@ export const postOpenAICompatibleEmbedding = async ({
                                                       fetchFn = globalThis.fetch,
                                                       retryPolicy,
                                                     }) => {
-  const requestUrl = joinUrl(config.embeddingBaseUrl, "embeddings");
+  const embeddingPath =
+    config.embeddingPath ||
+    (usesMultimodalEmbeddings(config) ? "embeddings/multimodal" : "embeddings");
+  const multimodal = embeddingPath.includes("multimodal");
+  const requestUrl = joinUrl(config.embeddingBaseUrl, embeddingPath);
 
   return runBoundedOperation({
     label: "embedding request",
@@ -116,13 +141,22 @@ export const postOpenAICompatibleEmbedding = async ({
           "Content-Type": "application/json",
           Authorization: `Bearer ${config.embeddingApiKey}`,
         },
-        body: JSON.stringify({
-          model: config.embeddingModel,
-          input: text,
-          dimensions: config.embeddingDimension,
-          encoding_format: "float",
-          text_type: toEmbeddingTextType(taskType),
-        }),
+        body: JSON.stringify(
+          multimodal
+            ? {
+                model: config.embeddingModel,
+                input: [{ type: "text", text }],
+                dimensions: config.embeddingDimension,
+                encoding_format: "float",
+              }
+            : {
+                model: config.embeddingModel,
+                input: text,
+                dimensions: config.embeddingDimension,
+                encoding_format: "float",
+                text_type: toEmbeddingTextType(taskType),
+              },
+        ),
         signal,
       });
 
@@ -137,8 +171,11 @@ export const postOpenAICompatibleEmbedding = async ({
         error.status = response.status;
         throw error;
       }
-      if ( response.ok && Array.isArray(payload?.data?.[0]?.embedding) ) {
-        return payload.data[0].embedding;
+      if ( response.ok ) {
+        const vector = extractEmbeddingVector(payload);
+        if ( vector ) {
+          return vector;
+        }
       }
 
       const error = new Error(
@@ -210,6 +247,7 @@ export const postGeminiEmbedding = async ({
 };
 
 const embedText = (args) =>
+  args.config?.embeddingTransport === "gemini" ||
   args.config?.embeddingProvider === "gemini"
     ? postGeminiEmbedding(args)
     : postOpenAICompatibleEmbedding(args);
@@ -217,7 +255,7 @@ const embedText = (args) =>
 const createEmbeddingsClient = (config, dependencies = {}) => ({
   embedDocuments: async (texts) => {
     const vectors = [];
-    const batchSize = 8;
+    const batchSize = config.ragProvider === "ark" ? 1 : 8;
 
     for ( let index = 0; index < texts.length; index += batchSize ) {
       const batch = texts.slice(index, index + batchSize);
@@ -232,6 +270,11 @@ const createEmbeddingsClient = (config, dependencies = {}) => ({
         ),
       );
       vectors.push(...embeddedBatch);
+      if ( config.ragProvider === "ark" && index + batchSize < texts.length ) {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 200);
+        });
+      }
     }
 
     return vectors;
@@ -264,7 +307,7 @@ export const createChatClient = (
 ) => {
   if ( !config.chatApiKey ) {
     throw new Error(
-      "RAG_CHAT_API_KEY, DASHSCOPE_API_KEY, GEMINI_CHAT_API_KEY, or GEMINI_API_KEY is not configured",
+      "RAG_CHAT_API_KEY, ARK_API_KEY, DASHSCOPE_API_KEY, GEMINI_CHAT_API_KEY, or GEMINI_API_KEY is not configured",
     );
   }
   return new ChatModelClass({
@@ -1258,6 +1301,7 @@ export const ingestKnowledgeCorpus = async ({
     );
 
     if ( canResume && index === startIndex ) {
+      await loadCollectionFn({ config, collectionName });
       await deleteRows({
         config,
         collectionName,

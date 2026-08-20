@@ -71,6 +71,47 @@ test("postOpenAICompatibleEmbedding posts Bearer auth to /embeddings with dimens
   assert.ok(observedOptions.signal instanceof AbortSignal);
 });
 
+test("postOpenAICompatibleEmbedding uses Ark multimodal embeddings for vision models", async () => {
+  let observedUrl;
+  let observedBody;
+
+  const vector = await postOpenAICompatibleEmbedding({
+    config: {
+      embeddingBaseUrl: "https://ark.cn-beijing.volces.com/api/plan/v3",
+      embeddingModel: "doubao-embedding-vision",
+      embeddingPath: "embeddings/multimodal",
+      embeddingApiKey: "fake-ark-key",
+      embeddingDimension: 1024,
+      embeddingTimeoutMs: 100,
+    },
+    text: "tenant rights",
+    fetchFn: async (url, options) => {
+      observedUrl = url;
+      observedBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: { embedding: [[0.4, 0.5, 0.6]] },
+        }),
+      };
+    },
+    retryPolicy,
+  });
+
+  assert.equal(
+    observedUrl,
+    "https://ark.cn-beijing.volces.com/api/plan/v3/embeddings/multimodal",
+  );
+  assert.deepEqual(observedBody, {
+    model: "doubao-embedding-vision",
+    input: [{ type: "text", text: "tenant rights" }],
+    dimensions: 1024,
+    encoding_format: "float",
+  });
+  assert.deepEqual(vector, [0.4, 0.5, 0.6]);
+});
+
 test("postOpenAICompatibleEmbedding does not retry an HTTP 400 response", async () => {
   let attempts = 0;
 

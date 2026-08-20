@@ -33,6 +33,7 @@ test("getRagChatConfig prefers explicit RAG overrides", () => {
   });
 
   assert.deepEqual(config, {
+    providerId: "dashscope",
     apiKey: "rag-key",
     model: "qwen-max",
     baseURL: "https://example.com/rag",
@@ -60,6 +61,7 @@ test("getRagChatConfig falls back to Gemini-specific env vars", () => {
   });
 
   assert.deepEqual(config, {
+    providerId: "dashscope",
     apiKey: "gemini-chat-key",
     model: "gemini-2.5-flash",
     baseURL: "https://example.com/gemini",

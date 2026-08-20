@@ -52,6 +52,8 @@ test("getRagConfig defaults chat and embedding to DashScope OpenAI-compatible AP
       RAG_EMBEDDING_DIMENSION: undefined,
       RAG_EMBEDDING_DIMENSIONS: undefined,
       RAG_EMBEDDING_PROVIDER: undefined,
+      RAG_PROVIDER: undefined,
+      ARK_API_KEY: undefined,
       GEMINI_CHAT_API_KEY: undefined,
       GEMINI_CHAT_MODEL: undefined,
       GEMINI_CHAT_BASE_URL: undefined,
@@ -61,6 +63,7 @@ test("getRagConfig defaults chat and embedding to DashScope OpenAI-compatible AP
       const config = getRagConfig();
 
       assert.equal(config.chatApiKey, "dashscope-key");
+      assert.equal(config.ragProvider, "dashscope");
       assert.equal(config.chatModel, DASHSCOPE_DEFAULT_CHAT_MODEL);
       assert.equal(config.chatBaseUrl, DASHSCOPE_COMPATIBLE_BASE_URL);
       assert.equal(config.embeddingProvider, "openai");
@@ -87,6 +90,8 @@ test("getRagConfig maps Gemini chat settings onto RAG chat fields", () => {
       RAG_CHAT_API_KEY: undefined,
       RAG_CHAT_MODEL: undefined,
       RAG_CHAT_BASE_URL: undefined,
+      RAG_PROVIDER: undefined,
+      ARK_API_KEY: undefined,
     },
     () => {
       const config = getRagConfig();
@@ -122,6 +127,7 @@ test("getRagConfig uses Gemini embedding defaults when the provider is gemini", 
       RAG_MILVUS_ADDRESS: "https://milvus.example.com",
       GEMINI_API_KEY: "shared-gemini-key",
       RAG_EMBEDDING_PROVIDER: "gemini",
+      RAG_PROVIDER: undefined,
       DASHSCOPE_API_KEY: undefined,
       RAG_EMBEDDING_MODEL: undefined,
       RAG_EMBEDDING_BASE_URL: undefined,
@@ -138,6 +144,45 @@ test("getRagConfig uses Gemini embedding defaults when the provider is gemini", 
         config.embeddingDimension,
         GEMINI_DEFAULT_EMBEDDING_DIMENSION,
       );
+    },
+  );
+});
+
+test("getRagConfig selects the Ark plug from RAG_PROVIDER", () => {
+  withEnv(
+    {
+      RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+      RAG_PROVIDER: "ark",
+      ARK_API_KEY: "ark-key",
+      RAG_CHAT_MODEL: "ark-endpoint-id",
+      DASHSCOPE_API_KEY: undefined,
+      RAG_CHAT_API_KEY: undefined,
+      RAG_CHAT_BASE_URL: undefined,
+      RAG_EMBEDDING_API_KEY: undefined,
+      RAG_EMBEDDING_MODEL: undefined,
+      RAG_EMBEDDING_BASE_URL: undefined,
+      RAG_EMBEDDING_DIMENSIONS: undefined,
+      RAG_EMBEDDING_PROVIDER: undefined,
+    },
+    () => {
+      const config = getRagConfig();
+
+      assert.equal(config.ragProvider, "ark");
+      assert.equal(config.embeddingProvider, "ark");
+      assert.equal(config.embeddingTransport, "openai");
+      assert.equal(config.embeddingPath, "embeddings/multimodal");
+      assert.equal(config.chatApiKey, "ark-key");
+      assert.equal(config.chatModel, "ark-endpoint-id");
+      assert.equal(
+        config.chatBaseUrl,
+        "https://ark.cn-beijing.volces.com/api/plan/v3",
+      );
+      assert.equal(config.embeddingModel, "doubao-embedding-vision");
+      assert.equal(
+        config.embeddingBaseUrl,
+        "https://ark.cn-beijing.volces.com/api/plan/v3",
+      );
+      assert.equal(config.embeddingDimension, 1024);
     },
   );
 });
