@@ -17,3 +17,4 @@ server.log
 server.out
 server.err
 artifacts/
+.rag-knowledge-ingest-state.json

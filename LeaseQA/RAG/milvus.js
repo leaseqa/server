@@ -127,12 +127,14 @@ const createVectorTimeoutError = (timeoutMs) => {
 
 export const ensureCollectionLoaded = async ({
                                                config,
-                                               client,
+                                               client: providedClient,
                                                collectionName,
+                                               createClient: createClientFn = createClient,
                                                clock = { now: Date.now },
                                                sleep = defaultSleep,
                                                pollIntervalMs = LOAD_POLL_INTERVAL_MS,
                                              }) => {
+  const client = providedClient || createClientFn(config);
   const timeoutMs = config.vectorTimeoutMs;
   const deadline = clock.now() + timeoutMs;
   const remainingTime = () => {

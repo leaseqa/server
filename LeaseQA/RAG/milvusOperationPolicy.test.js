@@ -370,6 +370,28 @@ test("ensureCollectionLoaded starts one async mutation and polls load state with
   assert.deepEqual(sleeps, [100]);
 });
 
+test("ensureCollectionLoaded uses a created client when one is not passed", async () => {
+  const loadRequests = [];
+  const fakeClient = {
+    async loadCollectionAsync(request) {
+      loadRequests.push(request);
+      return { error_code: "Success" };
+    },
+    async getLoadState() {
+      return { state: LoadState.LoadStateLoaded };
+    },
+  };
+
+  await ensureCollectionLoaded({
+    config,
+    collectionName: "knowledge",
+    createClient: () => fakeClient,
+  });
+
+  assert.equal(loadRequests.length, 1);
+  assert.equal(loadRequests[0].collection_name, "knowledge");
+});
+
 test("ensureCollectionLoaded throws stable RAG_TIMEOUT at its absolute deadline", async () => {
   let now = 0;
   let loadAttempts = 0;
