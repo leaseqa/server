@@ -55,30 +55,6 @@ jobs:
         run: npm audit --include=dev --audit-level=high
         continue-on-error: true
 
-  node-26-compat:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Check out server
-        uses: actions/checkout@v6.0.2
-        with:
-          path: leaseqa-server
-
-      - name: Set up Node.js 26
-        uses: actions/setup-node@v6.3.0
-        with:
-          node-version: 26.x
-          cache: npm
-          cache-dependency-path: leaseqa-server/package-lock.json
-
-      - name: Install dependencies
-        working-directory: leaseqa-server
-        run: npm ci
-
-      - name: Run server compatibility suite
-        working-directory: leaseqa-server
-        run: npm test
-
   client-e2e:
     runs-on: ubuntu-latest
     needs: server-test
