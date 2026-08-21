@@ -72,7 +72,7 @@ These are exposed through:
 
 Requirements:
 
-- Node `24.x` (Node 26 is covered as a compatibility CI lane)
+- Node `26.x`
 - `npm`
 
 Setup:
