@@ -576,19 +576,21 @@ const ensureViewerCanAccess = ({ session, userId, clientSessionId }) => {
   }
 };
 
-const getKnowledgeResults = async ({
-                                     config,
-                                     vector,
-                                     question,
-                                     searchHybridChunksFn = searchHybridChunks,
-                                     retryPolicy,
-                                   }) => {
+export const retrieveKnowledgeChunks = async ({
+                                                config,
+                                                vector,
+                                                question,
+                                                collectionName,
+                                                searchHybridChunksFn = searchHybridChunks,
+                                                retryPolicy,
+                                              }) => {
+  const targetCollection = collectionName || config.knowledgeCollection;
   const searchPlan = buildKnowledgeSearchPlan(question, config);
   const groupedResults = await Promise.all(
     searchPlan.map(({ group, limit, chapterRef }) =>
       searchHybridChunksFn({
         config,
-        collectionName: config.knowledgeCollection,
+        collectionName: targetCollection,
         denseVector: vector,
         sparseText: question,
         limit,
@@ -605,6 +607,8 @@ const getKnowledgeResults = async ({
     config.knowledgeTopK,
   );
 };
+
+const getKnowledgeResults = retrieveKnowledgeChunks;
 
 export const createRagSession = async ({
                                          userId,
