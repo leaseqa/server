@@ -31,7 +31,7 @@ Production:
 The RAG layer combines:
 
 - uploaded user material: pasted clause text, uploaded `PDF`, or uploaded `DOCX`
-- ingested housing-rights reference material from the MassLegalHelp corpus configured by `RAG_CORPUS_ROOT`
+- ingested housing-rights reference material from the MassLegalHelp corpus committed at `resources/rag-corpus/mass tenant rights` (override with `RAG_CORPUS_ROOT`)
 
 The ingested knowledge base is organized around:
 
@@ -96,7 +96,7 @@ Expected local client:
 - `DATABASE_CONNECTION_STRING`
 - `CLIENT_URL`
 - `SESSION_SECRET`
-- `RAG_CORPUS_ROOT`
+- `RAG_CORPUS_ROOT` (optional; only needed when the corpus is not the committed in-repository copy)
 - `RAG_MILVUS_ADDRESS`
 - `RAG_MILVUS_TOKEN`
 - `RAG_MILVUS_KNOWLEDGE_COLLECTION`
@@ -138,12 +138,27 @@ The caller must own the authenticated session or present the same guest browser 
 Knowledge ingestion is content-addressed and resumable:
 
 ```bash
-RAG_CORPUS_ROOT=/absolute/path/to/resources/rag-corpus/mass\ tenant\ rights npm run ingest:rag
+npm run ingest:rag
 npm run ingest:rag -- --limit=5
 npm run ingest:rag:reset
+RAG_CORPUS_ROOT=/absolute/path/to/mass\ tenant\ rights npm run ingest:rag
 ```
 
-`RAG_CORPUS_ROOT` takes precedence. Without it, the server discovers `../resources/rag-corpus/mass tenant rights` from either the original checkout or an isolated `.worktrees/*` checkout. Set the variable explicitly in deployed environments where the corpus is mounted elsewhere. The resolved worktree path is never persisted in production configuration; only the runtime manifest path appears in the local ingest-state file.
+### Knowledge corpus
+
+The corpus is committed in this repository at `resources/rag-corpus/mass tenant rights` (81 PDFs, 36 MB, plain git, no LFS). Only `npm run ingest:rag` reads it; the running web service never does. Two consequences of co-locating it, accepted deliberately because corpus updates are infrequent: deploys pull 36 MB they will not use, and a corpus-only commit triggers a web-service deploy.
+
+`resolveCorpusRoot()` checks this repository first and only then walks up to parent directories, so the committed corpus is never shadowed by a stale copy outside it. `RAG_CORPUS_ROOT` overrides both and is how to point the ingest at any other layout — a mounted volume, a separate checkout, or a deployed environment where the corpus lives elsewhere. The resolved path is never persisted in production configuration; only the runtime manifest path appears in the local ingest-state file.
+
+Refresh procedure, all commands from this repository root:
+
+1. `npm run corpus:check -- --write-state` and read the report. It never downloads and never attempts to defeat the upstream bot check.
+2. Download each changed PDF **in a real browser** from the page URL in the report, overwriting the file in place under its existing name.
+3. `npm run corpus:refresh` (use `--dry-run` first to preview). Only rows whose bytes changed are rewritten, so a no-op refresh leaves `corpus_manifest.csv` byte-identical and does not trigger a re-ingest. The previous manifest is kept as the single `corpus_manifest.csv.bak`.
+4. Commit the changed PDFs, `corpus_manifest.csv`, `corpus_manifest.csv.bak` and `upstream_state.json` together.
+5. Ingest: run the `corpus-ingest` workflow (`workflow_dispatch`; `min_hit_rate` defaults to `0.9`) or `npm run ingest:rag` locally. The retrieval gate decides whether the alias moves.
+
+See `resources/rag-corpus/mass tenant rights/CORPUS_GUIDE.md` and `docs/superpowers/specs/2026-08-23-corpus-upstream-sync.md`.
 
 Each ingest computes `sha256(manifest bytes + sorted source hashes + embedding provider/model/dimension)`, writes to `leaseqa_knowledge_chunks_<version-prefix>`, flushes and loads the complete staging collection, then atomically moves the stable alias configured by `RAG_MILVUS_KNOWLEDGE_COLLECTION`. Old versioned collections are removed only after activation. `--limit` leaves staging state without activating a partial corpus; a later run resumes it. `--reset` restarts only the current staging version and does not delete the active alias target.
 

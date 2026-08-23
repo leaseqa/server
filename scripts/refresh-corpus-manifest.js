@@ -19,8 +19,8 @@ byte-identical and does not trigger a re-ingest.
 
 A write goes to a temp file and is renamed into place, and the previous good
 manifest is kept at corpus_manifest.csv.bak (overwritten each time a write
-happens). That is separate from corpus_manifest.csv.pre-migration.bak, which
-scripts/migrate-corpus-manifest.js writes once and never overwrites.
+happens). That single rolling backup is committed alongside the manifest and is
+the only backup the corpus keeps.
 
 Options:
   --corpus-root=<path>  Corpus directory (default: RAG_CORPUS_ROOT or auto-detected)
@@ -69,10 +69,10 @@ const requireUsableManifest = ({ manifestText, manifestPath }) => {
   return manifestText;
 };
 
-// The corpus is not version-controlled yet (Task 7), so an in-place overwrite
-// of the only manifest has no recovery path. Keep a rolling backup of the
-// previous good file and swap the new one in with an atomic rename, so a crash
-// mid-write cannot leave a truncated manifest behind.
+// Git holds the committed history, but an uncommitted refresh still overwrites
+// the working copy in place. Keep a rolling backup of the previous good file and
+// swap the new one in with an atomic rename, so a crash mid-write cannot leave a
+// truncated manifest behind.
 const writeManifestSafely = async ({ manifestPath, text }) => {
   const backupPath = `${manifestPath}.bak`;
   await fs.copyFile(manifestPath, backupPath);
