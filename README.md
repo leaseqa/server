@@ -160,6 +160,8 @@ Refresh procedure, all commands from this repository root:
 4. Commit the changed PDFs, `corpus_manifest.csv`, `corpus_manifest.csv.bak` and `upstream_state.json` together.
 5. Ingest: run the `corpus-ingest` workflow (`workflow_dispatch`; `min_hit_rate` defaults to `0.9`) or `npm run ingest:rag` locally. The retrieval gate decides whether the alias moves.
 
+Step 1 also runs on its own: the `corpus-upstream-check` workflow crawls the eight index pages every Monday at 13:00 UTC (and on `workflow_dispatch`), uploads the JSON report as an artifact, and opens — or comments on, if one is already open — a single issue labelled `corpus-upstream`. It files on two different outcomes and says which: the checker's exit 3, MassLegalHelp published changes, and exit 4, the run could not confirm every row because a page was blocked or a manifest row matched no PDF. An inconclusive run is never reported as a clean one, which is the whole reason exit 4 exists. Exit 1, a broken checker, fails the run instead of filing anything. The workflow never downloads a PDF and never retries a bot challenge.
+
 The `corpus-ingest` workflow requires an explicit target alias and refuses to start without one, because the retrieval gate queries the staging collection and therefore cannot detect an ingest that repoints the wrong alias. Supply it as the `knowledge_alias` dispatch input, or once as the `RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION` secret. It must match the `RAG_MILVUS_KNOWLEDGE_COLLECTION` the readers are deployed with.
 
 See `resources/rag-corpus/mass tenant rights/CORPUS_GUIDE.md` and `docs/superpowers/specs/2026-08-23-corpus-upstream-sync.md`.
