@@ -6,6 +6,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 import * as dao from "./dao.js";
 import { getRagConfig } from "./config.js";
+import { parseManifestCsv } from "./corpusManifest.js";
 import {
   buildRagMessages,
   formatEvidenceSourceLabel,
@@ -1014,54 +1015,10 @@ export const createSessionWithOptionalInitialAnswer = async ({
   }
 };
 
-const parseManifestLine = (line) => {
-  const values = [];
-  let current = "";
-  let inQuotes = false;
-
-  for ( let index = 0; index < line.length; index += 1 ) {
-    const char = line[index];
-    if ( char === '"' ) {
-      const nextChar = line[index + 1];
-      if ( inQuotes && nextChar === '"' ) {
-        current += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-    if ( char === "," && !inQuotes ) {
-      values.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  values.push(current);
-  return values;
-};
-
-const parseCorpusManifest = (raw) => {
-  const [headerLine, ...lines] = raw.split(/\r?\n/).filter(Boolean);
-  const headers = parseManifestLine(headerLine);
-
-  return lines.map((line) => {
-    const values = parseManifestLine(line);
-    return headers.reduce(
-      (record, header, index) => ({
-        ...record,
-        [header]: values[index] || "",
-      }),
-      {},
-    );
-  });
-};
-
 export const loadCorpusManifest = async ({ manifestPath } = {}) => {
   const resolvedManifestPath = manifestPath || getRagConfig().manifestPath;
   const raw = await fs.readFile(resolvedManifestPath, "utf-8");
-  return parseCorpusManifest(raw);
+  return parseManifestCsv(raw);
 };
 
 const buildKnowledgeChunkRows = ({
@@ -1149,7 +1106,7 @@ export const ingestKnowledgeCorpus = async ({
       }));
 
   const manifestContents = await readFile(config.manifestPath, "utf-8");
-  const manifest = parseCorpusManifest(manifestContents);
+  const manifest = parseManifestCsv(manifestContents);
   const sourceFiles = await Promise.all(
     manifest.map(async (item) => {
       const absolutePath = path.resolve(config.corpusRoot, item.file_path);
