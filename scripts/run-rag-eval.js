@@ -19,7 +19,9 @@ const HELP = `Usage: node scripts/run-rag-eval.js [options]
 
 Options:
   --base-url=<url>    LeaseQA server URL (default: http://127.0.0.1:4050)
-  --eval-set=<path>   Evaluation case JSON file
+  --eval-set=<path>   Evaluation case JSON file; cases with an "upload"
+                      object (content/sourceName/mimeType) attach that
+                      document to the session instead of placeholder text
   --output=<path>     JSON artifact path (default: artifacts/rag-eval.json)
   --limit=<count>     Run only the first count selected cases
   --ids=<id,...>      Run only comma-separated case IDs
@@ -142,12 +144,23 @@ const requestJson = async ({
   }
 };
 
-const createSession = async ({ baseUrl, cookieJar }) => {
+const createSession = async ({ baseUrl, cookieJar, evalCase }) => {
   const formData = new FormData();
-  formData.append(
-    "sourceText",
-    "Evaluation placeholder. Answers must use the knowledge corpus.",
-  );
+  const upload = evalCase?.upload;
+  if ( upload && upload.content != null ) {
+    formData.append(
+      "file",
+      new Blob([String(upload.content)], {
+        type: upload.mimeType || "text/plain",
+      }),
+      upload.sourceName || "uploaded-document.txt",
+    );
+  } else {
+    formData.append(
+      "sourceText",
+      "Evaluation placeholder. Answers must use the knowledge corpus.",
+    );
+  }
   const response = await requestJson({
     baseUrl,
     cookieJar,
@@ -208,7 +221,7 @@ const isValidCitation = (citation) =>
 export const runEvalCase = async ({ baseUrl, evalCase, clock = performance }) => {
   const startedAt = clock.now();
   const cookieJar = new Map();
-  const sessionId = await createSession({ baseUrl, cookieJar });
+  const sessionId = await createSession({ baseUrl, cookieJar, evalCase });
   const result = await askQuestion({
     baseUrl,
     cookieJar,

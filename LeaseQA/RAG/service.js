@@ -189,69 +189,6 @@ export const postOpenAICompatibleEmbedding = async ({
   });
 };
 
-export const postGeminiEmbedding = async ({
-                                            config,
-                                            text,
-                                            taskType,
-                                            title,
-                                            fetchFn = globalThis.fetch,
-                                            retryPolicy,
-                                          }) => {
-  const requestUrl = `${config.embeddingBaseUrl}/${config.embeddingModel}:embedContent?key=${config.embeddingApiKey}`;
-
-  return runBoundedOperation({
-    label: "embedding request",
-    timeoutMs: config.embeddingTimeoutMs,
-    retryPolicy,
-    operation: async (signal) => {
-      const response = await fetchFn(requestUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: {
-            parts: [{ text }],
-          },
-          taskType,
-          title: title || undefined,
-          outputDimensionality: config.embeddingDimension,
-        }),
-        signal,
-      });
-
-      let payload;
-      try {
-        payload = await response.json();
-      } catch ( cause ) {
-        if ( response.ok ) {
-          throw new Error("Gemini embedding response was not valid JSON", {
-            cause,
-          });
-        }
-        const error = new Error("Gemini embedding request failed", { cause });
-        error.status = response.status;
-        throw error;
-      }
-      if ( response.ok && Array.isArray(payload?.embedding?.values) ) {
-        return payload.embedding.values;
-      }
-
-      const error = new Error(
-        payload?.error?.message || "Gemini embedding request failed",
-      );
-      if ( !response.ok ) {
-        error.status = response.status;
-      }
-      throw error;
-    },
-  });
-};
-
-const embedText = (args) =>
-  args.config?.embeddingTransport === "gemini" ||
-  args.config?.embeddingProvider === "gemini"
-    ? postGeminiEmbedding(args)
-    : postOpenAICompatibleEmbedding(args);
-
 const createEmbeddingsClient = (config, dependencies = {}) => ({
   embedDocuments: async (texts) => {
     const vectors = [];
@@ -261,7 +198,7 @@ const createEmbeddingsClient = (config, dependencies = {}) => ({
       const batch = texts.slice(index, index + batchSize);
       const embeddedBatch = await Promise.all(
         batch.map((text) =>
-          embedText({
+          postOpenAICompatibleEmbedding({
             config,
             text,
             taskType: "RETRIEVAL_DOCUMENT",
@@ -280,7 +217,7 @@ const createEmbeddingsClient = (config, dependencies = {}) => ({
     return vectors;
   },
   embedQuery: async (text) =>
-    embedText({
+    postOpenAICompatibleEmbedding({
       config,
       text,
       taskType: "RETRIEVAL_QUERY",
@@ -307,7 +244,7 @@ export const createChatClient = (
 ) => {
   if ( !config.chatApiKey ) {
     throw new Error(
-      "RAG_CHAT_API_KEY, ARK_API_KEY, DASHSCOPE_API_KEY, GEMINI_CHAT_API_KEY, or GEMINI_API_KEY is not configured",
+      "RAG_CHAT_API_KEY, ARK_API_KEY, or DASHSCOPE_API_KEY is not configured",
     );
   }
   return new ChatModelClass({
@@ -537,28 +474,38 @@ export const resolveSupportedCitationChunks = ({
                                                  question,
                                                  citationChunks,
                                                  knowledgeChunks,
+                                                 minSupportScore = 0.025,
                                                }) => {
   const questionNeedsDualSupport = questionNeedsHandbookSupport(question);
   const hasDirectSupport = hasReliableCitationSupport({
     question,
     citationChunks,
   });
+
+  let supported;
   if ( hasDirectSupport ) {
-    return citationChunks;
-  }
-
-  if ( questionNeedsDualSupport ) {
+    supported = citationChunks;
+  } else if ( questionNeedsDualSupport ) {
     return [];
-  }
-
-  if ( knowledgeChunks.length > 0 ) {
-    return dedupeById([
+  } else if ( knowledgeChunks.length > 0 ) {
+    supported = dedupeById([
       ...citationChunks,
       ...rankKnowledgeChunks(question, knowledgeChunks),
     ]).slice(0, 6);
+  } else {
+    return [];
   }
 
-  return [];
+  // Relevance floor: with RRFRanker(60), a chunk matched by both dense and
+  // sparse rankers scores ~0.033 while one matched by a single ranker scores
+  // ~0.016. Requiring the best evidence to clear ~0.025 abstains when the
+  // corpus contains nothing semantically responsive to the question.
+  const bestScore = Math.max(...supported.map((chunk) => chunk.score || 0));
+  if ( bestScore < minSupportScore ) {
+    return [];
+  }
+
+  return supported;
 };
 
 const ensureViewerCanAccess = ({ session, userId, clientSessionId }) => {
@@ -850,6 +797,7 @@ export const answerQuestion = async ({
     question,
     citationChunks,
     knowledgeChunks,
+    minSupportScore: config.minSupportScore,
   });
   const candidateCitations =
     supportedCitationChunks.length > 0

@@ -17,9 +17,15 @@ const readRequestJson = async (request) => {
 };
 
 const startFakeRagServer = async (t) => {
+  const receivedSessionBodies = [];
   const server = createServer(async (request, response) => {
     response.setHeader("Content-Type", "application/json");
     if ( request.method === "POST" && request.url === "/api/rag/sessions" ) {
+      const chunks = [];
+      for await ( const chunk of request ) {
+        chunks.push(chunk);
+      }
+      receivedSessionBodies.push(Buffer.concat(chunks).toString("utf8"));
       response.setHeader("Set-Cookie", "rag-session=fake-cookie; Path=/; HttpOnly");
       response.writeHead(201);
       response.end(JSON.stringify({ data: { _id: "fake-session" } }));
@@ -72,6 +78,27 @@ const startFakeRagServer = async (t) => {
         );
         return;
       }
+      if (
+        receivedSessionBodies.some((body) => body.includes("EVAL_UPLOAD_MARKER"))
+      ) {
+        response.end(
+          JSON.stringify({
+            data: {
+              answer: "Your lease requires 60 days notice to renew.",
+              citations: [
+                {
+                  citationId: "upload-1",
+                  sourceName: "sample-lease.txt",
+                  sourceGroup: "upload",
+                  sourceType: "upload",
+                  snippet: "60 days written notice",
+                },
+              ],
+            },
+          }),
+        );
+        return;
+      }
       response.end(
         JSON.stringify({
           data: {
@@ -97,7 +124,10 @@ const startFakeRagServer = async (t) => {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => server.close());
   const address = server.address();
-  return `http://127.0.0.1:${address.port}`;
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    receivedSessionBodies,
+  };
 };
 
 const writeEvalSet = async (directory, name, cases) => {
@@ -145,7 +175,7 @@ const abstainCase = {
 };
 
 test("fake HTTP evaluation writes latency, source, citation, abstention, and summary fields", async (t) => {
-  const baseUrl = await startFakeRagServer(t);
+  const { baseUrl } = await startFakeRagServer(t);
   const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const evalSetPath = await writeEvalSet(directory, "passing", [
@@ -183,8 +213,43 @@ test("fake HTTP evaluation writes latency, source, citation, abstention, and sum
   );
 });
 
+test("upload cases attach the document file to session creation and assert upload citations", async (t) => {
+  const { baseUrl, receivedSessionBodies } = await startFakeRagServer(t);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-upload-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const evalSetPath = await writeEvalSet(directory, "upload", [
+    {
+      id: "upload-lease-renewal-notice",
+      category: "upload",
+      upload: {
+        sourceName: "sample-lease.txt",
+        mimeType: "text/plain",
+        content:
+          "EVAL_UPLOAD_MARKER This lease requires 60 days written notice to renew.",
+      },
+      question: "How much notice does my lease require?",
+      expectedSourceGroup: "upload",
+    },
+  ]);
+  const outputPath = path.join(directory, "artifact.json");
+
+  const artifact = await evalRunner.runEvaluation({
+    baseUrl,
+    evalSetPath,
+    outputPath,
+  });
+
+  assert.equal(receivedSessionBodies.length, 1);
+  assert.match(receivedSessionBodies[0], /EVAL_UPLOAD_MARKER/);
+  assert.match(receivedSessionBodies[0], /filename="sample-lease\.txt"/);
+  assert.equal(artifact.results.length, 1);
+  assert.equal(artifact.results[0].expectedSourceMatched, true);
+  assert.equal(artifact.results[0].citationValid, true);
+  assert.equal(artifact.results[0].passed, true);
+});
+
 test("evaluation CLI exits 1 below committed pass or safety thresholds", async (t) => {
-  const baseUrl = await startFakeRagServer(t);
+  const { baseUrl } = await startFakeRagServer(t);
   const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-gate-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const evalSetPath = await writeEvalSet(directory, "failing", [
@@ -210,7 +275,7 @@ test("evaluation CLI exits 1 below committed pass or safety thresholds", async (
 });
 
 test("evaluation CLI exits 0 when pass and safety thresholds are met", async (t) => {
-  const baseUrl = await startFakeRagServer(t);
+  const { baseUrl } = await startFakeRagServer(t);
   const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-pass-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const evalSetPath = await writeEvalSet(directory, "passing", [
@@ -232,7 +297,7 @@ test("evaluation CLI exits 0 when pass and safety thresholds are met", async (t)
 });
 
 test("runtime case failures produce a redacted partial artifact, continue, and exit 1", async (t) => {
-  const baseUrl = await startFakeRagServer(t);
+  const { baseUrl } = await startFakeRagServer(t);
   const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-runtime-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const evalSetPath = await writeEvalSet(directory, "runtime", [

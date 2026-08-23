@@ -42,8 +42,7 @@ test("unset RAG_PROVIDER keeps DashScope defaults", () => {
   assert.equal(chat.baseURL, DASHSCOPE_COMPATIBLE_BASE_URL);
 });
 
-test("dashscope fingerprint stays openai so existing corpora do not churn", () => {
+test("embedding fingerprint labels the vector space for corpus versioning", () => {
   assert.equal(fingerprintEmbeddingProvider("dashscope"), "openai");
   assert.equal(fingerprintEmbeddingProvider("ark"), "ark");
-  assert.equal(fingerprintEmbeddingProvider("gemini"), "gemini");
 });

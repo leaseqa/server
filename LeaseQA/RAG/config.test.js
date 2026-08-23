@@ -7,10 +7,7 @@ import {
   DASHSCOPE_DEFAULT_CHAT_MODEL,
   DASHSCOPE_DEFAULT_EMBEDDING_DIMENSION,
   DASHSCOPE_DEFAULT_EMBEDDING_MODEL,
-  GEMINI_DEFAULT_EMBEDDING_DIMENSION,
-  GEMINI_DEFAULT_EMBEDDING_MODEL,
-  GEMINI_EMBEDDING_BASE_URL,
-} from "../shared/geminiOpenAI.js";
+} from "../shared/ragProviders.js";
 
 const withEnv = (overrides, callback) => {
   const original = Object.fromEntries(
@@ -54,10 +51,6 @@ test("getRagConfig defaults chat and embedding to DashScope OpenAI-compatible AP
       RAG_EMBEDDING_PROVIDER: undefined,
       RAG_PROVIDER: undefined,
       ARK_API_KEY: undefined,
-      GEMINI_CHAT_API_KEY: undefined,
-      GEMINI_CHAT_MODEL: undefined,
-      GEMINI_CHAT_BASE_URL: undefined,
-      GEMINI_API_KEY: undefined,
     },
     () => {
       const config = getRagConfig();
@@ -78,34 +71,6 @@ test("getRagConfig defaults chat and embedding to DashScope OpenAI-compatible AP
   );
 });
 
-test("getRagConfig maps Gemini chat settings onto RAG chat fields", () => {
-  withEnv(
-    {
-      RAG_MILVUS_ADDRESS: "https://milvus.example.com",
-      GEMINI_CHAT_API_KEY: "gemini-chat-key",
-      GEMINI_CHAT_MODEL: "gemini-2.5-pro",
-      GEMINI_CHAT_BASE_URL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-      GEMINI_API_KEY: "shared-gemini-key",
-      DASHSCOPE_API_KEY: undefined,
-      RAG_CHAT_API_KEY: undefined,
-      RAG_CHAT_MODEL: undefined,
-      RAG_CHAT_BASE_URL: undefined,
-      RAG_PROVIDER: undefined,
-      ARK_API_KEY: undefined,
-    },
-    () => {
-      const config = getRagConfig();
-
-      assert.equal(config.chatApiKey, "gemini-chat-key");
-      assert.equal(config.chatModel, "gemini-2.5-pro");
-      assert.equal(
-        config.chatBaseUrl,
-        "https://generativelanguage.googleapis.com/v1beta/openai/",
-      );
-    },
-  );
-});
-
 test("getRagConfig prefers RAG_EMBEDDING_DIMENSIONS over the singular alias", () => {
   withEnv(
     {
@@ -117,33 +82,6 @@ test("getRagConfig prefers RAG_EMBEDDING_DIMENSIONS over the singular alias", ()
     () => {
       const config = getRagConfig();
       assert.equal(config.embeddingDimension, 768);
-    },
-  );
-});
-
-test("getRagConfig uses Gemini embedding defaults when the provider is gemini", () => {
-  withEnv(
-    {
-      RAG_MILVUS_ADDRESS: "https://milvus.example.com",
-      GEMINI_API_KEY: "shared-gemini-key",
-      RAG_EMBEDDING_PROVIDER: "gemini",
-      RAG_PROVIDER: undefined,
-      DASHSCOPE_API_KEY: undefined,
-      RAG_EMBEDDING_MODEL: undefined,
-      RAG_EMBEDDING_BASE_URL: undefined,
-      RAG_EMBEDDING_DIMENSION: undefined,
-      RAG_EMBEDDING_DIMENSIONS: undefined,
-    },
-    () => {
-      const config = getRagConfig();
-
-      assert.equal(config.embeddingProvider, "gemini");
-      assert.equal(config.embeddingModel, GEMINI_DEFAULT_EMBEDDING_MODEL);
-      assert.equal(config.embeddingBaseUrl, GEMINI_EMBEDDING_BASE_URL);
-      assert.equal(
-        config.embeddingDimension,
-        GEMINI_DEFAULT_EMBEDDING_DIMENSION,
-      );
     },
   );
 });
@@ -191,8 +129,7 @@ test("getRagConfig defaults embedding, chat, and vector operations to separate b
   withEnv(
     {
       RAG_MILVUS_ADDRESS: "https://milvus.example.com",
-      GEMINI_CHAT_API_KEY: "gemini-chat-key",
-      GEMINI_API_KEY: "shared-gemini-key",
+      DASHSCOPE_API_KEY: "dashscope-key",
       RAG_EMBEDDING_TIMEOUT_MS: undefined,
       RAG_CHAT_TIMEOUT_MS: undefined,
       RAG_VECTOR_TIMEOUT_MS: undefined,
@@ -211,8 +148,7 @@ test("getRagConfig accepts positive timeout overrides", () => {
   withEnv(
     {
       RAG_MILVUS_ADDRESS: "https://milvus.example.com",
-      GEMINI_CHAT_API_KEY: "gemini-chat-key",
-      GEMINI_API_KEY: "shared-gemini-key",
+      DASHSCOPE_API_KEY: "dashscope-key",
       RAG_EMBEDDING_TIMEOUT_MS: "1200",
       RAG_CHAT_TIMEOUT_MS: "3400",
       RAG_VECTOR_TIMEOUT_MS: "5600",
@@ -231,8 +167,7 @@ test("getRagConfig rejects non-positive timeout overrides in favor of bounded de
   withEnv(
     {
       RAG_MILVUS_ADDRESS: "https://milvus.example.com",
-      GEMINI_CHAT_API_KEY: "gemini-chat-key",
-      GEMINI_API_KEY: "shared-gemini-key",
+      DASHSCOPE_API_KEY: "dashscope-key",
       RAG_EMBEDDING_TIMEOUT_MS: "0",
       RAG_CHAT_TIMEOUT_MS: "-1",
       RAG_VECTOR_TIMEOUT_MS: "not-a-number",

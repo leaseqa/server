@@ -39,6 +39,42 @@ test("resolveSupportedCitationChunks rejects clause legality questions when uplo
   assert.equal(supportedChunks.length, 0);
 });
 
+test("resolveSupportedCitationChunks abstains when the best evidence clears no relevance floor", () => {
+  const supportedChunks = resolveSupportedCitationChunks({
+    question: "What federal statute guarantees every tenant a free lawyer?",
+    citationChunks: [
+      createChunk({
+        id: "kb-low",
+        sourceGroup: "chapters",
+        sourceName: "ch02_tenant_screening.pdf",
+        chapterRef: "2",
+        score: 0.0164,
+      }),
+    ],
+    knowledgeChunks: [],
+  });
+
+  assert.equal(supportedChunks.length, 0);
+});
+
+test("resolveSupportedCitationChunks keeps evidence that clears the support floor", () => {
+  const supportedChunks = resolveSupportedCitationChunks({
+    question: "When does a landlord return my security deposit?",
+    citationChunks: [
+      createChunk({
+        id: "kb-good",
+        sourceGroup: "chapters",
+        sourceName: "ch03_security_deposits.pdf",
+        chapterRef: "3",
+        score: 0.0328,
+      }),
+    ],
+    knowledgeChunks: [],
+  });
+
+  assert.equal(supportedChunks.length, 1);
+});
+
 test("finalizeAssistantCitations returns only citations explicitly selected by the model", () => {
   const result = finalizeAssistantCitations({
     structuredAnswer: {

@@ -253,5 +253,27 @@
     "expectedChapterRefs": [
       "3"
     ]
+  },
+  {
+    "id": "upload-lease-renewal-notice",
+    "category": "upload",
+    "upload": {
+      "sourceName": "sample-lease.txt",
+      "mimeType": "text/plain",
+      "content": "RESIDENTIAL LEASE AGREEMENT\nThis lease is between the Landlord and Tenant for the apartment at 12 Beacon Street, Boston, MA.\n1. Term and Renewal: This lease runs for one year. The Tenant must give the Landlord at least 60 days written notice before the end of the term to renew.\n2. Rent: Monthly rent is $1,800, due on the first of each month.\n3. Repairs: The Landlord must repair heating, plumbing, and electrical problems within 48 hours of written notice.\n4. Security Deposit: The Landlord holds a $1,800 security deposit and will return it within 60 days after move-out, minus any itemized deductions.\n5. Late Fee: A late fee of $50 applies if rent is paid after the 5th of the month."
+    },
+    "question": "My lease says I must give 60 days notice to renew. How much notice does my lease require?",
+    "expectedSourceGroup": "upload"
+  },
+  {
+    "id": "upload-lease-deposit-return-law",
+    "category": "upload",
+    "upload": {
+      "sourceName": "sample-lease.txt",
+      "mimeType": "text/plain",
+      "content": "RESIDENTIAL LEASE AGREEMENT\nThis lease is between the Landlord and Tenant for the apartment at 12 Beacon Street, Boston, MA.\n1. Term and Renewal: This lease runs for one year. The Tenant must give the Landlord at least 60 days written notice before the end of the term to renew.\n2. Rent: Monthly rent is $1,800, due on the first of each month.\n3. Repairs: The Landlord must repair heating, plumbing, and electrical problems within 48 hours of written notice.\n4. Security Deposit: The Landlord holds a $1,800 security deposit and will return it within 60 days after move-out, minus any itemized deductions.\n5. Late Fee: A late fee of $50 applies if rent is paid after the 5th of the month."
+    },
+    "question": "My lease says my security deposit will be returned within 60 days after move-out. Is that consistent with Massachusetts law?",
+    "expectedSourceGroup": "upload"
   }
 ]

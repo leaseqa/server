@@ -92,17 +92,17 @@ test("corpus version changes when the embedding fingerprint changes", () => {
     manifestContents: "manifest-bytes",
     sourceHashes: ["hash-b", "hash-a"],
   };
-  const gemini = ingestState.buildCorpusIdentity({
+  const ark = ingestState.buildCorpusIdentity({
     ...shared,
-    embeddingFingerprint: "gemini:gemini-embedding-001:768",
+    embeddingFingerprint: "ark:doubao-embedding-vision:1024",
   });
   const dashscope = ingestState.buildCorpusIdentity({
     ...shared,
     embeddingFingerprint: "openai:text-embedding-v3:1024",
   });
 
-  assert.equal(gemini.manifestSha256, dashscope.manifestSha256);
-  assert.notEqual(gemini.corpusVersion, dashscope.corpusVersion);
+  assert.equal(ark.manifestSha256, dashscope.manifestSha256);
+  assert.notEqual(ark.corpusVersion, dashscope.corpusVersion);
 });
 
 for ( const failureStage of ["parse", "embedding", "insert"] ) {

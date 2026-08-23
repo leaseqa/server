@@ -109,7 +109,7 @@ Expected local client:
 - `DASHSCOPE_API_KEY` (Alibaba Cloud Model Studio / 百炼; used for both chat and embedding)
 - `RAG_CHAT_*` (defaults: `qwen-plus` at `https://dashscope.aliyuncs.com/compatible-mode/v1`)
 - `RAG_EMBEDDING_*` (defaults: OpenAI-compatible `text-embedding-v3`, 1024 dimensions)
-- `GEMINI_API_KEY` / `GEMINI_CHAT_*` (optional override; set `RAG_EMBEDDING_PROVIDER=gemini` to restore Gemini `embedContent`)
+- `ARK_API_KEY` / `RAG_PROVIDER=ark` (Volcengine Ark Agent Plan, OpenAI-compatible; defaults `doubao-seed-2.0-lite` chat and `doubao-embedding-vision` embedding)
 
 See [.env.example](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/.env.example) for the full template.
 
@@ -147,7 +147,7 @@ npm run ingest:rag:reset
 
 Each ingest computes `sha256(manifest bytes + sorted source hashes + embedding provider/model/dimension)`, writes to `leaseqa_knowledge_chunks_<version-prefix>`, flushes and loads the complete staging collection, then atomically moves the stable alias configured by `RAG_MILVUS_KNOWLEDGE_COLLECTION`. Old versioned collections are removed only after activation. `--limit` leaves staging state without activating a partial corpus; a later run resumes it. `--reset` restarts only the current staging version and does not delete the active alias target.
 
-Switching embedding vendor or dimension (for example Gemini `gemini-embedding-001` at 768-d to DashScope `text-embedding-v3` at 1024-d) produces a new corpus version automatically. Existing Gemini collections cannot serve DashScope vectors; run `npm run ingest:rag` after changing provider config. Session collections use a stable name (`RAG_MILVUS_SESSION_COLLECTION`); drop or recreate that collection after a dimension change, because new session uploads will not fit a 768-d schema.
+Switching embedding vendor or dimension (for example DashScope `text-embedding-v3` to Ark `doubao-embedding-vision`, or a 768-d to 1024-d model) produces a new corpus version automatically. Existing collections cannot serve vectors from a different embedding model or dimension; run `npm run ingest:rag` after changing provider config. Session collections use a stable name (`RAG_MILVUS_SESSION_COLLECTION`); drop or recreate that collection after a dimension change, because new session uploads will not fit an old schema.
 
 For deployments where `RAG_MILVUS_KNOWLEDGE_COLLECTION` is still a physical legacy collection, migrate without overwriting it:
 
@@ -171,7 +171,7 @@ RAG_EVAL_OUTPUT=artifacts/rag-eval.json \
 npm run eval:rag
 ```
 
-It exits `1` below pass rate `0.90` or safe rate `0.98`. GitHub's manually dispatched `Live RAG Evaluation` workflow requires its dedicated Mongo, DashScope (`RAG_EVAL_DASHSCOPE_API_KEY`), session-secret, and Milvus secrets and uploads the artifact even when the gate fails. `RAG_EVAL_GEMINI_API_KEY` remains an optional Gemini override.
+It exits `1` below pass rate `0.90` or safe rate `0.98`. GitHub's manually dispatched `Live RAG Evaluation` workflow requires its dedicated Mongo, OpenAI-compatible provider (`RAG_EVAL_DASHSCOPE_API_KEY` / `RAG_EVAL_ARK_API_KEY`), session-secret, and Milvus secrets and uploads the artifact even when the gate fails.
 
 ## Verification Used for the Current Release
 

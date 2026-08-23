@@ -5,7 +5,10 @@ node_modules
 
 .env
 .env.local
+.env.*
+!.env.example
 .idea
+.claude/
 npm-debug.log*
 .DS_Store
 

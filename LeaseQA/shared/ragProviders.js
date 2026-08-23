@@ -10,14 +10,6 @@ export const ARK_DEFAULT_CHAT_MODEL = "doubao-seed-2.0-lite";
 export const ARK_DEFAULT_EMBEDDING_MODEL = "doubao-embedding-vision";
 export const ARK_DEFAULT_EMBEDDING_DIMENSION = 1024;
 
-export const GEMINI_OPENAI_BASE_URL =
-  "https://generativelanguage.googleapis.com/v1beta/openai/";
-export const GEMINI_EMBEDDING_BASE_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models";
-export const GEMINI_DEFAULT_CHAT_MODEL = "gemini-2.5-pro";
-export const GEMINI_DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001";
-export const GEMINI_DEFAULT_EMBEDDING_DIMENSION = 768;
-
 const firstConfigured = (env, names) => {
   for ( const name of names ) {
     const value = env[name];
@@ -28,6 +20,9 @@ const firstConfigured = (env, names) => {
   return "";
 };
 
+// All providers speak the OpenAI-compatible interface. Each preset only
+// supplies default base URLs, models, and key-resolution order; every field
+// can be overridden per-request via RAG_CHAT_* / RAG_EMBEDDING_* env vars.
 export const RAG_PROVIDERS = {
   dashscope: {
     id: "dashscope",
@@ -39,20 +34,12 @@ export const RAG_PROVIDERS = {
     embeddingBaseUrl: DASHSCOPE_COMPATIBLE_BASE_URL,
     embeddingModel: DASHSCOPE_DEFAULT_EMBEDDING_MODEL,
     embeddingDimension: DASHSCOPE_DEFAULT_EMBEDDING_DIMENSION,
-    apiKeyEnv: [
-      "RAG_CHAT_API_KEY",
-      "DASHSCOPE_API_KEY",
-      "ARK_API_KEY",
-      "GEMINI_CHAT_API_KEY",
-      "GEMINI_API_KEY",
-    ],
+    apiKeyEnv: ["RAG_CHAT_API_KEY", "DASHSCOPE_API_KEY", "ARK_API_KEY"],
     embeddingApiKeyEnv: [
       "RAG_EMBEDDING_API_KEY",
       "DASHSCOPE_API_KEY",
       "ARK_API_KEY",
       "RAG_CHAT_API_KEY",
-      "GEMINI_API_KEY",
-      "GEMINI_CHAT_API_KEY",
     ],
   },
   ark: {
@@ -65,45 +52,12 @@ export const RAG_PROVIDERS = {
     embeddingBaseUrl: ARK_COMPATIBLE_BASE_URL,
     embeddingModel: ARK_DEFAULT_EMBEDDING_MODEL,
     embeddingDimension: ARK_DEFAULT_EMBEDDING_DIMENSION,
-    apiKeyEnv: [
-      "RAG_CHAT_API_KEY",
-      "ARK_API_KEY",
-      "DASHSCOPE_API_KEY",
-      "GEMINI_CHAT_API_KEY",
-      "GEMINI_API_KEY",
-    ],
+    apiKeyEnv: ["RAG_CHAT_API_KEY", "ARK_API_KEY", "DASHSCOPE_API_KEY"],
     embeddingApiKeyEnv: [
       "RAG_EMBEDDING_API_KEY",
       "ARK_API_KEY",
       "DASHSCOPE_API_KEY",
       "RAG_CHAT_API_KEY",
-      "GEMINI_API_KEY",
-      "GEMINI_CHAT_API_KEY",
-    ],
-  },
-  gemini: {
-    id: "gemini",
-    aliases: [],
-    embeddingTransport: "gemini",
-    embeddingPath: "",
-    chatBaseUrl: GEMINI_OPENAI_BASE_URL,
-    chatModel: GEMINI_DEFAULT_CHAT_MODEL,
-    embeddingBaseUrl: GEMINI_EMBEDDING_BASE_URL,
-    embeddingModel: GEMINI_DEFAULT_EMBEDDING_MODEL,
-    embeddingDimension: GEMINI_DEFAULT_EMBEDDING_DIMENSION,
-    apiKeyEnv: [
-      "RAG_CHAT_API_KEY",
-      "GEMINI_CHAT_API_KEY",
-      "GEMINI_API_KEY",
-      "ARK_API_KEY",
-      "DASHSCOPE_API_KEY",
-    ],
-    embeddingApiKeyEnv: [
-      "RAG_EMBEDDING_API_KEY",
-      "GEMINI_API_KEY",
-      "GEMINI_CHAT_API_KEY",
-      "ARK_API_KEY",
-      "DASHSCOPE_API_KEY",
     ],
   },
 };
@@ -116,12 +70,9 @@ const PROVIDER_BY_ALIAS = Object.fromEntries(
 );
 
 const inferProviderId = (env = {}) => {
-  const base = `${env.RAG_CHAT_BASE_URL || ""} ${env.RAG_EMBEDDING_BASE_URL || ""} ${env.GEMINI_CHAT_BASE_URL || ""}`;
+  const base = `${env.RAG_CHAT_BASE_URL || ""} ${env.RAG_EMBEDDING_BASE_URL || ""}`;
   if ( /volces\.com/i.test(base) ) {
     return "ark";
-  }
-  if ( /googleapis\.com/i.test(base) ) {
-    return "gemini";
   }
   return "dashscope";
 };
@@ -144,16 +95,13 @@ export const getRagChatConfig = (env = process.env) => {
   return {
     providerId: provider.id,
     apiKey: firstConfigured(env, provider.apiKeyEnv),
-    model:
-      env.RAG_CHAT_MODEL || env.GEMINI_CHAT_MODEL || provider.chatModel,
-    baseURL:
-      env.RAG_CHAT_BASE_URL ||
-      env.GEMINI_CHAT_BASE_URL ||
-      provider.chatBaseUrl,
+    model: env.RAG_CHAT_MODEL || provider.chatModel,
+    baseURL: env.RAG_CHAT_BASE_URL || provider.chatBaseUrl,
   };
 };
 
-export const getGeminiChatConfig = getRagChatConfig;
-
+// Label used only for corpus versioning (changing embedding vector space
+// forces a re-ingest). DashScope and Ark are both OpenAI-compatible in
+// transport but produce different vectors, so they keep distinct labels.
 export const fingerprintEmbeddingProvider = (providerId) =>
   providerId === "dashscope" ? "openai" : providerId;
