@@ -1392,8 +1392,9 @@ export const ingestKnowledgeCorpus = async ({
   await flushCollectionFn({ config, collectionName });
   await loadCollectionFn({ config, collectionName });
 
+  let gate = null;
   if ( config.ingestGateEnabled !== false ) {
-    const gate = await runGate({ config, collectionName });
+    gate = await runGate({ config, collectionName });
     console.info(
       JSON.stringify({
         event: "rag_ingest_gate_result",
@@ -1441,6 +1442,7 @@ export const ingestKnowledgeCorpus = async ({
       corpusVersion: identity.corpusVersion,
       manifestSha256: identity.manifestSha256,
       nextIndex: manifest.length,
+      gate,
       activatedAt: new Date().toISOString(),
       cleanupPending: true,
       pendingCollections: [],

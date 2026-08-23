@@ -84,11 +84,13 @@ test("a passing gate runs after load and before alias activation", async (t) => 
   );
 
   const gateIndex = dependencies.order.findIndex((entry) => entry.startsWith("gate:"));
+  const flushIndex = dependencies.order.findIndex((entry) => entry.startsWith("flush:"));
   const loadIndex = dependencies.order.findIndex((entry) => entry.startsWith("load:"));
   const activateIndex = dependencies.order.findIndex((entry) =>
     entry.startsWith("activate:"),
   );
 
+  assert.ok(flushIndex >= 0 && gateIndex > flushIndex, "gate must run after flush");
   assert.ok(loadIndex >= 0 && gateIndex > loadIndex, "gate must run after load");
   assert.ok(activateIndex > gateIndex, "gate must run before activation");
   assert.equal(state.status, "active");
@@ -163,6 +165,11 @@ test("the gate is skipped when disabled in config", async (t) => {
 
   assert.equal(gateCalls, 0);
   assert.equal(state.status, "active");
+  assert.equal(
+    state.gate,
+    null,
+    "a disabled gate must record null rather than a stale result",
+  );
 });
 
 test("a partial --limit run stops before the gate and stays staging", async (t) => {
@@ -199,4 +206,111 @@ test("a partial --limit run stops before the gate and stays staging", async (t) 
   assert.equal(gateCalls, 0);
   assert.equal(state.status, "staging");
   assert.equal(state.nextIndex, 1);
+});
+
+test("a passing rerun replaces the failing gate recorded by the previous run", async (t) => {
+  const root = await createCorpusFixture(t);
+  const stagedCollections = new Set();
+  let gateRuns = 0;
+  const dependencies = createIngestDependencies({
+    insertChunkRows: async ({ collectionName }) => {
+      stagedCollections.add(collectionName);
+    },
+    hasChunkCollection: async ({ collectionName }) =>
+      stagedCollections.has(collectionName),
+    runIngestGate: async () => {
+      gateRuns += 1;
+      return gateRuns === 1
+        ? {
+            passed: false,
+            minHitRate: 0.9,
+            hitRate: 0.5,
+            total: 27,
+            hits: 13,
+            misses: [
+              {
+                id: "ch03-deposit",
+                expectedSourceGroup: "chapters",
+                actualSourceGroups: [],
+              },
+            ],
+          }
+        : {
+            passed: true,
+            minHitRate: 0.9,
+            hitRate: 1,
+            total: 27,
+            hits: 27,
+            misses: [],
+          };
+    },
+  });
+  const config = createConfig(root);
+
+  await assert.rejects(
+    service.ingestKnowledgeCorpus({}, { ...dependencies, config }),
+    (error) => error.code === "RAG_INGEST_GATE_FAILED",
+  );
+
+  const blockedState = JSON.parse(await readFile(config.ingestStatePath, "utf8"));
+  assert.equal(blockedState.status, "staging");
+  assert.equal(blockedState.gate.passed, false);
+
+  const state = await service.ingestKnowledgeCorpus({}, { ...dependencies, config });
+
+  assert.equal(gateRuns, 2, "the rerun must re-evaluate the gate");
+  assert.equal(state.status, "active");
+  assert.equal(
+    state.gate.passed,
+    true,
+    "the active state must record this run's gate, not the previous failure",
+  );
+  assert.equal(state.gate.hitRate, 1);
+
+  const savedState = JSON.parse(await readFile(config.ingestStatePath, "utf8"));
+  assert.equal(savedState.status, "active");
+  assert.equal(
+    savedState.gate.passed,
+    true,
+    "the persisted gate must not report failure for a corpus that passed",
+  );
+  assert.equal(savedState.gate.hitRate, 1);
+});
+
+test("the gate runs when the config omits the enable flag entirely", async (t) => {
+  const root = await createCorpusFixture(t);
+  let gateCalls = 0;
+  const dependencies = createIngestDependencies({
+    runIngestGate: async () => {
+      gateCalls += 1;
+      return {
+        passed: true,
+        minHitRate: 0.9,
+        hitRate: 1,
+        total: 27,
+        hits: 27,
+        misses: [],
+      };
+    },
+  });
+  const config = createConfig(root);
+  delete config.ingestGateEnabled;
+
+  assert.equal(
+    "ingestGateEnabled" in config,
+    false,
+    "this test is only meaningful while the flag is absent",
+  );
+
+  const state = await service.ingestKnowledgeCorpus(
+    {},
+    { ...dependencies, config },
+  );
+
+  assert.equal(
+    gateCalls,
+    1,
+    "an absent ingestGateEnabled must default to gating, not to skipping",
+  );
+  assert.equal(state.status, "active");
 });
