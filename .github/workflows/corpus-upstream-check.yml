@@ -10,7 +10,11 @@ name: Corpus Upstream Check
 # RAG_CORPUS_ROOT is left unset: resolveCorpusRoot() finds the in-repo copy.
 #
 # scripts/check-corpus-upstream.js exit codes drive everything below:
-#   0  every row confirmed against the live site, nothing changed -> stay quiet
+#   0  every row still has a PDF linked on its index page whose decoded file
+#      name matches the recorded revision -> stay quiet. Narrower than "the
+#      corpus is current": only revision strings are compared, so a same-name
+#      re-upload and a newly published document both pass as 0. See the
+#      script's --help.
 #   3  upstream changed                                           -> file an issue
 #   4  ran but could not confirm every row (blocked page, or a row with no
 #      candidate) -> file an issue, framed as inconclusive
@@ -70,7 +74,10 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
           case "$status" in
             0)
-              echo "Every manifest row was confirmed against the live site; nothing to report."
+              echo "Every manifest row still matches the revision the manifest records."
+              echo "This does not prove the corpus is current: only revision strings are"
+              echo "compared, so a same-name re-upload or a newly published document would"
+              echo "also exit 0. See scripts/check-corpus-upstream.js --help."
               ;;
             3)
               echo "::warning::MassLegalHelp published changes; opening or updating the corpus issue."
