@@ -2,6 +2,16 @@ name: Live RAG Evaluation
 
 on:
   workflow_dispatch:
+    inputs:
+      knowledge_collection:
+        description: >-
+          Milvus knowledge collection to evaluate. Leave blank to use the
+          RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION secret, which names the live
+          alias. Set it to a corpus-ingest staging collection
+          (leaseqa_knowledge_chunks_<version-prefix>) to judge generation
+          quality before the alias is moved.
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -11,6 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
+      # Resolved once so the pre-flight report and the server it starts cannot
+      # disagree. Unlike corpus-ingest this is allowed to be empty: evaluating
+      # the live alias is a legitimate, and the most common, use of this
+      # workflow, and an empty value lets config.js apply its built-in default.
+      RAG_MILVUS_KNOWLEDGE_COLLECTION: ${{ inputs.knowledge_collection || secrets.RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION }}
       RAG_EVAL_MIN_PASS_RATE: "0.90"
       RAG_EVAL_MIN_SAFE_RATE: "0.98"
       RAG_EVAL_OUTPUT: artifacts/rag-eval.json
@@ -47,6 +62,15 @@ jobs:
           if [ -z "$DASHSCOPE_API_KEY" ] && [ -z "$GEMINI_API_KEY" ]; then
             echo "RAG_EVAL_DASHSCOPE_API_KEY or RAG_EVAL_GEMINI_API_KEY is required" >&2
             exit 1
+          fi
+          # An eval that does not say which collection it judged cannot be used
+          # to clear a staging corpus for activation.
+          if [ -n "$RAG_MILVUS_KNOWLEDGE_COLLECTION" ]; then
+            echo "Evaluating knowledge collection: $RAG_MILVUS_KNOWLEDGE_COLLECTION"
+          else
+            echo "::warning::No knowledge_collection input and no" \
+              "RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION secret; the server falls back" \
+              "to the built-in leaseqa_knowledge_chunks default."
           fi
 
       - name: Start local server
