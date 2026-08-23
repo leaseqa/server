@@ -267,6 +267,30 @@ test("every npm command in the issue keeps the -- separator", () => {
   assert.ok(body.includes("npm run corpus:check -- --write-state"));
 });
 
+test("the diagnostic re-run reads the report without rewriting recorded state", () => {
+  const body = formatIssueBody({
+    status: INCONCLUSIVE_EXIT_CODE,
+    report: report({ blocked: ["handout_17_condos.pdf"] }),
+  });
+
+  // --write-state belongs to the changed procedure, where recording the new
+  // revision is the point. Reading needs no write, and for a row still blocked
+  // locally the checker records the manifest's own pdf_url -- usually empty --
+  // over the live URL an earlier successful run captured.
+  assert.ok(body.includes("npm run corpus:check"));
+  assert.ok(!body.includes("npm run corpus:check -- --write-state"));
+});
+
+test("the ingest step names the alias corpus-ingest refuses to start without", () => {
+  const body = formatIssueBody({
+    status: CHANGED_EXIT_CODE,
+    report: report({ changed: [CH03_CHANGED] }),
+  });
+
+  assert.ok(body.includes("knowledge_alias"));
+  assert.ok(body.includes("RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION"));
+});
+
 test("the issue always states the no-evasion rule", () => {
   for ( const status of [CHANGED_EXIT_CODE, INCONCLUSIVE_EXIT_CODE] ) {
     const body = formatIssueBody({ status, report: report({ blocked: ["a.pdf"] }) });

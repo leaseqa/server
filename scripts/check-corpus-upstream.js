@@ -29,14 +29,28 @@ every hub is known to carry PDFs, so an empty one is an outage, not upstream
 deleting the whole group.
 
 Exit codes:
-  0  every row confirmed against the live site, nothing changed
+  0  every manifest row still has a PDF linked on its group index page whose
+     decoded file name normalizes to the upstream_revision the manifest records
   3  upstream changed; the report lists what
   4  ran, but at least one row could not be confirmed -- a blocked page, or a
      manifest row with no matching PDF on a page that did load. Inconclusive,
      NOT a clean run: re-run, or look at the row by hand
   1  the tool itself failed
 
-0 therefore means "all rows checked and unchanged", never "we saw nothing".
+0 is never "we saw nothing": a run that could not confirm a row exits 4. But it
+is narrower than "the corpus is current". Only revision strings are compared,
+so two real kinds of drift pass as 0, both by design and neither a bug:
+
+  * A same-name re-upload. If MassLegalHelp corrects a document and re-uploads
+    it under the same file name, the revision string is unchanged and this
+    exits 0. The upload-month directory inside the PDF URL does move, but
+    nothing compares it, and only re-downloading and re-hashing the bytes would
+    prove the text changed.
+  * A newly published document. Candidates matching no manifest row are ignored
+    on purpose, so a new chapter, handout or form is never reported here.
+
+Catching either needs a human reading the index pages. Neither is something a
+0 from this tool rules out.
 
 Options:
   --corpus-root=<path>   Corpus directory (default: RAG_CORPUS_ROOT or auto-detected)

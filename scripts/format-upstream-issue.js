@@ -172,7 +172,7 @@ const changedProcedure = () => [
   "2. `npm run corpus:check -- --write-state` from the repository root, to record the new revision and upload URL in `upstream_state.json`.",
   "3. `npm run corpus:refresh -- --dry-run` to preview, then `npm run corpus:refresh` to write. The `--` separator is required: without it npm forwards nothing to the script and the preview performs a real write.",
   "4. Commit the changed PDFs, `corpus_manifest.csv`, `corpus_manifest.csv.bak` and `upstream_state.json` together.",
-  "5. Run the `corpus-ingest` workflow (`workflow_dispatch`; `min_hit_rate` defaults to `0.9`). The retrieval gate decides whether the alias moves.",
+  "5. Run the `corpus-ingest` workflow (`workflow_dispatch`; `min_hit_rate` defaults to `0.9`). Supply the `knowledge_alias` input, or have the `RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION` secret set: the workflow refuses to start without an explicit target alias. The retrieval gate then decides whether that alias moves.",
   "",
 ];
 
@@ -180,7 +180,7 @@ const unconfirmedProcedure = () => [
   "For the rows this run could not confirm:",
   "",
   "1. Re-run `Corpus Upstream Check` from the Actions tab. A blocked page is usually transient, and a second run at another hour normally clears it.",
-  "2. If it stays blocked, run `npm run corpus:check -- --write-state` locally and read the report. A desktop connection is not challenged the way a datacenter one is.",
+  "2. If it stays blocked, run `npm run corpus:check` locally and read the report. A desktop connection is not challenged the way a datacenter one is. Leave `--write-state` off: reading needs no state write, and for a row that is still blocked locally the checker records the manifest's own `pdf_url` -- usually empty -- over the live URL an earlier successful run captured.",
   "3. For a row with no candidate, open its group index page by hand: upstream may have renamed the PDF beyond what the matcher can join, or withdrawn it.",
   "",
 ];
