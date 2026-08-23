@@ -37,18 +37,34 @@ Meaning:
 - For eviction procedure/timeline: upweight `booklets` and `chapters` chapter 12.
 - For definitions: query `appendix` glossary first, then verify with `chapters`.
 
-## 3) Metadata Fields (for ingestion)
+## 3) Manifest Columns
 
-Use these fields in vector metadata:
+`corpus_manifest.csv` has 12 columns, in this order. The authoritative list is
+`MANIFEST_COLUMNS` in `LeaseQA/RAG/corpusManifest.js`; keep the two in step.
 
+Editorial — describe the document, maintained by hand:
+
+- `file_name`: original file name
+- `title_hint`: filename-decoded short title
 - `source_type`: `chapter | handout | form | booklet | appendix`
 - `source_group`: `chapters | handouts | forms | booklets | appendix`
 - `chapter_ref`: `1..18` when applicable, else empty
-- `title_hint`: filename-decoded short title
 - `priority`: `P0 | P1 | P2`
-- `file_name`: original file name
 - `file_path`: corpus-root-relative path, for example `pdf/chapters/ch01_moving_in.pdf`
-- `source_url`: official Mass Legal Help page or PDF URL for citations
+- `source_url`: official Mass Legal Help chapter page, used for citations
+
+Provenance — **tool-maintained, do not edit by hand.** `npm run corpus:refresh`
+owns all four and rewrites them only for rows whose PDF bytes actually changed:
+
+- `pdf_url`: direct PDF link observed upstream, when one is known
+- `content_sha256`: sha256 of the PDF on disk; the change-detection key
+- `retrieved_at`: ISO date the current bytes were retrieved
+- `upstream_revision`: the official revision string, e.g. `01 Moving 2025 Updated 8-13-25`
+
+The first eight feed vector metadata at ingest. All twelve are part of the
+manifest text, and the manifest text is hashed in full into `corpusVersion`, so
+editing any column — including a cosmetic change to an editorial one — forces a
+complete re-embed of all 81 files.
 
 ## 4) Current Corpus Location
 
@@ -68,7 +84,11 @@ walks up to parent directories if the repository has no copy. Set
 
 ## 5) Refresh Procedure
 
-Run every command from the `leaseqa-server` repository root.
+Run every command from the `leaseqa-server` repository root. A pre-migration
+copy of this corpus may still exist outside the repository at
+`<workspace>/resources/rag-corpus` on the original development machine; it is
+redundant and is not what these commands operate on. Every script prints the
+`corpusRoot` it resolved — if it is not inside this checkout, stop.
 
 1. `npm run corpus:check -- --write-state` — reports which upstream documents
    changed and records the observation in `upstream_state.json`. It never
@@ -76,17 +96,27 @@ Run every command from the `leaseqa-server` repository root.
 2. For each changed file, open the page URL from the report **in a real
    browser**, download the new PDF, and overwrite the existing file in place,
    keeping its current name.
-3. `npm run corpus:refresh` — re-hashes every PDF and rewrites only the rows
-   whose bytes actually changed, so a no-op refresh leaves
-   `corpus_manifest.csv` byte-identical and does not trigger a re-ingest. Use
-   `--dry-run` first to preview. The previous manifest is kept at
-   `corpus_manifest.csv.bak`.
+3. `npm run corpus:refresh -- --dry-run` to preview, then
+   `npm run corpus:refresh` to write. It re-hashes every PDF and rewrites only
+   the rows whose bytes actually changed, so a no-op refresh leaves
+   `corpus_manifest.csv` byte-identical and does not trigger a re-ingest. The
+   previous manifest is kept at `corpus_manifest.csv.bak`.
+
+   The `--` separator is required. `npm run corpus:refresh --dry-run` forwards
+   nothing to the script and performs a **real write** — overwriting
+   `corpus_manifest.csv.bak` and changing `corpusVersion` while appearing to
+   have previewed nothing.
 4. Commit the changed PDFs, `corpus_manifest.csv`, `corpus_manifest.csv.bak`
    and `upstream_state.json` together, with the upstream revision strings in
    the message.
 5. Ingest: run the `corpus-ingest` workflow, or `npm run ingest:rag` locally.
    The retrieval gate decides whether the knowledge alias is repointed; a
    failing gate leaves the run in `staging` and does not move the alias.
+
+   Set `RAG_MILVUS_KNOWLEDGE_COLLECTION` to the alias the readers are deployed
+   with. The workflow refuses to start without an explicit alias, because the
+   gate queries the staging collection and so cannot notice an ingest that
+   repoints the wrong one.
 
 Plain git, no LFS: 36 MB total, largest file 1.5 MB.
 

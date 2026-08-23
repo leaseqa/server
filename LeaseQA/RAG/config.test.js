@@ -428,3 +428,61 @@ test("corpus root falls back to the in-repository location when nothing exists",
     "/repo/server/resources/rag-corpus/mass tenant rights",
   );
 });
+
+// A sibling worktree's corpus is reachable only by descending, and the walk only
+// ascends. Pinned so the loop cannot start matching siblings and silently ingest
+// another branch's corpus.
+test("corpus root never selects a sibling worktree's corpus", () => {
+  const siblingRoot =
+    "/repo/server/.claude/worktrees/other/resources/rag-corpus/mass tenant rights";
+  const existsFn = (candidate) => candidate === siblingRoot;
+
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/repo/server/.claude/worktrees/feature",
+      existsFn,
+    }),
+    "/repo/server/.claude/worktrees/feature/resources/rag-corpus/mass tenant rights",
+    "a sibling worktree is not an ancestor, so it must never be reachable",
+  );
+});
+
+test("corpus root tests the filesystem root exactly once and terminates", () => {
+  const fromRoot = [];
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/",
+      existsFn: (candidate) => {
+        fromRoot.push(candidate);
+        return false;
+      },
+    }),
+    "/resources/rag-corpus/mass tenant rights",
+  );
+  assert.deepEqual(
+    fromRoot,
+    ["/resources/rag-corpus/mass tenant rights"],
+    "path.dirname('/') is '/', so the loop must break instead of spinning",
+  );
+
+  const fromNested = [];
+  ragConfig.resolveCorpusRoot({
+    env: {},
+    serverRoot: "/a/b",
+    existsFn: (candidate) => {
+      fromNested.push(candidate);
+      return false;
+    },
+  });
+  assert.deepEqual(
+    fromNested,
+    [
+      "/a/b/resources/rag-corpus/mass tenant rights",
+      "/a/resources/rag-corpus/mass tenant rights",
+      "/resources/rag-corpus/mass tenant rights",
+    ],
+    "every ancestor including the filesystem root is tested, each exactly once",
+  );
+});

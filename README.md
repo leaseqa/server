@@ -150,13 +150,17 @@ The corpus is committed in this repository at `resources/rag-corpus/mass tenant 
 
 `resolveCorpusRoot()` checks this repository first and only then walks up to parent directories, so the committed corpus is never shadowed by a stale copy outside it. `RAG_CORPUS_ROOT` overrides both and is how to point the ingest at any other layout — a mounted volume, a separate checkout, or a deployed environment where the corpus lives elsewhere. The resolved path is never persisted in production configuration; only the runtime manifest path appears in the local ingest-state file.
 
+A pre-migration copy of this corpus may still exist outside the repository at `<workspace>/resources/rag-corpus` on the original development machine. It is redundant and is **not** the corpus these commands operate on. Run every command below from this repository root; if `npm run corpus:refresh -- --dry-run` reports a `corpusRoot` outside this checkout, stop — you are about to rewrite the wrong manifest.
+
 Refresh procedure, all commands from this repository root:
 
 1. `npm run corpus:check -- --write-state` and read the report. It never downloads and never attempts to defeat the upstream bot check.
 2. Download each changed PDF **in a real browser** from the page URL in the report, overwriting the file in place under its existing name.
-3. `npm run corpus:refresh` (use `--dry-run` first to preview). Only rows whose bytes changed are rewritten, so a no-op refresh leaves `corpus_manifest.csv` byte-identical and does not trigger a re-ingest. The previous manifest is kept as the single `corpus_manifest.csv.bak`.
+3. `npm run corpus:refresh -- --dry-run` to preview, then `npm run corpus:refresh` to write. The `--` separator is required: `npm run corpus:refresh --dry-run` forwards nothing to the script and performs a **real write**. Only rows whose bytes changed are rewritten, so a no-op refresh leaves `corpus_manifest.csv` byte-identical and does not trigger a re-ingest. The previous manifest is kept as the single `corpus_manifest.csv.bak`.
 4. Commit the changed PDFs, `corpus_manifest.csv`, `corpus_manifest.csv.bak` and `upstream_state.json` together.
 5. Ingest: run the `corpus-ingest` workflow (`workflow_dispatch`; `min_hit_rate` defaults to `0.9`) or `npm run ingest:rag` locally. The retrieval gate decides whether the alias moves.
+
+The `corpus-ingest` workflow requires an explicit target alias and refuses to start without one, because the retrieval gate queries the staging collection and therefore cannot detect an ingest that repoints the wrong alias. Supply it as the `knowledge_alias` dispatch input, or once as the `RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION` secret. It must match the `RAG_MILVUS_KNOWLEDGE_COLLECTION` the readers are deployed with.
 
 See `resources/rag-corpus/mass tenant rights/CORPUS_GUIDE.md` and `docs/superpowers/specs/2026-08-23-corpus-upstream-sync.md`.
 
