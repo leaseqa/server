@@ -247,6 +247,103 @@ test("getRagConfig rejects non-positive timeout overrides in favor of bounded de
   );
 });
 
+test("getRagConfig enables the ingest retrieval gate by default at a 0.9 hit-rate floor", () => {
+  withEnv(
+    {
+      RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+      GEMINI_CHAT_API_KEY: "gemini-chat-key",
+      GEMINI_API_KEY: "shared-gemini-key",
+      RAG_INGEST_GATE: undefined,
+      RAG_INGEST_GATE_MIN_HIT_RATE: undefined,
+    },
+    () => {
+      const config = getRagConfig();
+
+      assert.equal(config.ingestGateEnabled, true);
+      assert.equal(config.ingestGateMinHitRate, 0.9);
+    },
+  );
+});
+
+test("getRagConfig disables the ingest gate only for the exact off switch", () => {
+  const credentials = {
+    RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+    GEMINI_CHAT_API_KEY: "gemini-chat-key",
+    GEMINI_API_KEY: "shared-gemini-key",
+  };
+
+  withEnv({ ...credentials, RAG_INGEST_GATE: "off" }, () => {
+    assert.equal(getRagConfig().ingestGateEnabled, false);
+  });
+
+  ["on", "OFF", "Off", "false", "0", ""].forEach((value) => {
+    withEnv({ ...credentials, RAG_INGEST_GATE: value }, () => {
+      assert.equal(
+        getRagConfig().ingestGateEnabled,
+        true,
+        `RAG_INGEST_GATE=${JSON.stringify(value)} must leave the gate enabled`,
+      );
+    });
+  });
+});
+
+test("getRagConfig keeps a zero ingest gate hit rate instead of treating it as unset", () => {
+  withEnv(
+    {
+      RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+      GEMINI_CHAT_API_KEY: "gemini-chat-key",
+      GEMINI_API_KEY: "shared-gemini-key",
+      RAG_INGEST_GATE_MIN_HIT_RATE: "0",
+    },
+    () => {
+      assert.equal(
+        getRagConfig().ingestGateMinHitRate,
+        0,
+        "a 0 floor must survive rather than falling back through a falsy check",
+      );
+    },
+  );
+});
+
+test("getRagConfig accepts in-range ingest gate hit rates up to the 1 boundary", () => {
+  const credentials = {
+    RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+    GEMINI_CHAT_API_KEY: "gemini-chat-key",
+    GEMINI_API_KEY: "shared-gemini-key",
+  };
+
+  [
+    ["0.75", 0.75],
+    ["1", 1],
+  ].forEach(([value, expected]) => {
+    withEnv({ ...credentials, RAG_INGEST_GATE_MIN_HIT_RATE: value }, () => {
+      assert.equal(
+        getRagConfig().ingestGateMinHitRate,
+        expected,
+        `RAG_INGEST_GATE_MIN_HIT_RATE=${value} must survive as ${expected}`,
+      );
+    });
+  });
+});
+
+test("getRagConfig rejects out-of-range or non-numeric ingest gate hit rates", () => {
+  const credentials = {
+    RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+    GEMINI_CHAT_API_KEY: "gemini-chat-key",
+    GEMINI_API_KEY: "shared-gemini-key",
+  };
+
+  ["1.5", "-0.1", "abc", ""].forEach((value) => {
+    withEnv({ ...credentials, RAG_INGEST_GATE_MIN_HIT_RATE: value }, () => {
+      assert.equal(
+        getRagConfig().ingestGateMinHitRate,
+        0.9,
+        `RAG_INGEST_GATE_MIN_HIT_RATE=${JSON.stringify(value)} must fall back to 0.9`,
+      );
+    });
+  });
+});
+
 test("corpus root prefers an explicit environment override", () => {
   assert.equal(
     ragConfig.resolveCorpusRoot({
