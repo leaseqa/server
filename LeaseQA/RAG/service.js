@@ -43,6 +43,7 @@ import {
   readIngestState,
   writeIngestState,
 } from "./ingestState.js";
+import { loadGateCases, runRetrievalGate } from "./corpusGate.js";
 import { createActivity } from "../Activity/dao.js";
 import { buildActivity } from "../Activity/service.js";
 
@@ -1130,6 +1131,22 @@ export const ingestKnowledgeCorpus = async ({
   const listCollectionsFn = dependencies.listCollections || listCollections;
   const readState = dependencies.readIngestState || readIngestState;
   const writeState = dependencies.writeIngestState || writeIngestState;
+  const runGate =
+    dependencies.runIngestGate ||
+    (async ({ config: gateConfig, collectionName: gateCollection }) =>
+      runRetrievalGate({
+        evalCases: await loadGateCases({}),
+        collectionName: gateCollection,
+        embedQuery: (question) => embeddings.embedQuery(question),
+        retrieveChunks: ({ collectionName: target, vector, question }) =>
+          retrieveKnowledgeChunks({
+            config: gateConfig,
+            vector,
+            question,
+            collectionName: target,
+          }),
+        minHitRate: gateConfig.ingestGateMinHitRate ?? 0.9,
+      }));
 
   const manifestContents = await readFile(config.manifestPath, "utf-8");
   const manifest = parseCorpusManifest(manifestContents);
@@ -1374,6 +1391,44 @@ export const ingestKnowledgeCorpus = async ({
 
   await flushCollectionFn({ config, collectionName });
   await loadCollectionFn({ config, collectionName });
+
+  if ( config.ingestGateEnabled !== false ) {
+    const gate = await runGate({ config, collectionName });
+    console.info(
+      JSON.stringify({
+        event: "rag_ingest_gate_result",
+        collectionName,
+        passed: gate.passed,
+        hitRate: Number(gate.hitRate.toFixed(4)),
+        hits: gate.hits,
+        total: gate.total,
+      }),
+    );
+
+    if ( !gate.passed ) {
+      const blockedState = await writeState({
+        statePath: config.ingestStatePath,
+        state: { ...ingestState, status: "staging", gate },
+      });
+      console.error(
+        JSON.stringify({
+          event: "rag_ingest_gate_failed",
+          collectionName,
+          hitRate: Number(gate.hitRate.toFixed(4)),
+          minHitRate: gate.minHitRate,
+          misses: gate.misses,
+        }),
+      );
+      const error = new Error(
+        `Corpus retrieval gate failed (${gate.hits}/${gate.total} hits, min ${gate.minHitRate}); alias not activated`,
+      );
+      error.code = "RAG_INGEST_GATE_FAILED";
+      error.gate = gate;
+      error.state = blockedState;
+      throw error;
+    }
+  }
+
   await activateAliasFn({ config, alias, collectionName });
 
   const activeState = await writeState({

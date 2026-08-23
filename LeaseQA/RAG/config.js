@@ -28,6 +28,11 @@ const parsePositiveInteger = (value, fallback) => {
   return parsed > 0 ? parsed : fallback;
 };
 
+const parseRate = (value, fallback) => {
+  const parsed = Number.parseFloat(value || "");
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : fallback;
+};
+
 const requireEnv = (name) => {
   const value = process.env[name];
   if ( !value ) {
@@ -118,6 +123,11 @@ export const getRagConfig = () => {
     chunkSize: parseInteger(process.env.RAG_CHUNK_SIZE, 1200),
     chunkOverlap: parseInteger(process.env.RAG_CHUNK_OVERLAP, 200),
     knowledgeTopK: parseInteger(process.env.RAG_KNOWLEDGE_TOP_K, 8),
+    ingestGateEnabled: process.env.RAG_INGEST_GATE !== "off",
+    ingestGateMinHitRate: parseRate(
+      process.env.RAG_INGEST_GATE_MIN_HIT_RATE,
+      0.9,
+    ),
     sessionTopK: parseInteger(process.env.RAG_SESSION_TOP_K, 6),
     uploadFileSizeBytes: parseInteger(
       process.env.RAG_UPLOAD_MAX_BYTES,
