@@ -4,7 +4,7 @@
 // human.
 //
 // The site publishes each source_group on a single index page, so the whole
-// 81-row corpus is covered by 9 page loads rather than 81.
+// 81-row corpus is covered by 8 page loads rather than 81.
 
 export const CHALLENGE_MARKERS = [
   "just a moment",
@@ -109,7 +109,12 @@ const normalizeRevision = (value) =>
 
 const REVISION_PREFIX_LENGTH = 12;
 
-export const matchCandidateForRow = (row, candidates) => {
+const revisionPrefix = (value) =>
+  normalizeRevision(value).slice(0, REVISION_PREFIX_LENGTH);
+
+// siblingRows are the other manifest rows in the same source_group. They are
+// needed to keep the prefix fallback honest: see the comment on its use below.
+export const matchCandidateForRow = (row, candidates, siblingRows = []) => {
   const pool = candidates || [];
 
   if ( row?.pdf_url ) {
@@ -139,14 +144,35 @@ export const matchCandidateForRow = (row, candidates) => {
   // Upstream renames the file when it revises it ("...2025" -> "...2026"), so
   // exact matching alone would report every real change as not_found -- the
   // one case this tool exists to catch. Accept a leading-prefix match only
-  // when it is unambiguous: two candidates sharing the prefix means we do not
-  // know which is ours, and guessing would promote the wrong revision into the
-  // manifest. Ambiguity therefore surfaces to a human as not_found.
+  // when it is unambiguous.
   const prefix = revision.slice(0, REVISION_PREFIX_LENGTH);
   const byPrefix = pool.filter((candidate) =>
     normalizeRevision(candidate.revision).startsWith(prefix),
   );
-  return byPrefix.length === 1 ? byPrefix[0] : null;
+  if ( byPrefix.length !== 1 ) {
+    return null;
+  }
+
+  // Counting candidates is not sufficient on its own. Two manifest rows can
+  // share a prefix (booklet_3_answer and booklet_3_answer_instructions_and_form
+  // really do), and while both their PDFs are on the page the count catches it.
+  // Delete one PDF and the survivor becomes the only prefix match, so the
+  // orphaned row would claim its sibling's file with full confidence and
+  // promote the sibling's revision and URL onto the wrong manifest row. Ask
+  // instead whether any sibling row could also own this candidate, which is
+  // true whether or not that sibling's own PDF is still published.
+  const claimedBySibling = siblingRows.some((sibling) => {
+    if ( !sibling || sibling.file_name === row.file_name ) {
+      return false;
+    }
+    const siblingPrefix = revisionPrefix(sibling.upstream_revision);
+    return (
+      siblingPrefix !== "" &&
+      normalizeRevision(byPrefix[0].revision).startsWith(siblingPrefix)
+    );
+  });
+
+  return claimedBySibling ? null : byPrefix[0];
 };
 
 // observations is keyed by source_group -- one crawled index page serves every
@@ -160,9 +186,22 @@ export const diffAgainstManifest = ({ rows, observations, now = new Date() }) =>
   const blocked = [];
   const notFound = [];
 
+  // Every row is in hand here, so a row's group siblings are free to supply and
+  // let matchCandidateForRow reject a candidate another row could equally own.
+  const rowsByGroup = new Map();
+  for ( const row of rows ) {
+    const group = rowsByGroup.get(row.source_group) || [];
+    group.push(row);
+    rowsByGroup.set(row.source_group, group);
+  }
+
   for ( const row of rows ) {
     const observation = observations?.[row.source_group];
-    const candidate = matchCandidateForRow(row, observation?.candidates);
+    const candidate = matchCandidateForRow(
+      row,
+      observation?.candidates,
+      rowsByGroup.get(row.source_group),
+    );
     const pageUrl = observation?.pageUrl || row.source_url || "";
 
     if ( !candidate ) {

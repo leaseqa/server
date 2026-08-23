@@ -110,7 +110,10 @@ test("scraped text is stripped of anything the manifest CSV cannot round-trip", 
   // character makes planManifestRefresh throw. Neither may survive scraping.
   assert.equal(candidate.revision, "03 Security Deposits 2025- Updated 8-13-25");
   assert.equal(candidate.text, "Chapter 3: Security Deposits");
-  assert.ok(!/[\s\u0000-\u001f\u007f]{2}/.test(candidate.revision));
+  for ( const value of [candidate.revision, candidate.text] ) {
+    assert.ok(!/[\u0000-\u001f\u007f]/.test(value), "no control character may survive");
+    assert.ok(!/\s\s/.test(value), "no doubled whitespace may survive");
+  }
 });
 
 test("the same PDF linked twice yields one candidate", () => {
@@ -169,25 +172,84 @@ test("a renamed PDF is still matched through its unique revision prefix", () => 
   assert.equal(match.href, renamed);
 });
 
+// The only real prefix collision in the corpus. Both revisions are verbatim
+// from corpus_manifest.csv and normalize to the same 12-character prefix.
+const ANSWER_ROW = row({
+  file_name: "booklet_3_answer.pdf",
+  source_group: "booklets",
+  upstream_revision: "Booklet 3 Answer 2024",
+});
+const INSTRUCTIONS_ROW = row({
+  file_name: "booklet_3_answer_instructions_and_form.pdf",
+  source_group: "booklets",
+  upstream_revision: "Booklet 3_Answer_Instructions and Form 2025",
+});
+const INSTRUCTIONS_HREF = `${FILES}/2026-01/Booklet%203_Answer_Instructions%20and%20Form%202025.pdf`;
+
 test("an ambiguous prefix returns null instead of picking a side", () => {
-  // Real collision: booklet_3_answer and booklet_3_answer_instructions_and_form
-  // share a normalized 12-character prefix.
   const match = matchCandidateForRow(
-    row({
-      file_name: "booklet_3_answer.pdf",
-      source_group: "booklets",
-      upstream_revision: "Booklet 3 Answer 2025",
-    }),
+    ANSWER_ROW,
     extractPdfCandidates([
       { href: `${FILES}/2026-01/Booklet%203%20Answer%202026.pdf`, text: "Booklet 3" },
-      {
-        href: `${FILES}/2026-01/Booklet%203%20Answer%20Instructions%20and%20Form%202026.pdf`,
-        text: "Booklet 3 instructions",
-      },
+      { href: INSTRUCTIONS_HREF, text: "Booklet 3 instructions" },
     ]),
+    [ANSWER_ROW, INSTRUCTIONS_ROW],
   );
 
   assert.equal(match, null);
+});
+
+test("a row whose own PDF is gone does not claim its prefix sibling's", () => {
+  // Only the sibling's PDF is still published, so counting candidates would
+  // find exactly one prefix match and hand it over with full confidence.
+  const candidates = extractPdfCandidates([
+    { href: INSTRUCTIONS_HREF, text: "Booklet 3 instructions" },
+  ]);
+
+  assert.equal(
+    matchCandidateForRow(ANSWER_ROW, candidates, [ANSWER_ROW, INSTRUCTIONS_ROW]),
+    null,
+  );
+
+  // Symmetric: the survivor must not be claimed from the other direction either.
+  const answerOnly = extractPdfCandidates([
+    { href: `${FILES}/2026-01/Booklet%203%20Answer%202024.pdf`, text: "Booklet 3" },
+  ]);
+  assert.equal(
+    matchCandidateForRow(INSTRUCTIONS_ROW, answerOnly, [ANSWER_ROW, INSTRUCTIONS_ROW]),
+    null,
+  );
+});
+
+test("the orphaned row is reported not_found, never as its sibling's revision", () => {
+  const diff = diffAgainstManifest({
+    rows: [ANSWER_ROW, INSTRUCTIONS_ROW],
+    observations: {
+      booklets: observed(
+        extractPdfCandidates([
+          { href: INSTRUCTIONS_HREF, text: "Booklet 3 instructions" },
+        ]),
+        { pageUrl: GROUP_INDEX_PAGES.booklets[0] },
+      ),
+    },
+    now: new Date("2026-09-01T12:00:00.000Z"),
+  });
+
+  // Without the sibling guard this row came back as changed, promoting the
+  // sibling's revision and URL onto the wrong manifest row.
+  assert.deepEqual(diff.changed, []);
+  assert.deepEqual(diff.notFound, ["booklet_3_answer.pdf"]);
+  assert.equal(diff.entries["booklet_3_answer.pdf"].status, "not_found");
+  assert.equal(
+    diff.entries["booklet_3_answer.pdf"].revision,
+    "Booklet 3 Answer 2024",
+  );
+  assert.equal(diff.entries["booklet_3_answer.pdf"].pdfUrl, "");
+  // The sibling still matches its own PDF exactly.
+  assert.equal(
+    diff.entries["booklet_3_answer_instructions_and_form.pdf"].status,
+    "ok",
+  );
 });
 
 test("an unmatchable row returns null rather than a wrong guess", () => {
@@ -350,6 +412,25 @@ test("a partly blocked group cannot downgrade an unseen row to not_found", () =>
   assert.equal(diff.entries["appendix_02_glossary.pdf"].status, "ok");
   assert.deepEqual(diff.blocked, ["appendix_03_directory.pdf"]);
   assert.deepEqual(diff.notFound, []);
+});
+
+test("a group that yielded no PDFs at all reports blocked, not 18 deletions", () => {
+  // The contract observeGroup relies on: it marks a group blocked when the
+  // merged candidate list is empty, because a hub with zero PDFs is an outage,
+  // never upstream having deleted every document in the group at once.
+  const rows = ["ch01_moving_in.pdf", "ch02_tenant_screening.pdf", "ch03_security_deposits.pdf"].map(
+    (file_name) => row({ file_name }),
+  );
+
+  const diff = diffAgainstManifest({
+    rows,
+    observations: { chapters: observed([], { status: "blocked" }) },
+    now: new Date("2026-09-01T12:00:00.000Z"),
+  });
+
+  assert.equal(diff.blocked.length, 3);
+  assert.deepEqual(diff.notFound, []);
+  assert.deepEqual(diff.changed, []);
 });
 
 test("the diff sanitizes revisions the manifest serializer would reject", () => {

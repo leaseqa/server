@@ -23,9 +23,20 @@ Eight page loads cover all 81 rows, because the site lists each group on one
 index page. The appendix is four sub-pages; its hub carries no PDFs.
 
 If a page returns a bot challenge it is recorded as "blocked" and left for a
-human. This tool must never attempt to solve or evade that challenge.
+human. This tool must never attempt to solve or evade that challenge. A group
+whose pages load but expose no PDF links at all is also recorded as "blocked":
+every hub is known to carry PDFs, so an empty one is an outage, not upstream
+deleting the whole group.
 
-Exit codes: 0 no change, 3 upstream changed, 1 the tool itself failed.
+Exit codes:
+  0  every row confirmed against the live site, nothing changed
+  3  upstream changed; the report lists what
+  4  ran, but at least one row could not be confirmed -- a blocked page, or a
+     manifest row with no matching PDF on a page that did load. Inconclusive,
+     NOT a clean run: re-run, or look at the row by hand
+  1  the tool itself failed
+
+0 therefore means "all rows checked and unchanged", never "we saw nothing".
 
 Options:
   --corpus-root=<path>   Corpus directory (default: RAG_CORPUS_ROOT or auto-detected)
@@ -153,7 +164,7 @@ const observePage = async ({ page, url, dumpHtml }) => {
   }
 };
 
-const observeGroup = async ({ page, urls, delayMs, dumpHtml }) => {
+const observeGroup = async ({ page, group, urls, delayMs, dumpHtml }) => {
   const anchors = [];
   let blocked = false;
 
@@ -173,16 +184,42 @@ const observeGroup = async ({ page, urls, delayMs, dumpHtml }) => {
     }
   }
 
+  const candidates = extractPdfCandidates(anchors);
+
+  // Recon measured 18/19/26/19 PDFs on the four hubs, so an empty group is
+  // never healthy -- it means a challenge variant outside CHALLENGE_MARKERS, a
+  // redesign, a soft 404, or anchors rendered after domcontentloaded. Calling
+  // that "ok" would route every row in the group to not_found and present an
+  // outage as upstream having deleted the documents.
+  if ( candidates.length === 0 ) {
+    console.warn(
+      `[corpus check] ${group}: page(s) loaded but exposed no PDF links; recorded as blocked, not as missing documents`,
+    );
+  }
+
   return {
-    status: blocked ? "blocked" : "ok",
+    status: blocked || candidates.length === 0 ? "blocked" : "ok",
     // The group's primary index page. For the multi-page appendix this is the
     // first sub-page; diffAgainstManifest falls back to each row's own
     // source_url, which for appendix rows is already the exact sub-page.
     pageUrl: urls[0],
     // One extractPdfCandidates call over the merged anchor list, so a PDF
     // linked from two pages in the same group yields a single candidate.
-    candidates: extractPdfCandidates(anchors),
+    candidates,
   };
+};
+
+const readJsonIfPresent = async (filePath) => {
+  try {
+    return JSON.parse(await fs.readFile(filePath, "utf8"));
+  } catch ( error ) {
+    if ( error?.code === "ENOENT" ) {
+      return null;
+    }
+    // A corrupt state file must not be silently flattened: the operator would
+    // lose recorded upstream values without ever being told.
+    throw new Error(`Could not read ${filePath}: ${error.message}`);
+  }
 };
 
 // upstream_state.json feeds straight into planManifestRefresh. A half-written
@@ -238,6 +275,7 @@ const main = async () => {
       const urls = GROUP_INDEX_PAGES[group];
       observations[group] = await observeGroup({
         page,
+        group,
         urls,
         delayMs: options.delayMs,
         dumpHtml,
@@ -261,12 +299,19 @@ const main = async () => {
   await writeJsonSafely({ filePath: options.reportPath, value: diff });
 
   if ( options.writeState ) {
+    const statePath = path.join(corpusRoot, "upstream_state.json");
+    // A --groups run only has entries for the groups it checked. Writing those
+    // alone would drop every other row's recorded pdfUrl and revision, losing
+    // upload-month URLs captured by an earlier full run, so merge over what is
+    // already there rather than replacing the file.
+    const previous = await readJsonIfPresent(statePath);
     await writeJsonSafely({
-      filePath: path.join(corpusRoot, "upstream_state.json"),
+      filePath: statePath,
       value: {
         checkedAt: diff.checkedAt,
-        note: "Written by scripts/check-corpus-upstream.js. Never referenced by corpus_manifest.csv, so it is not part of corpusVersion.",
-        entries: diff.entries,
+        checkedGroups: options.groups,
+        note: "Written by scripts/check-corpus-upstream.js. Never referenced by corpus_manifest.csv, so it is not part of corpusVersion. Entries outside checkedGroups are carried over from an earlier run and are older than checkedAt.",
+        entries: { ...(previous?.entries || {}), ...diff.entries },
       },
     });
   }
@@ -283,11 +328,24 @@ const main = async () => {
     console.warn(`NOT FOUND (needs a human): ${diff.notFound.join(", ")}`);
   }
 
+  const unconfirmed = diff.blocked.length + diff.notFound.length;
   console.log(
     `SUMMARY checked=${rows.length} changed=${diff.changed.length} blocked=${diff.blocked.length} notFound=${diff.notFound.length} report=${options.reportPath}`,
   );
 
-  return diff.changed.length > 0 ? 3 : 0;
+  if ( diff.changed.length > 0 ) {
+    return 3;
+  }
+  // Never report a clean 0 for a run that could not confirm every row: a
+  // monitoring tool that exits 0 after observing nothing is worse than one
+  // that fails loudly.
+  if ( unconfirmed > 0 ) {
+    console.warn(
+      `INCONCLUSIVE: ${unconfirmed} of ${rows.length} rows unconfirmed; exiting 4, not 0`,
+    );
+    return 4;
+  }
+  return 0;
 };
 
 main()
