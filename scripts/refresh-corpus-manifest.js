@@ -17,6 +17,11 @@ retrieved_at, pdf_url and upstream_revision are updated ONLY for rows whose
 bytes actually changed, so a no-op refresh leaves corpus_manifest.csv
 byte-identical and does not trigger a re-ingest.
 
+A write goes to a temp file and is renamed into place, and the previous good
+manifest is kept at corpus_manifest.csv.bak (overwritten each time a write
+happens). That is separate from corpus_manifest.csv.pre-migration.bak, which
+scripts/migrate-corpus-manifest.js writes once and never overwrites.
+
 Options:
   --corpus-root=<path>  Corpus directory (default: RAG_CORPUS_ROOT or auto-detected)
   --dry-run             Report what would change without writing
@@ -37,7 +42,9 @@ const parseArgs = (argv) =>
           corpusRoot: path.resolve(argument.slice("--corpus-root=".length)),
         };
       }
-      return options;
+      // Silently ignoring an unknown flag means a typo like --dry-runn
+      // performs a real write while the operator believes otherwise.
+      throw new Error(`Unknown argument: ${argument}`);
     },
     { help: false, dryRun: false, corpusRoot: null },
   );
@@ -51,6 +58,34 @@ const readUpstreamState = async (statePath) => {
     }
     throw error;
   }
+};
+
+// parseManifestCsv throws an opaque TypeError on blank input; say what is
+// actually wrong instead.
+const requireUsableManifest = ({ manifestText, manifestPath }) => {
+  if ( manifestText.trim() === "" ) {
+    throw new Error(`Manifest is empty: ${manifestPath}`);
+  }
+  return manifestText;
+};
+
+// The corpus is not version-controlled yet (Task 7), so an in-place overwrite
+// of the only manifest has no recovery path. Keep a rolling backup of the
+// previous good file and swap the new one in with an atomic rename, so a crash
+// mid-write cannot leave a truncated manifest behind.
+const writeManifestSafely = async ({ manifestPath, text }) => {
+  const backupPath = `${manifestPath}.bak`;
+  await fs.copyFile(manifestPath, backupPath);
+
+  const tempPath = `${manifestPath}.${process.pid}.tmp`;
+  try {
+    await fs.writeFile(tempPath, text);
+    await fs.rename(tempPath, manifestPath);
+  } catch ( error ) {
+    await fs.rm(tempPath, { force: true });
+    throw error;
+  }
+  return backupPath;
 };
 
 const hashCorpusFiles = async ({ corpusRoot, rows }) => {
@@ -79,7 +114,11 @@ const main = async () => {
   const manifestPath = path.join(corpusRoot, "corpus_manifest.csv");
   const statePath = path.join(corpusRoot, "upstream_state.json");
 
-  const rows = parseManifestCsv(await fs.readFile(manifestPath, "utf8"));
+  const manifestText = requireUsableManifest({
+    manifestText: await fs.readFile(manifestPath, "utf8"),
+    manifestPath,
+  });
+  const rows = parseManifestCsv(manifestText);
   const hashes = await hashCorpusFiles({ corpusRoot, rows });
   const upstreamState = await readUpstreamState(statePath);
 
@@ -112,7 +151,11 @@ const main = async () => {
     return 0;
   }
 
-  await fs.writeFile(manifestPath, serializeManifestCsv(plan.rows));
+  // Serialize before touching anything on disk: a value the parser could not
+  // read back throws here, leaving the manifest untouched.
+  const nextText = serializeManifestCsv(plan.rows);
+  const backupPath = await writeManifestSafely({ manifestPath, text: nextText });
+  console.log(`Previous manifest kept at ${backupPath}`);
   console.log(`Wrote ${manifestPath}. Next: npm run ingest:rag`);
   return 0;
 };
