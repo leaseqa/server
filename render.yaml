@@ -2,7 +2,9 @@ services:
   - type: web
     name: leaseqa-server
     env: node
-    buildCommand: npm ci
+    # --omit=dev keeps browser automation (playwright, used only by
+    # scripts/check-corpus-upstream.js) out of the production web service.
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     branch: main
     healthCheckPath: /api/health

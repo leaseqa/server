@@ -6,6 +6,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 import * as dao from "./dao.js";
 import { getRagConfig } from "./config.js";
+import { parseManifestCsv } from "./corpusManifest.js";
 import {
   buildRagMessages,
   formatEvidenceSourceLabel,
@@ -43,6 +44,7 @@ import {
   readIngestState,
   writeIngestState,
 } from "./ingestState.js";
+import { loadGateCases, runRetrievalGate } from "./corpusGate.js";
 import { createActivity } from "../Activity/dao.js";
 import { buildActivity } from "../Activity/service.js";
 
@@ -523,19 +525,21 @@ const ensureViewerCanAccess = ({ session, userId, clientSessionId }) => {
   }
 };
 
-const getKnowledgeResults = async ({
-                                     config,
-                                     vector,
-                                     question,
-                                     searchHybridChunksFn = searchHybridChunks,
-                                     retryPolicy,
-                                   }) => {
+export const retrieveKnowledgeChunks = async ({
+                                                config,
+                                                vector,
+                                                question,
+                                                collectionName,
+                                                searchHybridChunksFn = searchHybridChunks,
+                                                retryPolicy,
+                                              }) => {
+  const targetCollection = collectionName || config.knowledgeCollection;
   const searchPlan = buildKnowledgeSearchPlan(question, config);
   const groupedResults = await Promise.all(
     searchPlan.map(({ group, limit, chapterRef }) =>
       searchHybridChunksFn({
         config,
-        collectionName: config.knowledgeCollection,
+        collectionName: targetCollection,
         denseVector: vector,
         sparseText: question,
         limit,
@@ -552,6 +556,8 @@ const getKnowledgeResults = async ({
     config.knowledgeTopK,
   );
 };
+
+const getKnowledgeResults = retrieveKnowledgeChunks;
 
 export const createRagSession = async ({
                                          userId,
@@ -957,54 +963,10 @@ export const createSessionWithOptionalInitialAnswer = async ({
   }
 };
 
-const parseManifestLine = (line) => {
-  const values = [];
-  let current = "";
-  let inQuotes = false;
-
-  for ( let index = 0; index < line.length; index += 1 ) {
-    const char = line[index];
-    if ( char === '"' ) {
-      const nextChar = line[index + 1];
-      if ( inQuotes && nextChar === '"' ) {
-        current += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-    if ( char === "," && !inQuotes ) {
-      values.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  values.push(current);
-  return values;
-};
-
-const parseCorpusManifest = (raw) => {
-  const [headerLine, ...lines] = raw.split(/\r?\n/).filter(Boolean);
-  const headers = parseManifestLine(headerLine);
-
-  return lines.map((line) => {
-    const values = parseManifestLine(line);
-    return headers.reduce(
-      (record, header, index) => ({
-        ...record,
-        [header]: values[index] || "",
-      }),
-      {},
-    );
-  });
-};
-
 export const loadCorpusManifest = async ({ manifestPath } = {}) => {
   const resolvedManifestPath = manifestPath || getRagConfig().manifestPath;
   const raw = await fs.readFile(resolvedManifestPath, "utf-8");
-  return parseCorpusManifest(raw);
+  return parseManifestCsv(raw);
 };
 
 const buildKnowledgeChunkRows = ({
@@ -1074,9 +1036,25 @@ export const ingestKnowledgeCorpus = async ({
   const listCollectionsFn = dependencies.listCollections || listCollections;
   const readState = dependencies.readIngestState || readIngestState;
   const writeState = dependencies.writeIngestState || writeIngestState;
+  const runGate =
+    dependencies.runIngestGate ||
+    (async ({ config: gateConfig, collectionName: gateCollection }) =>
+      runRetrievalGate({
+        evalCases: await loadGateCases({}),
+        collectionName: gateCollection,
+        embedQuery: (question) => embeddings.embedQuery(question),
+        retrieveChunks: ({ collectionName: target, vector, question }) =>
+          retrieveKnowledgeChunks({
+            config: gateConfig,
+            vector,
+            question,
+            collectionName: target,
+          }),
+        minHitRate: gateConfig.ingestGateMinHitRate ?? 0.9,
+      }));
 
   const manifestContents = await readFile(config.manifestPath, "utf-8");
-  const manifest = parseCorpusManifest(manifestContents);
+  const manifest = parseManifestCsv(manifestContents);
   const sourceFiles = await Promise.all(
     manifest.map(async (item) => {
       const absolutePath = path.resolve(config.corpusRoot, item.file_path);
@@ -1318,6 +1296,45 @@ export const ingestKnowledgeCorpus = async ({
 
   await flushCollectionFn({ config, collectionName });
   await loadCollectionFn({ config, collectionName });
+
+  let gate = null;
+  if ( config.ingestGateEnabled !== false ) {
+    gate = await runGate({ config, collectionName });
+    console.info(
+      JSON.stringify({
+        event: "rag_ingest_gate_result",
+        collectionName,
+        passed: gate.passed,
+        hitRate: Number(gate.hitRate.toFixed(4)),
+        hits: gate.hits,
+        total: gate.total,
+      }),
+    );
+
+    if ( !gate.passed ) {
+      const blockedState = await writeState({
+        statePath: config.ingestStatePath,
+        state: { ...ingestState, status: "staging", gate },
+      });
+      console.error(
+        JSON.stringify({
+          event: "rag_ingest_gate_failed",
+          collectionName,
+          hitRate: Number(gate.hitRate.toFixed(4)),
+          minHitRate: gate.minHitRate,
+          misses: gate.misses,
+        }),
+      );
+      const error = new Error(
+        `Corpus retrieval gate failed (${gate.hits}/${gate.total} hits, min ${gate.minHitRate}); alias not activated`,
+      );
+      error.code = "RAG_INGEST_GATE_FAILED";
+      error.gate = gate;
+      error.state = blockedState;
+      throw error;
+    }
+  }
+
   await activateAliasFn({ config, alias, collectionName });
 
   const activeState = await writeState({
@@ -1330,6 +1347,7 @@ export const ingestKnowledgeCorpus = async ({
       corpusVersion: identity.corpusVersion,
       manifestSha256: identity.manifestSha256,
       nextIndex: manifest.length,
+      gate,
       activatedAt: new Date().toISOString(),
       cleanupPending: true,
       pendingCollections: [],

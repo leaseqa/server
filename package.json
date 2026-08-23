@@ -17,6 +17,8 @@
     "test:rag": "node --test LeaseQA/RAG/*.test.js LeaseQA/shared/*.test.js",
     "eval:rag": "node scripts/run-rag-eval.js",
     "eval:rag:smoke": "node scripts/run-rag-eval.js --ids=ch03-security-deposit-return,ch06-heat-hot-water,ch09-lead-child,ch18-foreclosure-rights,form-repair-demand-letter,booklet-answer-summary-process",
+    "corpus:check": "node scripts/check-corpus-upstream.js",
+    "corpus:refresh": "node scripts/refresh-corpus-manifest.js",
     "ingest:rag": "node scripts/ingest-rag-corpus.js",
     "ingest:rag:reset": "node scripts/ingest-rag-corpus.js --reset",
     "seed:demo-users": "node scripts/seed-demo-users.js",
@@ -52,6 +54,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.8.1",
-    "globals": "^17.11.0"
+    "globals": "^17.11.0",
+    "playwright": "^1.62.1"
   }
 }

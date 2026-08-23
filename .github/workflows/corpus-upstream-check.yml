@@ -1,0 +1,146 @@
+name: Corpus Upstream Check
+
+# Weekly drift check against masslegalhelp.org. It observes and reports only: it
+# downloads no PDF, and it must never attempt to defeat, solve, or evade the
+# upstream bot check. A challenged page is reported as blocked and left to a
+# human.
+#
+# The corpus is committed in this repository at
+# resources/rag-corpus/mass tenant rights, so a single checkout is enough and
+# RAG_CORPUS_ROOT is left unset: resolveCorpusRoot() finds the in-repo copy.
+#
+# scripts/check-corpus-upstream.js exit codes drive everything below:
+#   0  every row still has a PDF linked on its index page whose decoded file
+#      name matches the recorded revision -> stay quiet. Narrower than "the
+#      corpus is current": only revision strings are compared, so a same-name
+#      re-upload and a newly published document both pass as 0. See the
+#      script's --help.
+#   3  upstream changed                                           -> file an issue
+#   4  ran but could not confirm every row (blocked page, or a row with no
+#      candidate) -> file an issue, framed as inconclusive
+#   1  the tool itself failed                                     -> fail the job
+# 4 files an issue for the same reason it exists: a run where every page was
+# challenged has observed nothing, and monitoring that stays silent after
+# observing nothing is the failure this check was built to prevent.
+
+on:
+  schedule:
+    # Monday 13:00 UTC = 09:00 America/New_York in EDT: a weekday morning for
+    # the maintainer, and low traffic for a legal-aid nonprofit's site.
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+# A manual dispatch racing the Monday schedule would otherwise have both runs
+# find no open issue and each create one.
+concurrency:
+  group: corpus-upstream-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      REPORT_PATH: artifacts/corpus-upstream.json
+      UPSTREAM_ISSUE_LABEL: corpus-upstream
+    steps:
+      - name: Check out server and corpus
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Check upstream
+        id: check
+        shell: bash
+        run: |
+          set +e
+          node scripts/check-corpus-upstream.js --report="$REPORT_PATH"
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          case "$status" in
+            0)
+              echo "Every manifest row still matches the revision the manifest records."
+              echo "This does not prove the corpus is current: only revision strings are"
+              echo "compared, so a same-name re-upload or a newly published document would"
+              echo "also exit 0. See scripts/check-corpus-upstream.js --help."
+              ;;
+            3)
+              echo "::warning::MassLegalHelp published changes; opening or updating the corpus issue."
+              ;;
+            4)
+              echo "::warning::The check could not confirm every row; opening or updating the corpus issue as inconclusive."
+              ;;
+            *)
+              echo "::error::check-corpus-upstream.js failed with exit $status. No conclusion was reached about the corpus." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: corpus-upstream-${{ github.run_id }}
+          path: ${{ env.REPORT_PATH }}
+          if-no-files-found: warn
+
+      # Both 3 and 4 file an issue; the body and title differ. Scraped strings
+      # reach gh only through --body-file, never through a shell word.
+      - name: Open or update the corpus upstream issue
+        if: steps.check.outputs.status == '3' || steps.check.outputs.status == '4'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          STATUS: ${{ steps.check.outputs.status }}
+          BODY_FILE: ${{ runner.temp }}/corpus-upstream-issue.md
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node scripts/format-upstream-issue.js \
+            --report="$REPORT_PATH" \
+            --status="$STATUS" \
+            --run-url="$RUN_URL" > "$BODY_FILE"
+
+          # A redirect captures an empty stdout just as happily as a full one,
+          # and gh would file the blank issue without complaint. Fail here
+          # instead: a corpus alert nobody can read is worse than a red run.
+          test -s "$BODY_FILE"
+
+          # The one string gh cannot take from a file. The formatter builds it
+          # from fixed text plus a date it matched against \d{4}-\d{2}-\d{2}, so
+          # no scraped byte reaches this command substitution.
+          title="$(node scripts/format-upstream-issue.js --report="$REPORT_PATH" --status="$STATUS" --title)"
+          test -n "$title"
+
+          existing="$(gh issue list --label "$UPSTREAM_ISSUE_LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            echo "Commenting on existing issue #$existing"
+            gh issue comment "$existing" --body-file "$BODY_FILE"
+          else
+            # The label already exists from the second issue onwards, and that
+            # failure is the expected one. Any other failure surfaces loudly on
+            # the gh issue create below, which cannot run without the label.
+            gh label create "$UPSTREAM_ISSUE_LABEL" \
+              --description "MassLegalHelp corpus drift" \
+              --color FBCA04 2>/dev/null || true
+            gh issue create \
+              --title "$title" \
+              --label "$UPSTREAM_ISSUE_LABEL" \
+              --body-file "$BODY_FILE"
+          fi

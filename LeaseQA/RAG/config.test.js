@@ -182,6 +182,98 @@ test("getRagConfig rejects non-positive timeout overrides in favor of bounded de
   );
 });
 
+test("getRagConfig enables the ingest retrieval gate by default at a 0.9 hit-rate floor", () => {
+  withEnv(
+    {
+      RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+      DASHSCOPE_API_KEY: "dashscope-key",
+      RAG_INGEST_GATE: undefined,
+      RAG_INGEST_GATE_MIN_HIT_RATE: undefined,
+    },
+    () => {
+      const config = getRagConfig();
+
+      assert.equal(config.ingestGateEnabled, true);
+      assert.equal(config.ingestGateMinHitRate, 0.9);
+    },
+  );
+});
+
+test("getRagConfig disables the ingest gate only for the exact off switch", () => {
+  const credentials = {
+    RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+    DASHSCOPE_API_KEY: "dashscope-key",
+  };
+
+  withEnv({ ...credentials, RAG_INGEST_GATE: "off" }, () => {
+    assert.equal(getRagConfig().ingestGateEnabled, false);
+  });
+
+  ["on", "OFF", "Off", "false", "0", ""].forEach((value) => {
+    withEnv({ ...credentials, RAG_INGEST_GATE: value }, () => {
+      assert.equal(
+        getRagConfig().ingestGateEnabled,
+        true,
+        `RAG_INGEST_GATE=${JSON.stringify(value)} must leave the gate enabled`,
+      );
+    });
+  });
+});
+
+test("getRagConfig keeps a zero ingest gate hit rate instead of treating it as unset", () => {
+  withEnv(
+    {
+      RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+      DASHSCOPE_API_KEY: "dashscope-key",
+      RAG_INGEST_GATE_MIN_HIT_RATE: "0",
+    },
+    () => {
+      assert.equal(
+        getRagConfig().ingestGateMinHitRate,
+        0,
+        "a 0 floor must survive rather than falling back through a falsy check",
+      );
+    },
+  );
+});
+
+test("getRagConfig accepts in-range ingest gate hit rates up to the 1 boundary", () => {
+  const credentials = {
+    RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+    DASHSCOPE_API_KEY: "dashscope-key",
+  };
+
+  [
+    ["0.75", 0.75],
+    ["1", 1],
+  ].forEach(([value, expected]) => {
+    withEnv({ ...credentials, RAG_INGEST_GATE_MIN_HIT_RATE: value }, () => {
+      assert.equal(
+        getRagConfig().ingestGateMinHitRate,
+        expected,
+        `RAG_INGEST_GATE_MIN_HIT_RATE=${value} must survive as ${expected}`,
+      );
+    });
+  });
+});
+
+test("getRagConfig rejects out-of-range or non-numeric ingest gate hit rates", () => {
+  const credentials = {
+    RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+    DASHSCOPE_API_KEY: "dashscope-key",
+  };
+
+  ["1.5", "-0.1", "abc", ""].forEach((value) => {
+    withEnv({ ...credentials, RAG_INGEST_GATE_MIN_HIT_RATE: value }, () => {
+      assert.equal(
+        getRagConfig().ingestGateMinHitRate,
+        0.9,
+        `RAG_INGEST_GATE_MIN_HIT_RATE=${JSON.stringify(value)} must fall back to 0.9`,
+      );
+    });
+  });
+});
+
 test("corpus root prefers an explicit environment override", () => {
   assert.equal(
     ragConfig.resolveCorpusRoot({
@@ -190,6 +282,15 @@ test("corpus root prefers an explicit environment override", () => {
       existsFn: () => false,
     }),
     "/srv/leaseqa-corpus",
+  );
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: { RAG_CORPUS_ROOT: "/srv/leaseqa-corpus" },
+      serverRoot: "/repo/server",
+      existsFn: () => true,
+    }),
+    "/srv/leaseqa-corpus",
+    "an explicit override must win over a corpus committed in the repository",
   );
 });
 
@@ -212,5 +313,106 @@ test("corpus root discovery works from the original checkout and an isolated wor
       existsFn,
     }),
     corpusRoot,
+  );
+});
+
+test("corpus root prefers the copy committed inside the server repository", () => {
+  const inRepoRoot = "/repo/server/resources/rag-corpus/mass tenant rights";
+  const workspaceRoot = "/repo/resources/rag-corpus/mass tenant rights";
+  const existsFn = (candidate) =>
+    candidate === inRepoRoot || candidate === workspaceRoot;
+
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/repo/server",
+      existsFn,
+    }),
+    inRepoRoot,
+    "a stale workspace copy must never shadow the committed corpus",
+  );
+});
+
+test("corpus root finds the committed corpus from an isolated worktree", () => {
+  const worktreeRoot =
+    "/repo/server/.claude/worktrees/feature/resources/rag-corpus/mass tenant rights";
+  const existsFn = (candidate) => candidate === worktreeRoot;
+
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/repo/server/.claude/worktrees/feature",
+      existsFn,
+    }),
+    worktreeRoot,
+  );
+});
+
+test("corpus root falls back to the in-repository location when nothing exists", () => {
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/repo/server",
+      existsFn: () => false,
+    }),
+    "/repo/server/resources/rag-corpus/mass tenant rights",
+  );
+});
+
+// A sibling worktree's corpus is reachable only by descending, and the walk only
+// ascends. Pinned so the loop cannot start matching siblings and silently ingest
+// another branch's corpus.
+test("corpus root never selects a sibling worktree's corpus", () => {
+  const siblingRoot =
+    "/repo/server/.claude/worktrees/other/resources/rag-corpus/mass tenant rights";
+  const existsFn = (candidate) => candidate === siblingRoot;
+
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/repo/server/.claude/worktrees/feature",
+      existsFn,
+    }),
+    "/repo/server/.claude/worktrees/feature/resources/rag-corpus/mass tenant rights",
+    "a sibling worktree is not an ancestor, so it must never be reachable",
+  );
+});
+
+test("corpus root tests the filesystem root exactly once and terminates", () => {
+  const fromRoot = [];
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/",
+      existsFn: (candidate) => {
+        fromRoot.push(candidate);
+        return false;
+      },
+    }),
+    "/resources/rag-corpus/mass tenant rights",
+  );
+  assert.deepEqual(
+    fromRoot,
+    ["/resources/rag-corpus/mass tenant rights"],
+    "path.dirname('/') is '/', so the loop must break instead of spinning",
+  );
+
+  const fromNested = [];
+  ragConfig.resolveCorpusRoot({
+    env: {},
+    serverRoot: "/a/b",
+    existsFn: (candidate) => {
+      fromNested.push(candidate);
+      return false;
+    },
+  });
+  assert.deepEqual(
+    fromNested,
+    [
+      "/a/b/resources/rag-corpus/mass tenant rights",
+      "/a/resources/rag-corpus/mass tenant rights",
+      "/resources/rag-corpus/mass tenant rights",
+    ],
+    "every ancestor including the filesystem root is tested, each exactly once",
   );
 });

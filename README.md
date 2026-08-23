@@ -31,7 +31,7 @@ Production:
 The RAG layer combines:
 
 - uploaded user material: pasted clause text, uploaded `PDF`, or uploaded `DOCX`
-- ingested housing-rights reference material from the MassLegalHelp corpus configured by `RAG_CORPUS_ROOT`
+- ingested housing-rights reference material from the MassLegalHelp corpus committed at `resources/rag-corpus/mass tenant rights` (override with `RAG_CORPUS_ROOT`)
 
 The ingested knowledge base is organized around:
 
@@ -96,7 +96,7 @@ Expected local client:
 - `DATABASE_CONNECTION_STRING`
 - `CLIENT_URL`
 - `SESSION_SECRET`
-- `RAG_CORPUS_ROOT`
+- `RAG_CORPUS_ROOT` (optional; only needed when the corpus is not the committed in-repository copy)
 - `RAG_MILVUS_ADDRESS`
 - `RAG_MILVUS_TOKEN`
 - `RAG_MILVUS_KNOWLEDGE_COLLECTION`
@@ -138,12 +138,37 @@ The caller must own the authenticated session or present the same guest browser 
 Knowledge ingestion is content-addressed and resumable:
 
 ```bash
-RAG_CORPUS_ROOT=/absolute/path/to/resources/rag-corpus/mass\ tenant\ rights npm run ingest:rag
+npm run ingest:rag
 npm run ingest:rag -- --limit=5
 npm run ingest:rag:reset
+RAG_CORPUS_ROOT=/absolute/path/to/mass\ tenant\ rights npm run ingest:rag
 ```
 
-`RAG_CORPUS_ROOT` takes precedence. Without it, the server discovers `../resources/rag-corpus/mass tenant rights` from either the original checkout or an isolated `.worktrees/*` checkout. Set the variable explicitly in deployed environments where the corpus is mounted elsewhere. The resolved worktree path is never persisted in production configuration; only the runtime manifest path appears in the local ingest-state file.
+### Knowledge corpus
+
+The corpus is committed in this repository at `resources/rag-corpus/mass tenant rights` (81 PDFs, 36 MB, plain git, no LFS). Only `npm run ingest:rag` reads it; the running web service never does. Two consequences of co-locating it, accepted deliberately because corpus updates are infrequent: deploys pull 36 MB they will not use, and a corpus-only commit triggers a web-service deploy.
+
+`resolveCorpusRoot()` checks this repository first and only then walks up to parent directories, so the committed corpus is never shadowed by a stale copy outside it. `RAG_CORPUS_ROOT` overrides both and is how to point the ingest at any other layout — a mounted volume, a separate checkout, or a deployed environment where the corpus lives elsewhere. The resolved path is never persisted in production configuration; only the runtime manifest path appears in the local ingest-state file.
+
+A pre-migration copy of this corpus may still exist outside the repository at `<workspace>/resources/rag-corpus` on the original development machine. It is redundant and is **not** the corpus these commands operate on. Run every command below from this repository root; if `npm run corpus:refresh -- --dry-run` reports a `corpusRoot` outside this checkout, stop — you are about to rewrite the wrong manifest.
+
+Refresh procedure, all commands from this repository root:
+
+1. `npm run corpus:check -- --write-state` and read the report. It never downloads and never attempts to defeat the upstream bot check.
+2. Download each changed PDF **in a real browser** from the page URL in the report, overwriting the file in place under its existing name.
+3. `npm run corpus:refresh -- --dry-run` to preview, then `npm run corpus:refresh` to write. The `--` separator is required: `npm run corpus:refresh --dry-run` forwards nothing to the script and performs a **real write**. Only rows whose bytes changed are rewritten, so a no-op refresh leaves `corpus_manifest.csv` byte-identical and does not trigger a re-ingest. The previous manifest is kept as the single `corpus_manifest.csv.bak`.
+4. Commit the changed PDFs, `corpus_manifest.csv`, `corpus_manifest.csv.bak` and `upstream_state.json` together.
+5. Ingest: run the `corpus-ingest` workflow (`workflow_dispatch`; `min_hit_rate` defaults to `0.9`) or `npm run ingest:rag` locally. The retrieval gate decides whether the alias moves.
+
+Step 1 also runs on its own: the `corpus-upstream-check` workflow crawls the eight index pages every Monday at 13:00 UTC (and on `workflow_dispatch`), uploads the JSON report as an artifact, and opens — or comments on, if one is already open — a single issue labelled `corpus-upstream`. It files on two different outcomes and says which: the checker's exit 3, MassLegalHelp published changes, and exit 4, the run could not confirm every row because a page was blocked or a manifest row matched no PDF. An inconclusive run is never reported as a clean one, which is the whole reason exit 4 exists. Exit 1, a broken checker, fails the run instead of filing anything. The workflow never downloads a PDF and never retries a bot challenge.
+
+The `corpus-ingest` workflow requires an explicit target alias and refuses to start without one, because the retrieval gate queries the staging collection and therefore cannot detect an ingest that repoints the wrong alias. Supply it as the `knowledge_alias` dispatch input, or once as the `RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION` secret. It must match the `RAG_MILVUS_KNOWLEDGE_COLLECTION` the readers are deployed with.
+
+A failed gate exits 2, leaves the alias where it was, and leaves the staging collection in place to be inspected. Retrying it in CI is not free by default: the ingest state lives under the run's own workspace, which is empty on a fresh run, so a plain retry cannot see the staging collection, drops it, and re-embeds all 81 files. Pass the failed run's id as the `resume_from_run_id` dispatch input; the workflow restores that run's `corpus-ingest-<run id>` artifact first, and the retry re-runs the gate against the collection that is already there. The restore is best-effort: a wrong id, or an artifact past the repository's retention window, logs a warning and the run proceeds as a full re-ingest, so read the staging collection before retrying rather than after.
+
+The gate is retrieval-only by design — it proves the right chapter is still reachable, not that the answer built from it is good. To judge generation quality before the alias moves, run the `Live RAG Evaluation` workflow with its `knowledge_collection` input set to the staging collection the ingest reported (`leaseqa_knowledge_chunks_<version-prefix>`). Left blank it evaluates whatever `RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION` names, which is normally the live alias.
+
+See `resources/rag-corpus/mass tenant rights/CORPUS_GUIDE.md` and `docs/superpowers/specs/2026-08-23-corpus-upstream-sync.md`.
 
 Each ingest computes `sha256(manifest bytes + sorted source hashes + embedding provider/model/dimension)`, writes to `leaseqa_knowledge_chunks_<version-prefix>`, flushes and loads the complete staging collection, then atomically moves the stable alias configured by `RAG_MILVUS_KNOWLEDGE_COLLECTION`. Old versioned collections are removed only after activation. `--limit` leaves staging state without activating a partial corpus; a later run resumes it. `--reset` restarts only the current staging version and does not delete the active alias target.
 

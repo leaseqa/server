@@ -32,6 +32,7 @@ const createConfig = (root) => ({
   chunkSize: 1200,
   chunkOverlap: 200,
   vectorTimeoutMs: 100,
+  ingestGateEnabled: false,
 });
 
 const createIngestDependencies = (overrides = {}) => {

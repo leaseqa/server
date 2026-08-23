@@ -3,6 +3,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import {
+  matchesExpectation,
+  normalizeCitationExpectationInput,
+} from "../LeaseQA/RAG/evalExpectations.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const serverRoot = path.resolve(__dirname, "..");
@@ -183,29 +188,6 @@ const askQuestion = async ({ baseUrl, cookieJar, sessionId, question }) => {
   return response.data;
 };
 
-const matchesExpectation = (evalCase, citation) => {
-  if ( !citation || citation.sourceGroup !== evalCase.expectedSourceGroup ) {
-    return false;
-  }
-  if (
-    Array.isArray(evalCase.expectedChapterRefs) &&
-    evalCase.expectedChapterRefs.length > 0 &&
-    !evalCase.expectedChapterRefs.includes(String(citation.chapterRef || ""))
-  ) {
-    return false;
-  }
-  if (
-    Array.isArray(evalCase.expectedSourceNameIncludes) &&
-    evalCase.expectedSourceNameIncludes.length > 0
-  ) {
-    const sourceName = String(citation.sourceName || "").toLowerCase();
-    return evalCase.expectedSourceNameIncludes.some((token) =>
-      sourceName.includes(String(token).toLowerCase()),
-    );
-  }
-  return true;
-};
-
 const isInsufficientSupportAnswer = (answer) =>
   /could not find enough support/i.test(String(answer || ""));
 
@@ -240,7 +222,9 @@ export const runEvalCase = async ({ baseUrl, evalCase, clock = performance }) =>
   );
   const expectedSourceMatched = evalCase.expectAbstain
     ? abstained
-    : citations.some((citation) => matchesExpectation(evalCase, citation));
+    : citations.some((citation) =>
+        matchesExpectation(evalCase, normalizeCitationExpectationInput(citation)),
+      );
   const passed = evalCase.expectAbstain
     ? abstained && citationValid && contentSafe
     : answerPresent && !abstained && expectedSourceMatched && citationValid && contentSafe;

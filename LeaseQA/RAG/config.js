@@ -28,11 +28,9 @@ const parsePositiveInteger = (value, fallback) => {
   return parsed > 0 ? parsed : fallback;
 };
 
-const parseProbability = (value, fallback) => {
+const parseRate = (value, fallback) => {
   const parsed = Number.parseFloat(value || "");
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1
-    ? parsed
-    : fallback;
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : fallback;
 };
 
 const requireEnv = (name) => {
@@ -70,20 +68,23 @@ export const resolveCorpusRoot = ({
     return path.resolve(env.RAG_CORPUS_ROOT);
   }
 
+  // The corpus is committed inside this repository, so the checkout itself is
+  // the first candidate. Testing only the parents would silently resolve to a
+  // stale workspace-level copy and ingest the wrong bytes.
   let current = path.resolve(providedServerRoot);
   while ( true ) {
-    const parent = path.dirname(current);
-    const candidate = path.join(parent, CORPUS_RELATIVE_PATH);
+    const candidate = path.join(current, CORPUS_RELATIVE_PATH);
     if ( existsFn(candidate) ) {
       return candidate;
     }
+    const parent = path.dirname(current);
     if ( parent === current ) {
       break;
     }
     current = parent;
   }
 
-  return path.resolve(providedServerRoot, "..", CORPUS_RELATIVE_PATH);
+  return path.resolve(providedServerRoot, CORPUS_RELATIVE_PATH);
 };
 
 export const getRagConfig = () => {
@@ -125,8 +126,13 @@ export const getRagConfig = () => {
     chunkSize: parseInteger(process.env.RAG_CHUNK_SIZE, 1200),
     chunkOverlap: parseInteger(process.env.RAG_CHUNK_OVERLAP, 200),
     knowledgeTopK: parseInteger(process.env.RAG_KNOWLEDGE_TOP_K, 8),
+    ingestGateEnabled: process.env.RAG_INGEST_GATE !== "off",
+    ingestGateMinHitRate: parseRate(
+      process.env.RAG_INGEST_GATE_MIN_HIT_RATE,
+      0.9,
+    ),
     sessionTopK: parseInteger(process.env.RAG_SESSION_TOP_K, 6),
-    minSupportScore: parseProbability(process.env.RAG_MIN_SUPPORT_SCORE, 0.025),
+    minSupportScore: parseRate(process.env.RAG_MIN_SUPPORT_SCORE, 0.025),
     uploadFileSizeBytes: parseInteger(
       process.env.RAG_UPLOAD_MAX_BYTES,
       12 * 1024 * 1024,

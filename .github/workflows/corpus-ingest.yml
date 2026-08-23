@@ -1,0 +1,159 @@
+name: Corpus Ingest
+
+# The corpus is committed in this repository at
+# resources/rag-corpus/mass tenant rights, so a single checkout is enough and
+# RAG_CORPUS_ROOT is left unset: resolveCorpusRoot() finds the in-repo copy.
+
+on:
+  workflow_dispatch:
+    inputs:
+      knowledge_alias:
+        description: >-
+          Milvus alias to repoint on activation. Leave blank to use the
+          RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION secret.
+        required: false
+        default: ""
+      min_hit_rate:
+        description: Minimum retrieval gate hit rate
+        required: false
+        default: "0.9"
+      resume_from_run_id:
+        description: >-
+          Run id of a previous corpus-ingest to resume. Set this when retrying
+          after a gate failure: it restores that run's ingest state so the
+          staging collection is re-gated instead of dropped and re-embedded.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  # Reading the ingest state of the run being retried is a cross-run artifact
+  # download, which needs actions:read on top of the default token.
+  actions: read
+
+concurrency:
+  group: corpus-ingest-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Resolved once so the pre-flight check and the ingest cannot disagree.
+      # An empty value here would let config.js fall back to its built-in
+      # "leaseqa_knowledge_chunks" default and repoint an alias nothing reads,
+      # so the pre-flight below refuses to continue without it.
+      RAG_MILVUS_KNOWLEDGE_COLLECTION: ${{ inputs.knowledge_alias || secrets.RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION }}
+    steps:
+      - name: Check out server and corpus
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Runs before npm ci: this job spends real embedding budget on 81 files,
+      # so a missing secret must fail in seconds, not after an install.
+      - name: Require ingest credentials and an explicit target alias
+        shell: bash
+        env:
+          DATABASE_CONNECTION_STRING: ${{ secrets.RAG_EVAL_DATABASE_CONNECTION_STRING }}
+          DASHSCOPE_API_KEY: ${{ secrets.RAG_EVAL_DASHSCOPE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.RAG_EVAL_GEMINI_API_KEY }}
+          RAG_MILVUS_ADDRESS: ${{ secrets.RAG_EVAL_MILVUS_ADDRESS }}
+        run: |
+          missing=0
+          if [ -z "$RAG_MILVUS_KNOWLEDGE_COLLECTION" ]; then
+            echo "::error::No target alias. Set the knowledge_alias input or the" \
+              "RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION secret. Ingesting without one" \
+              "would repoint the built-in leaseqa_knowledge_chunks default, which" \
+              "the retrieval gate cannot catch because it queries the staging" \
+              "collection, not the alias." >&2
+            missing=1
+          fi
+          if [ -z "$DATABASE_CONNECTION_STRING" ]; then
+            echo "::error::RAG_EVAL_DATABASE_CONNECTION_STRING is required" >&2
+            missing=1
+          fi
+          if [ -z "$RAG_MILVUS_ADDRESS" ]; then
+            echo "::error::RAG_EVAL_MILVUS_ADDRESS is required" >&2
+            missing=1
+          fi
+          if [ -z "$DASHSCOPE_API_KEY" ] && [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::RAG_EVAL_DASHSCOPE_API_KEY or RAG_EVAL_GEMINI_API_KEY is required" >&2
+            missing=1
+          fi
+          test "$missing" -eq 0
+          echo "Target alias: $RAG_MILVUS_KNOWLEDGE_COLLECTION"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A failed gate leaves the staging collection intact for inspection, but a
+      # retry can only reuse it if it can still read the failed run's ingest
+      # state. RAG_INGEST_STATE_PATH lives under github.workspace, which is
+      # empty at the start of every run, so with no restore previousState is
+      # null, canResume is false, and ingestKnowledgeCorpus drops the staging
+      # collection and re-embeds all 81 files. continue-on-error keeps a wrong
+      # or expired run id from failing the job: it just becomes a full ingest,
+      # which the next step says out loud.
+      - name: Restore the ingest state of the run being retried
+        if: inputs.resume_from_run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: corpus-ingest-${{ inputs.resume_from_run_id }}
+          run-id: ${{ inputs.resume_from_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ github.workspace }}
+
+      - name: Report whether this run resumes or re-ingests
+        shell: bash
+        env:
+          RESUME_RUN_ID: ${{ inputs.resume_from_run_id }}
+        run: |
+          state="$GITHUB_WORKSPACE/.rag-knowledge-ingest-state.json"
+          if [ -f "$state" ]; then
+            echo "Ingest state restored from run $RESUME_RUN_ID." \
+              "If its corpusVersion and staging collection still match, the" \
+              "ingest re-runs the gate without re-embedding."
+          elif [ -n "$RESUME_RUN_ID" ]; then
+            echo "::warning::resume_from_run_id=$RESUME_RUN_ID was set but no ingest" \
+              "state was restored: wrong run id, expired artifact, or that run" \
+              "uploaded none. This run drops the staging collection and re-embeds" \
+              "all 81 files. Cancel now if you still need it for inspection."
+          else
+            echo "No resume_from_run_id: this run builds a fresh staging collection" \
+              "and embeds all 81 files."
+          fi
+
+      - name: Ingest with the retrieval gate
+        env:
+          DATABASE_CONNECTION_STRING: ${{ secrets.RAG_EVAL_DATABASE_CONNECTION_STRING }}
+          DASHSCOPE_API_KEY: ${{ secrets.RAG_EVAL_DASHSCOPE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.RAG_EVAL_GEMINI_API_KEY }}
+          RAG_MILVUS_ADDRESS: ${{ secrets.RAG_EVAL_MILVUS_ADDRESS }}
+          RAG_MILVUS_TOKEN: ${{ secrets.RAG_EVAL_MILVUS_TOKEN }}
+          RAG_PROVIDER: ${{ secrets.RAG_EVAL_EMBEDDING_PROVIDER }}
+          RAG_EMBEDDING_MODEL: ${{ secrets.RAG_EVAL_EMBEDDING_MODEL }}
+          RAG_EMBEDDING_BASE_URL: ${{ secrets.RAG_EVAL_EMBEDDING_BASE_URL }}
+          RAG_EMBEDDING_DIMENSIONS: ${{ secrets.RAG_EVAL_EMBEDDING_DIMENSIONS }}
+          RAG_INGEST_STATE_PATH: ${{ github.workspace }}/.rag-knowledge-ingest-state.json
+          RAG_INGEST_GATE: "on"
+          RAG_INGEST_GATE_MIN_HIT_RATE: ${{ inputs.min_hit_rate }}
+        run: npm run ingest:rag
+
+      - name: Upload ingest state
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: corpus-ingest-${{ github.run_id }}
+          path: .rag-knowledge-ingest-state.json
+          # The state file is a dotfile, and upload-artifact skips hidden files
+          # by default. Without this the artifact is empty, if-no-files-found
+          # only warns, and the restore step above has nothing to restore.
+          include-hidden-files: true
+          if-no-files-found: warn
