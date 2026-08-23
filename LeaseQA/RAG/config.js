@@ -68,20 +68,23 @@ export const resolveCorpusRoot = ({
     return path.resolve(env.RAG_CORPUS_ROOT);
   }
 
+  // The corpus is committed inside this repository, so the checkout itself is
+  // the first candidate. Testing only the parents would silently resolve to a
+  // stale workspace-level copy and ingest the wrong bytes.
   let current = path.resolve(providedServerRoot);
   while ( true ) {
-    const parent = path.dirname(current);
-    const candidate = path.join(parent, CORPUS_RELATIVE_PATH);
+    const candidate = path.join(current, CORPUS_RELATIVE_PATH);
     if ( existsFn(candidate) ) {
       return candidate;
     }
+    const parent = path.dirname(current);
     if ( parent === current ) {
       break;
     }
     current = parent;
   }
 
-  return path.resolve(providedServerRoot, "..", CORPUS_RELATIVE_PATH);
+  return path.resolve(providedServerRoot, CORPUS_RELATIVE_PATH);
 };
 
 export const getRagConfig = () => {

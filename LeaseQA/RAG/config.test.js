@@ -353,6 +353,15 @@ test("corpus root prefers an explicit environment override", () => {
     }),
     "/srv/leaseqa-corpus",
   );
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: { RAG_CORPUS_ROOT: "/srv/leaseqa-corpus" },
+      serverRoot: "/repo/server",
+      existsFn: () => true,
+    }),
+    "/srv/leaseqa-corpus",
+    "an explicit override must win over a corpus committed in the repository",
+  );
 });
 
 test("corpus root discovery works from the original checkout and an isolated worktree", () => {
@@ -374,5 +383,48 @@ test("corpus root discovery works from the original checkout and an isolated wor
       existsFn,
     }),
     corpusRoot,
+  );
+});
+
+test("corpus root prefers the copy committed inside the server repository", () => {
+  const inRepoRoot = "/repo/server/resources/rag-corpus/mass tenant rights";
+  const workspaceRoot = "/repo/resources/rag-corpus/mass tenant rights";
+  const existsFn = (candidate) =>
+    candidate === inRepoRoot || candidate === workspaceRoot;
+
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/repo/server",
+      existsFn,
+    }),
+    inRepoRoot,
+    "a stale workspace copy must never shadow the committed corpus",
+  );
+});
+
+test("corpus root finds the committed corpus from an isolated worktree", () => {
+  const worktreeRoot =
+    "/repo/server/.claude/worktrees/feature/resources/rag-corpus/mass tenant rights";
+  const existsFn = (candidate) => candidate === worktreeRoot;
+
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/repo/server/.claude/worktrees/feature",
+      existsFn,
+    }),
+    worktreeRoot,
+  );
+});
+
+test("corpus root falls back to the in-repository location when nothing exists", () => {
+  assert.equal(
+    ragConfig.resolveCorpusRoot({
+      env: {},
+      serverRoot: "/repo/server",
+      existsFn: () => false,
+    }),
+    "/repo/server/resources/rag-corpus/mass tenant rights",
   );
 });
