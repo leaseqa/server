@@ -91,22 +91,40 @@ that finds nothing new must leave `corpus_manifest.csv` byte-identical.
 `parseCorpusManifest` is header-driven and `buildKnowledgeChunkRows` cherry-picks known
 fields, so appending columns is backward compatible with no parser change.
 
-### D2 — Corpus lives in its own repository, wired via `RAG_CORPUS_ROOT`
+### D2 — Corpus lives in the server repository (revised 2026-08-23)
 
-36 MB total, largest file 1.5 MB — plain git, **no git-lfs** (which is not installed here
-and is not needed below GitHub's 50 MB per-file warning).
+36 MB total, largest file 1.5 MB — plain git, **no git-lfs** (not installed here, and not
+needed below GitHub's 50 MB per-file warning).
 
-A separate `leaseqa-corpus` repository rather than a directory in the server repository,
-because:
+**Decision, set by the project owner:** the corpus goes into the **server repository** at
+`resources/rag-corpus/mass tenant rights/`, not a separate repo. Rationale: corpus updates
+are infrequent, so the two costs of co-locating are acceptable.
 
-- only `ingestKnowledgeCorpus` reads the corpus; the running web service never touches it,
-  so shipping 36 MB to Render on every deploy is dead weight
-- corpus refresh commits would otherwise trigger a production web-service deploy
-- `config.js` already honours `RAG_CORPUS_ROOT`, so CI just checks out both repositories
-  and sets one env var — no submodule, no code change to `resolveCorpusRoot()`
+Those costs, recorded so they are not rediscovered later:
 
-Local development is unaffected: the workspace `resources/rag-corpus/` directory becomes a
-clone of that repository and the existing parent-directory walk still finds it.
+- the running web service never reads the corpus — only `ingestKnowledgeCorpus` does — so
+  Render pulls 36 MB it will not use on every deploy
+- a corpus-only commit triggers a production web-service deploy (mitigable with Render's
+  Ignored Build Filter if it becomes annoying)
+
+What this buys: one repository, one history, no second checkout in CI, and no
+`CORPUS_REPO_TOKEN` secret.
+
+This supersedes the original design, which called for a separate `leaseqa-corpus`
+repository on the grounds that the dependency graph is corpus -> ingest, not corpus -> web
+service. That reasoning still stands on its merits; the owner weighed it against the
+operational overhead of a second repo and chose simplicity.
+
+**Required code change:** `resolveCorpusRoot()` only ever tests
+`dirname(current)/resources/rag-corpus/...`, never `current` itself, so an in-repo corpus
+would never be found and resolution would silently fall back to the stale copy outside the
+repo. It must check `current` before walking to parents.
+
+`RAG_CORPUS_ROOT` remains the override for any other layout.
+
+**Backup policy, set by the project owner:** exactly one backup file,
+`corpus_manifest.csv.bak`, holding the previous version, committed alongside the manifest.
+The refresh tool already writes that single rolling name on every write.
 
 ### D3 — The gate is retrieval-only and runs in-process
 
