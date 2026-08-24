@@ -65,7 +65,11 @@ These are exposed through:
 - MongoDB Atlas
 - `npm`
 - Milvus / Zilliz for vector search
-- Alibaba Cloud DashScope (百炼) OpenAI-compatible chat (`qwen-plus`) and embeddings (`text-embedding-v3`, 1024-d)
+- Volcengine Ark Agent Plan, OpenAI-compatible chat (`doubao-seed-2.0-lite`) and
+  embeddings (`doubao-embedding-vision`, 1024-d) — the provider this deployment is configured with
+- Alibaba Cloud DashScope (百炼) as the alternate plug (`qwen-plus`, `text-embedding-v3`, 1024-d).
+  It is also what the code falls back to when `RAG_PROVIDER` is unset, which is why that
+  variable has to be set explicitly rather than left to the default
 - Render for production hosting
 
 ## Local Development
@@ -106,10 +110,15 @@ Expected local client:
 - `RAG_EVAL_MIN_PASS_RATE` (committed default `0.90`)
 - `RAG_EVAL_MIN_SAFE_RATE` (committed default `0.98`)
 - `RAG_EVAL_OUTPUT` (optional JSON artifact path)
-- `DASHSCOPE_API_KEY` (Alibaba Cloud Model Studio / 百炼; used for both chat and embedding)
-- `RAG_CHAT_*` (defaults: `qwen-plus` at `https://dashscope.aliyuncs.com/compatible-mode/v1`)
-- `RAG_EMBEDDING_*` (defaults: OpenAI-compatible `text-embedding-v3`, 1024 dimensions)
-- `ARK_API_KEY` / `RAG_PROVIDER=ark` (Volcengine Ark Agent Plan, OpenAI-compatible; defaults `doubao-seed-2.0-lite` chat and `doubao-embedding-vision` embedding)
+- `RAG_PROVIDER` — `ark` or `dashscope`. **Set it explicitly.** Left unset, `resolveRagProviderId()`
+  infers `dashscope` unless a configured base URL contains `volces.com`, so an Ark deployment
+  that supplies only `ARK_API_KEY` resolves to the DashScope preset and its models.
+- `ARK_API_KEY` (Volcengine Ark Agent Plan; serves both chat and embedding under `RAG_PROVIDER=ark`.
+  Defaults `doubao-seed-2.0-lite` and `doubao-embedding-vision`)
+- `DASHSCOPE_API_KEY` (Alibaba Cloud Model Studio / 百炼; the equivalent under
+  `RAG_PROVIDER=dashscope`. Defaults `qwen-plus` and `text-embedding-v3`)
+- `RAG_CHAT_*` / `RAG_EMBEDDING_*` (per-field overrides. Each falls back to the selected
+  provider's preset, so leave them unset unless pointing at a third OpenAI-compatible endpoint)
 
 See [.env.example](/Users/Z1nk/Desktop/proj/leaseqa/leaseqa-server/.env.example) for the full template.
 
@@ -172,7 +181,7 @@ See `resources/rag-corpus/mass tenant rights/CORPUS_GUIDE.md` and `docs/superpow
 
 Each ingest computes `sha256(manifest bytes + sorted source hashes + embedding provider/model/dimension)`, writes to `leaseqa_knowledge_chunks_<version-prefix>`, flushes and loads the complete staging collection, then atomically moves the stable alias configured by `RAG_MILVUS_KNOWLEDGE_COLLECTION`. Old versioned collections are removed only after activation. `--limit` leaves staging state without activating a partial corpus; a later run resumes it. `--reset` restarts only the current staging version and does not delete the active alias target.
 
-Switching embedding vendor or dimension (for example DashScope `text-embedding-v3` to Ark `doubao-embedding-vision`, or a 768-d to 1024-d model) produces a new corpus version automatically. Existing collections cannot serve vectors from a different embedding model or dimension; run `npm run ingest:rag` after changing provider config. Session collections use a stable name (`RAG_MILVUS_SESSION_COLLECTION`); drop or recreate that collection after a dimension change, because new session uploads will not fit an old schema.
+Switching embedding vendor or dimension (for example DashScope `text-embedding-v3` to Ark `doubao-embedding-vision`, or a 768-d to 1024-d model) produces a new corpus version automatically. Nothing verifies this at read time: `answerQuestion()` embeds the question with whatever provider the running process resolved and searches the `RAG_MILVUS_KNOWLEDGE_COLLECTION` alias directly, without comparing that provider against the one that built the collection. A dimension change is caught by Milvus, but DashScope `text-embedding-v3` and Ark `doubao-embedding-vision` are both 1024-d, so switching between those two without re-ingesting raises no error — the query vector simply lands in the wrong space, scores fall under `RAG_MIN_SUPPORT_SCORE`, and the symptom is unexplained abstention rather than a failure. Run `npm run ingest:rag` after changing provider config, and keep readers and the last ingest on the same provider. Session collections use a stable name (`RAG_MILVUS_SESSION_COLLECTION`); drop or recreate that collection after a dimension change, because new session uploads will not fit an old schema.
 
 For deployments where `RAG_MILVUS_KNOWLEDGE_COLLECTION` is still a physical legacy collection, migrate without overwriting it:
 
