@@ -104,6 +104,7 @@ test("answerQuestion emits request-scoped timings, citations, version, and abste
     selectedCitationIds: ["knowledge-citation-1"],
     corpusVersion: "corpus-version-abc",
     abstained: false,
+    abstentionReason: null,
     errorCode: null,
   });
   assert.doesNotMatch(
@@ -179,6 +180,52 @@ test("provider failures retain elapsed provider time without logging the respons
   assert.equal(metric.providerDurationMs, 15);
   assert.equal(metric.errorCode, "RAG_CHAT_FAILED");
   assert.doesNotMatch(logs[0], /PRIVATE_PROVIDER_RESPONSE|PRIVATE_QUESTION_TEXT/);
+});
+
+test("answerQuestion tags the abstention reason when retrieval never clears the support floor", async () => {
+  const logs = [];
+  const dependencies = createDependencies({
+    logs,
+    clock: { now: () => 10 },
+  });
+  dependencies.searchHybridChunks = async () => [];
+
+  await answerQuestion(
+    {
+      sessionId: "session-observed",
+      userId: "user-observed",
+      requestId: "request-no-support",
+      question: "PRIVATE_QUESTION_TEXT",
+    },
+    dependencies,
+  );
+
+  const metric = JSON.parse(logs[0]);
+  assert.equal(metric.abstained, true);
+  assert.equal(metric.abstentionReason, "insufficient_retrieval_support");
+});
+
+test("answerQuestion tags the abstention reason when the model's structured output fails validation", async () => {
+  const logs = [];
+  const dependencies = createDependencies({
+    logs,
+    clock: { now: () => 10 },
+    chatInvoke: async () => ({ content: "not valid json" }),
+  });
+
+  await answerQuestion(
+    {
+      sessionId: "session-observed",
+      userId: "user-observed",
+      requestId: "request-bad-model-output",
+      question: "PRIVATE_QUESTION_TEXT",
+    },
+    dependencies,
+  );
+
+  const metric = JSON.parse(logs[0]);
+  assert.equal(metric.abstained, true);
+  assert.equal(metric.abstentionReason, "model_output_invalid");
 });
 
 test("corpus version falls back to retrieved version metadata when local state is absent", async () => {

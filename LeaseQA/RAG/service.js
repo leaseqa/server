@@ -389,10 +389,10 @@ export const normalizeAssistantAnswer = ({
     // Invalid model output follows the deterministic abstention path below.
   }
 
-  return buildInsufficientSupportAnswer();
+  return buildInsufficientSupportAnswer("model_output_invalid");
 };
 
-const buildInsufficientSupportAnswer = () => {
+const buildInsufficientSupportAnswer = (abstentionReason) => {
   const summary =
     "I could not find enough support to answer that reliably from this source and the handbook.";
   const bullets = [
@@ -406,6 +406,7 @@ const buildInsufficientSupportAnswer = () => {
     summaryCitationIndices: [],
     bullets,
     content: buildAnswerContent({ summary, bullets }),
+    abstentionReason,
   };
 };
 
@@ -440,7 +441,9 @@ export const finalizeAssistantCitations = ({
 
   if ( summaryCitationIndices.length === 0 || supportedBullets.length === 0 ) {
     return {
-      structuredAnswer: buildInsufficientSupportAnswer(),
+      structuredAnswer: buildInsufficientSupportAnswer(
+        structuredAnswer?.abstentionReason || "unsupported_citations",
+      ),
       citations: [],
       hasExplicitSupport: false,
     };
@@ -720,6 +723,7 @@ export const answerQuestion = async ({
   let providerDurationMs = 0;
   let selectedCitationIds = [];
   let abstained = false;
+  let abstentionReason = null;
   let corpusVersion = null;
   try {
     corpusVersion = await readCorpusVersion({
@@ -737,6 +741,7 @@ export const answerQuestion = async ({
       selectedCitationIds,
       corpusVersion,
       abstained,
+      abstentionReason,
       errorCode,
     };
     try {
@@ -833,7 +838,7 @@ export const answerQuestion = async ({
       citationIdToIndex,
     });
   } else {
-    candidateAnswer = buildInsufficientSupportAnswer();
+    candidateAnswer = buildInsufficientSupportAnswer("insufficient_retrieval_support");
   }
   const finalized = finalizeAssistantCitations({
     structuredAnswer: candidateAnswer,
@@ -843,6 +848,7 @@ export const answerQuestion = async ({
   const citations = finalized.citations;
   selectedCitationIds = citations.map((citation) => citation.citationId);
   abstained = citations.length === 0;
+  abstentionReason = structuredAnswer.abstentionReason || null;
 
   const updatedSession = await appendMessages(sessionId, [
     {

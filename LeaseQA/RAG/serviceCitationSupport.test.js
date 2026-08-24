@@ -119,6 +119,7 @@ test("finalizeAssistantCitations drops selected citations absent from retrieval 
   assert.deepEqual(result.citations, []);
   assert.match(result.structuredAnswer.summary, /could not find enough support/i);
   assert.doesNotMatch(result.structuredAnswer.content, /fabricated answer/i);
+  assert.equal(result.structuredAnswer.abstentionReason, "unsupported_citations");
 });
 
 test("finalizeAssistantCitations returns zero citations when no explicit support id was selected", () => {

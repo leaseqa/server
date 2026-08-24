@@ -117,6 +117,7 @@ test("normalizeAssistantAnswer abstains without citations for plain text answers
     },
   ]);
   assert.doesNotMatch(normalized.content, /30-day timeline/);
+  assert.equal(normalized.abstentionReason, "model_output_invalid");
 });
 
 test("normalizeAssistantAnswer abstains without echoing malformed plain-text answer sections", () => {
