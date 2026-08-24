@@ -8,6 +8,100 @@ services:
     startCommand: npm start
     branch: main
     healthCheckPath: /api/health
+    # THE RULE: render.yaml declares the variable LIST; values stay in the
+    # Render dashboard. `sync: false` means "this variable exists but its
+    # value is managed in the dashboard" - Render never overrides it from
+    # this file and no secret is committed. Values are only written here for
+    # config that is already public (none today; an example would be:
+    #   - key: CLIENT_URL
+    #     value: https://leaseqa-client.vercel.app
+    # It is safe to add or remove names here; applying a Blueprint never
+    # deletes dashboard-only variables.
+    #
+    # Omitted on purpose (not needed by the production web process): PORT
+    # (injected by Render), RAG_CORPUS_ROOT (corpus lives in the repo),
+    # RAG_INGEST_STATE_PATH / RAG_EVAL_BASE_URL / RAG_EVAL_* (ingest & eval
+    # CLIs, run locally/CI).
     envVars:
       - key: NODE_VERSION
         value: 24.19.0
+
+      # App / auth
+      - key: SERVER_URL
+        sync: false
+      - key: SERVER_ENV
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: UPLOADS_ENABLED
+        sync: false
+      - key: UPLOADS_DIR
+        sync: false
+      - key: DATABASE_CONNECTION_STRING
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
+      - key: DEMO_PASSWORD
+        sync: false
+      - key: CI_DISABLE_RATE_LIMIT
+        sync: false
+
+      # RAG providers / model keys
+      - key: RAG_PROVIDER
+        sync: false
+      - key: ARK_API_KEY
+        sync: false
+      - key: DASHSCOPE_API_KEY
+        sync: false
+      - key: RAG_CHAT_API_KEY
+        sync: false
+      - key: RAG_CHAT_MODEL
+        sync: false
+      - key: RAG_CHAT_BASE_URL
+        sync: false
+      - key: RAG_CHAT_TIMEOUT_MS
+        sync: false
+      - key: RAG_EMBEDDING_API_KEY
+        sync: false
+      - key: RAG_EMBEDDING_MODEL
+        sync: false
+      - key: RAG_EMBEDDING_BASE_URL
+        sync: false
+      - key: RAG_EMBEDDING_DIMENSIONS
+        sync: false
+      - key: RAG_EMBEDDING_TIMEOUT_MS
+        sync: false
+
+      # RAG retrieval / Milvus
+      - key: RAG_MILVUS_ADDRESS
+        sync: false
+      - key: RAG_MILVUS_TOKEN
+        sync: false
+      - key: RAG_MILVUS_KNOWLEDGE_COLLECTION
+        sync: false
+      - key: RAG_MILVUS_SESSION_COLLECTION
+        sync: false
+      - key: RAG_CHUNK_SIZE
+        sync: false
+      - key: RAG_CHUNK_OVERLAP
+        sync: false
+      - key: RAG_KNOWLEDGE_TOP_K
+        sync: false
+      - key: RAG_SESSION_TOP_K
+        sync: false
+      - key: RAG_MIN_SUPPORT_SCORE
+        sync: false
+      - key: RAG_VECTOR_TIMEOUT_MS
+        sync: false
+      - key: RAG_UPLOAD_MAX_BYTES
+        sync: false
+      - key: RAG_HISTORY_MESSAGES
+        sync: false
