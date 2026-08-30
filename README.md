@@ -177,7 +177,7 @@ A failed gate exits 2, leaves the alias where it was, and leaves the staging col
 
 The gate is retrieval-only by design — it proves the right chapter is still reachable, not that the answer built from it is good. To judge generation quality before the alias moves, run the `Live RAG Evaluation` workflow with its `knowledge_collection` input set to the staging collection the ingest reported (`leaseqa_knowledge_chunks_<version-prefix>`). Left blank it evaluates whatever `RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION` names, which is normally the live alias.
 
-See `resources/rag-corpus/mass tenant rights/CORPUS_GUIDE.md` and `docs/superpowers/specs/2026-08-23-corpus-upstream-sync.md`.
+See `resources/rag-corpus/mass tenant rights/CORPUS_GUIDE.md`.
 
 Each ingest computes `sha256(manifest bytes + sorted source hashes + embedding provider/model/dimension)`, writes to `leaseqa_knowledge_chunks_<version-prefix>`, flushes and loads the complete staging collection, then atomically moves the stable alias configured by `RAG_MILVUS_KNOWLEDGE_COLLECTION`. Old versioned collections are removed only after activation. `--limit` leaves staging state without activating a partial corpus; a later run resumes it. `--reset` restarts only the current staging version and does not delete the active alias target.
 

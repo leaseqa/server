@@ -8,6 +8,20 @@ services:
     startCommand: npm start
     branch: main
     healthCheckPath: /api/health
+    # Documentation-only pushes must not redeploy a live service. Nothing in
+    # this repo reads a committed .md at runtime — the only two tracked ones
+    # are README.md and the corpus guide, and the `.md` in
+    # LeaseQA/RAG/text.js:7 is for user *uploads*, not repo files. Corpus
+    # content changes still deploy; they only take effect after the separate
+    # `npm run ingest:rag`, but the service should track the repo it ships.
+    buildFilter:
+      ignoredPaths:
+        # Both forms on purpose: `**/*.md` requires a leading directory in most
+        # glob implementations, so it misses README.md at the repository root —
+        # which is the file that caused the needless deploy in the first place.
+        - "*.md"
+        - "**/*.md"
+        - docs/**
     # THE RULE: render.yaml declares the variable LIST; values stay in the
     # Render dashboard. `sync: false` means "this variable exists but its
     # value is managed in the dashboard" - Render never overrides it from
