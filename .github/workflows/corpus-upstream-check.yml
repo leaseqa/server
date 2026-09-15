@@ -130,6 +130,26 @@ jobs:
           existing="$(gh issue list --label "$UPSTREAM_ISSUE_LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')"
 
           if [ -n "$existing" ]; then
+            # A runner that stays blocked reports the same thing every Monday.
+            # Four identical comments bury the one run that finds real drift, so
+            # an exact repeat of the last report is dropped. Only status 4 is
+            # eligible: published drift is news every single time it is seen.
+            # The comparison ignores the two lines that always move, and runs
+            # over files so no scraped byte reaches a shell word.
+            if [ "$STATUS" = "4" ]; then
+              previous="$RUNNER_TEMP/corpus-upstream-previous.md"
+              gh issue view "$existing" --json body,comments \
+                --jq '(.comments | last | .body) // .body // ""' > "$previous" \
+                || : > "$previous"
+              volatile() {
+                grep -vE '^- (Checked at|Workflow run):' "$1" | sed 's/[[:space:]]*$//'
+              }
+              if [ -s "$previous" ] \
+                && diff -q <(volatile "$previous") <(volatile "$BODY_FILE") >/dev/null 2>&1; then
+                echo "::notice::#$existing already carries this exact inconclusive report; not posting a duplicate."
+                exit 0
+              fi
+            fi
             echo "Commenting on existing issue #$existing"
             gh issue comment "$existing" --body-file "$BODY_FILE"
           else
