@@ -136,10 +136,15 @@ jobs:
             # eligible: published drift is news every single time it is seen.
             # The comparison ignores the two lines that always move, and runs
             # over files so no scraped byte reaches a shell word.
+            #
+            # It compares against this workflow's own last report rather than
+            # the last comment of any kind. Comparing against the newest comment
+            # meant one human reply -- someone recording what they checked by
+            # hand -- made the next run look like news and mail everyone again.
             if [ "$STATUS" = "4" ]; then
               previous="$RUNNER_TEMP/corpus-upstream-previous.md"
               gh issue view "$existing" --json body,comments \
-                --jq '(.comments | last | .body) // .body // ""' > "$previous" \
+                --jq '([.comments[] | select(.author.login | test("^github-actions"))] | last | .body) // .body // ""' > "$previous" \
                 || : > "$previous"
               volatile() {
                 grep -vE '^- (Checked at|Workflow run):' "$1" | sed 's/[[:space:]]*$//'
