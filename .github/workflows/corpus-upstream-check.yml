@@ -146,11 +146,11 @@ jobs:
               gh issue view "$existing" --json body,comments \
                 --jq '([.comments[] | select(.author.login | test("^github-actions"))] | last | .body) // .body // ""' > "$previous" \
                 || : > "$previous"
-              volatile() {
-                grep -vE '^- (Checked at|Workflow run):' "$1" | sed 's/[[:space:]]*$//'
-              }
-              if [ -s "$previous" ] \
-                && diff -q <(volatile "$previous") <(volatile "$BODY_FILE") >/dev/null 2>&1; then
+              # The comparison itself is unit tested in upstreamIssue.test.js.
+              # A hand-rolled diff here twice missed a repeat, most recently
+              # because the fetched copy carries one more trailing newline than
+              # the file the formatter writes.
+              if node scripts/is-same-upstream-report.js "$previous" "$BODY_FILE"; then
                 echo "::notice::#$existing already carries this exact inconclusive report; not posting a duplicate."
                 exit 0
               fi

@@ -185,6 +185,32 @@ const unconfirmedProcedure = () => [
   "",
 ];
 
+// Two reports are the same report when they differ only in what every run
+// changes on its own: when it ran, which run it was, and whitespace. The
+// workflow uses this to avoid re-posting an identical inconclusive report every
+// Monday while a page stays blocked.
+//
+// Whitespace has to be forgiving, and not only inside lines. The previous report
+// arrives through `gh issue view --jq .body`, which hands back one more trailing
+// newline than the file this formatter writes, so blank lines are dropped before
+// comparing rather than trimmed.
+const VOLATILE_LINE = /^- (Checked at|Workflow run):/;
+
+export const normaliseReport = (text) =>
+  String(text ?? "")
+    .split(/\r?\n/)
+    .filter((line) => !VOLATILE_LINE.test(line))
+    .map((line) => line.trimEnd())
+    .filter((line) => line !== "")
+    .join("\n");
+
+// An empty previous report is never a duplicate: that is what a failed fetch
+// looks like, and suppressing on it would silently drop every report after.
+export const isSameReport = (previous, next) => {
+  const before = normaliseReport(previous);
+  return before !== "" && before === normaliseReport(next);
+};
+
 export const formatIssueBody = ({ status, report, runUrl = "" }) => {
   assertStatusFilesAnIssue(status);
   assertReadableReport(report);

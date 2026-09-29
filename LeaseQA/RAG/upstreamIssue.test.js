@@ -10,6 +10,7 @@ import {
   INCONCLUSIVE_EXIT_CODE,
   formatIssueBody,
   formatIssueTitle,
+  isSameReport,
   main,
   parseArgs,
 } from "../../scripts/format-upstream-issue.js";
@@ -360,4 +361,60 @@ test("the CLI fails loudly on a missing or unreadable report", async () => {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+
+// The workflow suppresses a Monday report that repeats the last one. It compares
+// the body it is about to post, fresh from this formatter, with the previous
+// report as `gh issue view --jq .body` hands it back -- and that round trip does
+// not return the same bytes. The CLI writes exactly one trailing newline; the
+// fetched copy ends in an extra blank line. A comparison that only trimmed
+// whitespace inside lines saw that one-byte difference, called every repeat
+// new, and mailed everyone watching the repository each week.
+const blockedEverywhere = (checkedAt) =>
+  report({
+    checkedAt,
+    blocked: ["ch01_moving_in.pdf", "ch03_security_deposits.pdf", "handout_17_condos.pdf"],
+  });
+
+const asPosted = (checkedAt, runId) =>
+  `${formatIssueBody({
+    status: INCONCLUSIVE_EXIT_CODE,
+    report: blockedEverywhere(checkedAt),
+    runUrl: `https://github.com/leaseqa/server/actions/runs/${runId}`,
+  })}\n`;
+
+// What `gh issue view --jq .body` returns for a comment posted from a file.
+const asFetched = (posted) => `${posted}\n`;
+
+test("isSameReport treats a fetched repeat of last week's report as the same report", () => {
+  const lastWeek = asFetched(asPosted("2026-09-21T18:32:22.662Z", "35638882606"));
+  const thisWeek = asPosted("2026-09-28T20:02:24.894Z", "36476203735");
+  assert.equal(isSameReport(lastWeek, thisWeek), true);
+});
+
+test("isSameReport still sees a report whose findings changed", () => {
+  const lastWeek = asFetched(asPosted("2026-09-21T18:32:22.662Z", "35638882606"));
+  const thisWeek = `${formatIssueBody({
+    status: INCONCLUSIVE_EXIT_CODE,
+    report: report({ checkedAt: "2026-09-28T20:02:24.894Z", blocked: ["ch01_moving_in.pdf"] }),
+    runUrl: "https://github.com/leaseqa/server/actions/runs/36476203735",
+  })}\n`;
+  assert.equal(isSameReport(lastWeek, thisWeek), false);
+});
+
+test("isSameReport never calls an empty previous report a duplicate", () => {
+  // If fetching the previous comment fails, the workflow gets an empty file.
+  // Suppressing on that would silently drop every report; post instead.
+  const thisWeek = asPosted("2026-09-28T20:02:24.894Z", "36476203735");
+  assert.equal(isSameReport("", thisWeek), false);
+  assert.equal(isSameReport("\n\n", thisWeek), false);
+});
+
+test("isSameReport ignores line-ending and trailing-space differences", () => {
+  const posted = asPosted("2026-09-28T20:02:24.894Z", "36476203735");
+  const crlf = posted.replace(/\n/g, "\r\n");
+  const padded = posted.split("\n").map((line) => `${line}  `).join("\n");
+  assert.equal(isSameReport(crlf, posted), true);
+  assert.equal(isSameReport(padded, posted), true);
 });
