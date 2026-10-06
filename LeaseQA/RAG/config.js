@@ -29,6 +29,11 @@ const parsePositiveInteger = (value, fallback) => {
   return parsed > 0 ? parsed : fallback;
 };
 
+const parseNumber = (value, fallback) => {
+  const parsed = Number.parseFloat(value || "");
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 const parseRate = (value, fallback) => {
   const parsed = Number.parseFloat(value || "");
   return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : fallback;
@@ -138,11 +143,16 @@ export const getRagConfig = () => {
     rerankBaseUrl: rerank.baseURL,
     rerankModel: rerank.model,
     rerankApiKey: rerank.apiKey,
+    rerankRawScores: rerank.rawScores,
     rerankTimeoutMs: parsePositiveInteger(
       process.env.RAG_RERANK_TIMEOUT_MS,
       15_000,
     ),
-    minRerankScore: parseRate(process.env.RAG_MIN_RERANK_SCORE, 0.2),
+    // On the reranker's own scale: a 0-1 relevance score, or zhipu's raw logit.
+    minRerankScore: parseNumber(
+      process.env.RAG_MIN_RERANK_SCORE,
+      rerank.minScore,
+    ),
     ingestGateEnabled: process.env.RAG_INGEST_GATE !== "off",
     ingestGateMinHitRate: parseRate(
       process.env.RAG_INGEST_GATE_MIN_HIT_RATE,

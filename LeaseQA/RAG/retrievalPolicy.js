@@ -69,7 +69,7 @@ export const buildKnowledgeSearchPlan = (config) =>
     limit: config.candidatesPerGroup,
   }));
 
-export const toRerankDocument = (chunk) => {
+const toRerankDocument = (chunk) => {
   const title = normalizeSnippet(chunk.title_hint || chunk.source_name);
   const text = String(chunk.text || "").trim();
   return title ? `${title}\n${text}` : text;
@@ -118,21 +118,20 @@ export const rankEvidence = async ({
   };
 };
 
-// The evidence the model may cite, best first. A reranker scores every pair on
-// the same 0-1 scale, so one floor (RAG_MIN_RERANK_SCORE) drops weak chunks
-// and, when nothing clears it, makes the answer abstain. Fused RRF scores have
-// no such scale: a chunk matched by both the dense and the sparse ranker
-// scores ~0.033 and one matched by a single ranker ~0.016, so the fallback
-// only asks that the best chunk was matched by both (~0.025).
+// The evidence the model may cite, best first, or none, so the answer
+// abstains, when even the best chunk is too weak to answer from. A reranker
+// scores every (question, chunk) pair on one scale, so its floor is a single
+// number (RAG_MIN_RERANK_SCORE). Fused RRF scores have no such scale: a chunk
+// matched by both the dense and the sparse ranker scores ~0.033 and one
+// matched by a single ranker ~0.016, so the fallback only asks that the best
+// chunk was matched by both (~0.025).
 export const selectEvidence = ({ ranking, config }) => {
-  if ( ranking.rankedBy === "rerank" ) {
-    return ranking.chunks
-      .filter((chunk) => chunk.rerank_score >= config.minRerankScore)
-      .slice(0, config.evidenceLimit);
-  }
-
-  const bestScore = ranking.chunks[0]?.score || 0;
-  return bestScore >= config.minSupportScore
+  const best = ranking.chunks[0];
+  const [bestScore, floor] =
+    ranking.rankedBy === "rerank"
+      ? [best?.rerank_score, config.minRerankScore]
+      : [best?.score || 0, config.minSupportScore];
+  return Number.isFinite(bestScore) && bestScore >= floor
     ? ranking.chunks.slice(0, config.evidenceLimit)
     : [];
 };

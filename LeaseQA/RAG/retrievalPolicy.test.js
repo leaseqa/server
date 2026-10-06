@@ -123,7 +123,7 @@ test("rankEvidence does not call the reranker when retrieval found nothing", asy
   assert.equal(calls.length, 0);
 });
 
-test("selectEvidence keeps reranked chunks above the floor, at most the evidence limit", () => {
+test("selectEvidence keeps the top reranked chunks, at most the evidence limit, once the best clears the floor", () => {
   const chunks = [0.95, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.1].map((rerankScore, index) =>
     chunk(`c${index}`, { rerank_score: rerankScore }),
   );
@@ -145,7 +145,7 @@ test("selectEvidence abstains when no reranked chunk clears the floor", () => {
   assert.deepEqual(evidence, []);
 });
 
-test("selectEvidence drops weak reranked chunks even when a strong one passes", () => {
+test("selectEvidence leaves the choice among the top chunks to the model once the best clears the floor", () => {
   const evidence = selectEvidence({
     ranking: {
       rankedBy: "rerank",
@@ -154,7 +154,20 @@ test("selectEvidence drops weak reranked chunks even when a strong one passes", 
     config,
   });
 
-  assert.deepEqual(evidence.map((item) => item.id), ["strong"]);
+  assert.deepEqual(evidence.map((item) => item.id), ["strong", "weak"]);
+});
+
+test("selectEvidence reads the floor on the reranker's own scale, raw logits included", () => {
+  const ranking = {
+    rankedBy: "rerank",
+    chunks: [chunk("a", { rerank_score: 16.2 }), chunk("b", { rerank_score: 9.1 })],
+  };
+
+  assert.deepEqual(selectEvidence({ ranking, config: { ...config, minRerankScore: 17 } }), []);
+  assert.deepEqual(
+    selectEvidence({ ranking, config: { ...config, minRerankScore: 15 } }).map((item) => item.id),
+    ["a", "b"],
+  );
 });
 
 test("selectEvidence on the fused fallback abstains unless the best chunk matched both rankers", () => {

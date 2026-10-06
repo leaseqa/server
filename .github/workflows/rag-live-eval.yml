@@ -20,6 +20,12 @@ on:
         type: boolean
         required: false
         default: false
+      report_args:
+        description: >-
+          Extra arguments for scripts/report-rag-retrieval.js, e.g.
+          --ids=gen-lockout,oos-divorce or --candidates-per-group=20.
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -93,7 +99,11 @@ jobs:
           RAG_EMBEDDING_MODEL: ${{ secrets.RAG_EVAL_EMBEDDING_MODEL }}
           RAG_EMBEDDING_DIMENSIONS: ${{ secrets.RAG_EVAL_EMBEDDING_DIMENSIONS }}
           RAG_EMBEDDING_PROVIDER: ${{ secrets.RAG_EVAL_EMBEDDING_PROVIDER }}
-        run: node scripts/report-rag-retrieval.js
+          # Passed through the environment, never interpolated into the script.
+          REPORT_ARGS: ${{ inputs.report_args }}
+        run: |
+          read -r -a report_args <<< "$REPORT_ARGS"
+          node scripts/report-rag-retrieval.js "${report_args[@]}"
 
       - name: Start local server
         if: ${{ !inputs.retrieval_report_only }}

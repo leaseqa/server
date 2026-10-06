@@ -13,7 +13,6 @@ import {
   buildRetrievalQuestion,
   rankEvidence,
   selectEvidence,
-  toRerankDocument,
 } from "../LeaseQA/RAG/retrievalPolicy.js";
 import {
   createEmbeddingsClient,
@@ -22,11 +21,11 @@ import {
 import { EVAL_PLACEHOLDER_SOURCE_TEXT } from "./run-rag-eval.js";
 
 // For every eval case, how its evidence ranks under the live provider: the
-// reranker's score for the best chunk and for the first chunk from the expected
-// source, and whether that chunk reaches the model. RAG_MIN_RERANK_SCORE
-// belongs above every out-of-scope case's best score and below every
-// answerable case's expected-source score; the summary prints that window.
-// Retrieval only: no server, no database, no chat model.
+// best chunk's score, where the first chunk from the expected source lands,
+// and whether the model gets to see it. RAG_MIN_RERANK_SCORE belongs above
+// every out-of-scope case's best score and at or below every answerable
+// case's; the summary prints that window. Retrieval only: no server, no
+// database, no chat model.
 
 const evalSetPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -45,7 +44,6 @@ const sessionChunkFor = (evalCase) => {
   if ( upload && upload.content != null ) {
     const sourceName = upload.sourceName || "uploaded-document.txt";
     return {
-      id: `session:${evalCase.id}`,
       source_group: "upload",
       source_name: sourceName,
       title_hint: sourceName,
@@ -55,7 +53,6 @@ const sessionChunkFor = (evalCase) => {
     };
   }
   return {
-    id: `session:${evalCase.id}`,
     source_group: "text",
     source_name: "pasted-text",
     title_hint: "pasted-text",
@@ -68,19 +65,21 @@ const sessionChunkFor = (evalCase) => {
 const label = (chunk) =>
   `${chunk.source_group}/${chunk.source_name}${chunk.chapter_ref ? `#${chunk.chapter_ref}` : ""}`;
 
+const scoreOf = (ranking, chunk) =>
+  ranking.rankedBy === "rerank" ? chunk.rerank_score : chunk.score;
+
 const formatScore = (value) =>
-  Number.isFinite(value) ? value.toFixed(4) : "n/a";
+  Number.isFinite(value) ? value.toFixed(3) : "n/a";
 
 const isExpected = (evalCase, chunk) =>
   matchesExpectation(evalCase, normalizeChunkExpectationInput(chunk));
 
-export const reportCase = async ({
-  evalCase,
-  config,
-  embeddings,
-  rerankClient,
-  rawRerankClient,
-}) => {
+const reachesModel = (evalCase, evidence) =>
+  evalCase.expectAbstain
+    ? evidence.length === 0
+    : evidence.some((chunk) => isExpected(evalCase, chunk));
+
+export const reportCase = async ({ evalCase, config, embeddings, rerankClient }) => {
   const sessionChunk = sessionChunkFor(evalCase);
   const question = buildRetrievalQuestion({
     question: evalCase.question,
@@ -92,7 +91,7 @@ export const reportCase = async ({
   const chunks = [sessionChunk, ...candidates];
 
   let rerankFailure = null;
-  const reranked = await rankEvidence({
+  const ranking = await rankEvidence({
     question,
     chunks,
     rerankClient,
@@ -101,110 +100,124 @@ export const reportCase = async ({
     },
   });
   const fused = await rankEvidence({ question, chunks, rerankClient: null });
-  const raw = rawRerankClient
-    ? await rawRerankClient.rerank({
-        query: question,
-        documents: chunks.map(toRerankDocument),
-      })
-    : null;
-  const rawById = new Map(chunks.map((chunk, index) => [chunk.id, raw?.[index]]));
-  const scores = reranked.chunks.map((chunk) => chunk.rerank_score);
-  const evidence = selectEvidence({ ranking: reranked, config });
-  const fusedEvidence = selectEvidence({ ranking: fused, config });
-
+  const scores = ranking.chunks.map((chunk) => scoreOf(ranking, chunk));
   const expectedRank = evalCase.expectAbstain
     ? -1
-    : reranked.chunks.findIndex((chunk) => isExpected(evalCase, chunk));
+    : ranking.chunks.findIndex((chunk) => isExpected(evalCase, chunk));
+
   return {
     id: evalCase.id,
     expectAbstain: Boolean(evalCase.expectAbstain),
-    rankedBy: reranked.rankedBy,
+    rankedBy: ranking.rankedBy,
     rerankFailure,
     candidates: chunks.length,
-    bestScore: reranked.chunks[0]?.rerank_score ?? null,
-    expectedRank,
-    expectedScore:
-      expectedRank >= 0 ? reranked.chunks[expectedRank].rerank_score : null,
-    reachesModel: evalCase.expectAbstain
-      ? evidence.length === 0
-      : evidence.some((chunk) => isExpected(evalCase, chunk)),
-    reachesModelWithoutRerank: evalCase.expectAbstain
-      ? fusedEvidence.length === 0
-      : fusedEvidence.some((chunk) => isExpected(evalCase, chunk)),
+    bestScore: scores[0] ?? null,
     lowestScore: scores.length ? Math.min(...scores) : null,
-    bestRawScore: raw ? Math.max(...raw) : null,
-    expectedRawScore:
-      expectedRank >= 0 ? rawById.get(reranked.chunks[expectedRank].id) : null,
-    lowestRawScore: raw ? Math.min(...raw) : null,
-    top: reranked.chunks.slice(0, 4).map((chunk) => ({
+    expectedRank,
+    expectedScore: expectedRank >= 0 ? scores[expectedRank] : null,
+    reachesModel: reachesModel(evalCase, selectEvidence({ ranking, config })),
+    reachesModelWithoutRerank: reachesModel(
+      evalCase,
+      selectEvidence({ ranking: fused, config }),
+    ),
+    top: ranking.chunks.slice(0, config.evidenceLimit).map((chunk) => ({
       label: label(chunk),
-      score: chunk.rerank_score,
-      rawScore: rawById.get(chunk.id),
+      score: scoreOf(ranking, chunk),
+      expected: !evalCase.expectAbstain && isExpected(evalCase, chunk),
     })),
   };
 };
 
-const printCase = (result, minRerankScore) => {
-  const expectation = result.expectAbstain
-    ? `abstain: ${result.reachesModel ? "yes" : "NO"}`
-    : `expected #${result.expectedRank + 1 || "-"} at ${formatScore(result.expectedScore)}, reaches model: ${result.reachesModel ? "yes" : "NO"}`;
+const printCase = (result) => {
+  const outcome = result.expectAbstain
+    ? `abstains: ${result.reachesModel ? "yes" : "NO"}`
+    : `expected #${result.expectedRank >= 0 ? result.expectedRank + 1 : "-"}` +
+      ` at ${formatScore(result.expectedScore)}, reaches model: ${result.reachesModel ? "yes" : "NO"}`;
   console.log(
-    `${result.id}  best ${formatScore(result.bestScore)}  ${expectation}` +
-      `  (fused order: ${result.reachesModelWithoutRerank ? "ok" : "miss"})` +
+    `${result.id}  best ${formatScore(result.bestScore)}` +
+      ` (lowest ${formatScore(result.lowestScore)} of ${result.candidates})  ${outcome}` +
+      `  [fused order: ${result.reachesModelWithoutRerank ? "ok" : "miss"}]` +
       (result.rankedBy === "rerank" ? "" : `  RERANK UNAVAILABLE ${result.rerankFailure || ""}`),
   );
-  console.log(
-    `  scores ${formatScore(result.lowestScore)}..${formatScore(result.bestScore)}` +
-      `  raw ${formatScore(result.lowestRawScore)}..${formatScore(result.bestRawScore)}` +
-      (result.expectAbstain ? "" : `  expected raw ${formatScore(result.expectedRawScore)}`),
-  );
   result.top.forEach((item, index) => {
-    const marker = item.score >= minRerankScore ? " " : "-";
     console.log(
-      `  ${marker}${index + 1}. ${formatScore(item.score)}  raw ${formatScore(item.rawScore)}  ${item.label}`,
+      `  ${item.expected ? "*" : " "}${index + 1}. ${formatScore(item.score)}  ${item.label}`,
     );
   });
 };
 
-const printSummary = (results, minRerankScore) => {
+const printSummary = (results, config) => {
   const answerable = results.filter((result) => !result.expectAbstain);
   const outOfScope = results.filter((result) => result.expectAbstain);
   const count = (items, key) => items.filter((item) => item[key]).length;
-  const lowestExpected = answerable
-    .filter((result) => result.expectedScore !== null)
-    .sort((left, right) => left.expectedScore - right.expectedScore)[0];
-  const highestOutOfScope = [...outOfScope]
-    .filter((result) => result.bestScore !== null)
-    .sort((left, right) => right.bestScore - left.bestScore)[0];
+  const ids = (items) => items.map((item) => item.id).join(", ") || "none";
+  const byBest = (items) =>
+    [...items]
+      .filter((item) => Number.isFinite(item.bestScore))
+      .sort((left, right) => left.bestScore - right.bestScore);
+  const weakestAnswerable = byBest(answerable)[0];
+  const strongestOutOfScope = byBest(outOfScope).at(-1);
 
   console.log("");
-  console.log(`RAG_MIN_RERANK_SCORE=${minRerankScore}`);
+  console.log(
+    `RAG_MIN_RERANK_SCORE=${config.minRerankScore}  RAG_CANDIDATES_PER_GROUP=${config.candidatesPerGroup}` +
+      `  RAG_EVIDENCE_LIMIT=${config.evidenceLimit}`,
+  );
   console.log(
     `answerable: expected source reaches the model in ${count(answerable, "reachesModel")}/${answerable.length}` +
-      ` (fused order without rerank: ${count(answerable, "reachesModelWithoutRerank")}/${answerable.length});` +
-      ` never retrieved: ${answerable.filter((result) => result.expectedRank < 0).map((result) => result.id).join(", ") || "none"}`,
+      ` (fused order without rerank: ${count(answerable, "reachesModelWithoutRerank")}/${answerable.length})`,
+  );
+  console.log(`  misses: ${ids(answerable.filter((item) => !item.reachesModel))}`);
+  console.log(
+    `  below the floor, so they abstain: ${ids(answerable.filter((item) => !(item.bestScore >= config.minRerankScore)))}`,
+  );
+  console.log(
+    `  expected source never retrieved: ${ids(answerable.filter((item) => item.expectedRank < 0))}`,
   );
   console.log(
     `out of scope: abstains in ${count(outOfScope, "reachesModel")}/${outOfScope.length}` +
-      ` (fused order without rerank: ${count(outOfScope, "reachesModelWithoutRerank")}/${outOfScope.length})`,
+      ` (fused order without rerank: ${count(outOfScope, "reachesModelWithoutRerank")}/${outOfScope.length});` +
+      ` answers anyway: ${ids(outOfScope.filter((item) => !item.reachesModel))}`,
   );
-  if ( lowestExpected && highestOutOfScope ) {
-    const low = highestOutOfScope.bestScore;
-    const high = lowestExpected.expectedScore;
+  if ( weakestAnswerable && strongestOutOfScope ) {
+    const low = strongestOutOfScope.bestScore;
+    const high = weakestAnswerable.bestScore;
     console.log(
-      `floor window: above ${formatScore(low)} (${highestOutOfScope.id}) and at or below ${formatScore(high)} (${lowestExpected.id})` +
+      `floor window on the best score: above ${formatScore(low)} (${strongestOutOfScope.id})` +
+        ` and at or below ${formatScore(high)} (${weakestAnswerable.id})` +
         (low < high ? "" : "  -- NO SINGLE FLOOR SEPARATES THESE"),
     );
   }
 };
 
-export const main = async ({ ids = null } = {}) => {
-  const config = getRagConfig();
+export const parseReportArgs = (argv) => {
+  const options = { ids: null, candidatesPerGroup: null };
+  argv.forEach((argument) => {
+    if ( argument.startsWith("--ids=") ) {
+      options.ids = argument
+        .slice("--ids=".length)
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+    }
+    if ( argument.startsWith("--candidates-per-group=") ) {
+      const value = Number.parseInt(argument.slice("--candidates-per-group=".length), 10);
+      options.candidatesPerGroup = Number.isInteger(value) && value > 0 ? value : null;
+    }
+  });
+  return options;
+};
+
+export const main = async (argv = process.argv.slice(2)) => {
+  const options = parseReportArgs(argv);
+  const baseConfig = getRagConfig();
+  const config = options.candidatesPerGroup
+    ? { ...baseConfig, candidatesPerGroup: options.candidatesPerGroup }
+    : baseConfig;
   const embeddings = createEmbeddingsClient(config);
   const rerankClient = createRerankClient(config);
-  const rawRerankClient = createRerankClient({ ...config, rerankRawScores: true });
   const evalCases = JSON.parse(await fs.readFile(evalSetPath, "utf8")).filter(
-    (evalCase) => !ids || ids.includes(evalCase.id),
+    (evalCase) => !options.ids || options.ids.includes(evalCase.id),
   );
   if ( !rerankClient ) {
     console.log("Reranking is off for this provider; showing the fused order only.");
@@ -213,32 +226,19 @@ export const main = async ({ ids = null } = {}) => {
   const results = [];
   for ( const evalCase of evalCases ) {
     try {
-      const result = await reportCase({
-        evalCase,
-        config,
-        embeddings,
-        rerankClient,
-        rawRerankClient,
-      });
+      const result = await reportCase({ evalCase, config, embeddings, rerankClient });
       results.push(result);
-      printCase(result, config.minRerankScore);
+      printCase(result);
     } catch ( error ) {
       console.log(`${evalCase.id}  FAILED ${error?.code || error?.name || "error"}`);
     }
   }
-  printSummary(results, config.minRerankScore);
+  printSummary(results, config);
   return results.length === evalCases.length ? 0 : 1;
 };
 
 if ( process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href ) {
-  const idsArgument = process.argv
-    .slice(2)
-    .find((argument) => argument.startsWith("--ids="));
-  main({
-    ids: idsArgument
-      ? idsArgument.slice("--ids=".length).split(",").map((id) => id.trim())
-      : null,
-  })
+  main()
     .then((code) => {
       process.exitCode = code;
     })
