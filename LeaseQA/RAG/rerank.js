@@ -39,6 +39,7 @@ const scoreBatch = async ({ config, requestUrl, query, documents, fetchFn, retry
           documents: documents.map(truncate),
           top_n: documents.length,
           return_documents: false,
+          return_raw_scores: Boolean(config.rerankRawScores),
         }),
         signal,
       });

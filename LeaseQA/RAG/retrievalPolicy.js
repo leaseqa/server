@@ -69,7 +69,7 @@ export const buildKnowledgeSearchPlan = (config) =>
     limit: config.candidatesPerGroup,
   }));
 
-const toRerankDocument = (chunk) => {
+export const toRerankDocument = (chunk) => {
   const title = normalizeSnippet(chunk.title_hint || chunk.source_name);
   const text = String(chunk.text || "").trim();
   return title ? `${title}\n${text}` : text;

@@ -50,6 +50,7 @@ test("rerank posts the question and documents and maps scores back by index", as
     documents: ["a", "b"],
     top_n: 2,
     return_documents: false,
+    return_raw_scores: false,
   });
 });
 

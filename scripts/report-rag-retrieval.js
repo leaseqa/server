@@ -13,6 +13,7 @@ import {
   buildRetrievalQuestion,
   rankEvidence,
   selectEvidence,
+  toRerankDocument,
 } from "../LeaseQA/RAG/retrievalPolicy.js";
 import {
   createEmbeddingsClient,
@@ -68,12 +69,18 @@ const label = (chunk) =>
   `${chunk.source_group}/${chunk.source_name}${chunk.chapter_ref ? `#${chunk.chapter_ref}` : ""}`;
 
 const formatScore = (value) =>
-  Number.isFinite(value) ? value.toFixed(3) : "n/a";
+  Number.isFinite(value) ? value.toFixed(4) : "n/a";
 
 const isExpected = (evalCase, chunk) =>
   matchesExpectation(evalCase, normalizeChunkExpectationInput(chunk));
 
-export const reportCase = async ({ evalCase, config, embeddings, rerankClient }) => {
+export const reportCase = async ({
+  evalCase,
+  config,
+  embeddings,
+  rerankClient,
+  rawRerankClient,
+}) => {
   const sessionChunk = sessionChunkFor(evalCase);
   const question = buildRetrievalQuestion({
     question: evalCase.question,
@@ -94,6 +101,14 @@ export const reportCase = async ({ evalCase, config, embeddings, rerankClient })
     },
   });
   const fused = await rankEvidence({ question, chunks, rerankClient: null });
+  const raw = rawRerankClient
+    ? await rawRerankClient.rerank({
+        query: question,
+        documents: chunks.map(toRerankDocument),
+      })
+    : null;
+  const rawById = new Map(chunks.map((chunk, index) => [chunk.id, raw?.[index]]));
+  const scores = reranked.chunks.map((chunk) => chunk.rerank_score);
   const evidence = selectEvidence({ ranking: reranked, config });
   const fusedEvidence = selectEvidence({ ranking: fused, config });
 
@@ -116,9 +131,15 @@ export const reportCase = async ({ evalCase, config, embeddings, rerankClient })
     reachesModelWithoutRerank: evalCase.expectAbstain
       ? fusedEvidence.length === 0
       : fusedEvidence.some((chunk) => isExpected(evalCase, chunk)),
+    lowestScore: scores.length ? Math.min(...scores) : null,
+    bestRawScore: raw ? Math.max(...raw) : null,
+    expectedRawScore:
+      expectedRank >= 0 ? rawById.get(reranked.chunks[expectedRank].id) : null,
+    lowestRawScore: raw ? Math.min(...raw) : null,
     top: reranked.chunks.slice(0, 4).map((chunk) => ({
       label: label(chunk),
       score: chunk.rerank_score,
+      rawScore: rawById.get(chunk.id),
     })),
   };
 };
@@ -132,9 +153,16 @@ const printCase = (result, minRerankScore) => {
       `  (fused order: ${result.reachesModelWithoutRerank ? "ok" : "miss"})` +
       (result.rankedBy === "rerank" ? "" : `  RERANK UNAVAILABLE ${result.rerankFailure || ""}`),
   );
+  console.log(
+    `  scores ${formatScore(result.lowestScore)}..${formatScore(result.bestScore)}` +
+      `  raw ${formatScore(result.lowestRawScore)}..${formatScore(result.bestRawScore)}` +
+      (result.expectAbstain ? "" : `  expected raw ${formatScore(result.expectedRawScore)}`),
+  );
   result.top.forEach((item, index) => {
     const marker = item.score >= minRerankScore ? " " : "-";
-    console.log(`  ${marker}${index + 1}. ${formatScore(item.score)}  ${item.label}`);
+    console.log(
+      `  ${marker}${index + 1}. ${formatScore(item.score)}  raw ${formatScore(item.rawScore)}  ${item.label}`,
+    );
   });
 };
 
@@ -174,6 +202,7 @@ export const main = async ({ ids = null } = {}) => {
   const config = getRagConfig();
   const embeddings = createEmbeddingsClient(config);
   const rerankClient = createRerankClient(config);
+  const rawRerankClient = createRerankClient({ ...config, rerankRawScores: true });
   const evalCases = JSON.parse(await fs.readFile(evalSetPath, "utf8")).filter(
     (evalCase) => !ids || ids.includes(evalCase.id),
   );
@@ -184,7 +213,13 @@ export const main = async ({ ids = null } = {}) => {
   const results = [];
   for ( const evalCase of evalCases ) {
     try {
-      const result = await reportCase({ evalCase, config, embeddings, rerankClient });
+      const result = await reportCase({
+        evalCase,
+        config,
+        embeddings,
+        rerankClient,
+        rawRerankClient,
+      });
       results.push(result);
       printCase(result, config.minRerankScore);
     } catch ( error ) {
