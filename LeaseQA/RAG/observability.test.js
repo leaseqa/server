@@ -255,3 +255,83 @@ test("corpus version falls back to retrieved version metadata when local state i
     "corpus-version-from-vector",
   );
 });
+
+const askObserved = (dependencies, requestId) =>
+  answerQuestion(
+    {
+      sessionId: "session-observed",
+      userId: "user-observed",
+      requestId,
+      question: "PRIVATE_QUESTION_TEXT",
+    },
+    dependencies,
+  );
+
+test("answerQuestion ranks evidence by the reranker and records its top score", async () => {
+  const logs = [];
+  const dependencies = createDependencies({ logs, clock: { now: () => 10 } });
+  dependencies.config = { ...dependencies.config, minRerankScore: 16.5 };
+  dependencies.rerankClient = { rerank: async ({ documents }) => documents.map(() => 19.25) };
+
+  const result = await askObserved(dependencies, "request-reranked");
+
+  const metric = JSON.parse(logs[0]);
+  assert.equal(result.citations.length, 1);
+  assert.equal(metric.evidenceRanking, "rerank");
+  assert.equal(metric.topEvidenceScore, 19.25);
+  assert.equal(metric.abstained, false);
+});
+
+test("answerQuestion abstains without calling the model when the best reranked chunk is below the floor", async () => {
+  const logs = [];
+  let modelCalled = false;
+  const dependencies = createDependencies({
+    logs,
+    clock: { now: () => 10 },
+    chatInvoke: async () => {
+      modelCalled = true;
+      return { content: "{}" };
+    },
+  });
+  dependencies.config = { ...dependencies.config, minRerankScore: 16.5 };
+  dependencies.rerankClient = { rerank: async ({ documents }) => documents.map(() => 12.1) };
+
+  const result = await askObserved(dependencies, "request-below-floor");
+
+  const metric = JSON.parse(logs[0]);
+  assert.equal(modelCalled, false);
+  assert.deepEqual(result.citations, []);
+  assert.equal(metric.abstained, true);
+  assert.equal(metric.abstentionReason, "insufficient_retrieval_support");
+  assert.equal(metric.topEvidenceScore, 12.1);
+});
+
+test("a failed rerank still answers from the fused order and logs only a stable code", async () => {
+  const logs = [];
+  const errors = [];
+  const dependencies = createDependencies({ logs, clock: { now: () => 10 } });
+  dependencies.logger = {
+    info: (value) => logs.push(value),
+    error: (value) => errors.push(value),
+  };
+  dependencies.rerankClient = {
+    rerank: async () => {
+      throw Object.assign(new Error("PRIVATE provider detail"), {
+        code: "RAG_RERANK_FAILED",
+      });
+    },
+  };
+
+  const result = await askObserved(dependencies, "request-rerank-down");
+
+  assert.equal(result.citations.length, 1);
+  assert.equal(JSON.parse(logs[0]).evidenceRanking, "fusion");
+  assert.deepEqual(errors.map((value) => JSON.parse(value)), [
+    {
+      event: "rag_rerank_failed",
+      requestId: "request-rerank-down",
+      errorCode: "RAG_RERANK_FAILED",
+    },
+  ]);
+  assert.doesNotMatch(errors.join(""), /PRIVATE provider detail/);
+});
