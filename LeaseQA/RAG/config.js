@@ -136,7 +136,7 @@ export const getRagConfig = () => {
     // reranker sees every one of them, so this sets recall, not answer length.
     candidatesPerGroup: parsePositiveInteger(
       process.env.RAG_CANDIDATES_PER_GROUP,
-      10,
+      20,
     ),
     evidenceLimit: parsePositiveInteger(process.env.RAG_EVIDENCE_LIMIT, 6),
     rerankEnabled: rerank.enabled,

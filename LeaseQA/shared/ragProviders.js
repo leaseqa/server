@@ -22,8 +22,10 @@ export const ZHIPU_DEFAULT_RERANK_MODEL = "rerank";
 // BigModel's normalized relevance_score is the sigmoid of a logit that runs
 // from about 8 to 23 on this corpus, so every candidate scores 0.9993 or more
 // and they tie. The raw logit keeps the order, so zhipu ranks and abstains on
-// it; the floor comes from scripts/report-rag-retrieval.js.
-export const ZHIPU_DEFAULT_MIN_RERANK_SCORE = 15;
+// it. The floor comes from scripts/report-rag-retrieval.js: on the 43-case
+// eval set (2026-10-06, 20 candidates per group) the best chunk scored
+// 16.9-23.6 for answerable questions and 11.8-16.2 for out-of-scope ones.
+export const ZHIPU_DEFAULT_MIN_RERANK_SCORE = 16.5;
 
 const firstConfigured = (env, names) => {
   for ( const name of names ) {
