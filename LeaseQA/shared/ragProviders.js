@@ -18,6 +18,7 @@ export const ZHIPU_COMPATIBLE_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 export const ZHIPU_DEFAULT_CHAT_MODEL = "glm-5.3-flash";
 export const ZHIPU_DEFAULT_EMBEDDING_MODEL = "embedding-3";
 export const ZHIPU_DEFAULT_EMBEDDING_DIMENSION = 1024;
+export const ZHIPU_DEFAULT_RERANK_MODEL = "rerank";
 
 const firstConfigured = (env, names) => {
   for ( const name of names ) {
@@ -84,6 +85,9 @@ export const RAG_PROVIDERS = {
     // either one fails authentication.
     apiKeyEnv: ["RAG_CHAT_API_KEY", "ZHIPU_API_KEY"],
     embeddingApiKeyEnv: ["RAG_EMBEDDING_API_KEY", "ZHIPU_API_KEY", "RAG_CHAT_API_KEY"],
+    rerankBaseUrl: ZHIPU_COMPATIBLE_BASE_URL,
+    rerankModel: ZHIPU_DEFAULT_RERANK_MODEL,
+    rerankApiKeyEnv: ["RAG_RERANK_API_KEY", "ZHIPU_API_KEY", "RAG_CHAT_API_KEY"],
   },
 };
 
@@ -125,6 +129,25 @@ export const getRagChatConfig = (env = process.env) => {
     apiKey: firstConfigured(env, provider.apiKeyEnv),
     model: env.RAG_CHAT_MODEL || provider.chatModel,
     baseURL: env.RAG_CHAT_BASE_URL || provider.chatBaseUrl,
+  };
+};
+
+// Only the Zhipu preset ships a reranker. Any provider can still use one by
+// setting RAG_RERANK_BASE_URL and RAG_RERANK_MODEL for a service with the
+// common POST {base}/rerank shape (BigModel, Jina and Cohere all use it).
+// RAG_RERANK=off falls back to the hybrid search's own fused order.
+export const getRagRerankConfig = (env = process.env) => {
+  const provider = getRagProvider(env);
+  const baseURL = env.RAG_RERANK_BASE_URL || provider.rerankBaseUrl || "";
+  const model = env.RAG_RERANK_MODEL || provider.rerankModel || "";
+  return {
+    enabled: env.RAG_RERANK !== "off" && Boolean(baseURL && model),
+    baseURL,
+    model,
+    apiKey: firstConfigured(
+      env,
+      provider.rerankApiKeyEnv || ["RAG_RERANK_API_KEY", ...provider.apiKeyEnv],
+    ),
   };
 };
 

@@ -13,6 +13,7 @@ import {
   fingerprintEmbeddingProvider,
   getRagChatConfig,
   getRagProvider,
+  getRagRerankConfig,
   resolveRagProviderId,
 } from "./ragProviders.js";
 
@@ -98,4 +99,39 @@ test("zhipu vectors get their own fingerprint, forcing a re-ingest", () => {
   assert.equal(fingerprintEmbeddingProvider("zhipu"), "zhipu");
   assert.notEqual(fingerprintEmbeddingProvider("zhipu"), fingerprintEmbeddingProvider("ark"));
   assert.notEqual(fingerprintEmbeddingProvider("zhipu"), fingerprintEmbeddingProvider("dashscope"));
+});
+
+test("zhipu reranks with BigModel's rerank model and the BigModel key", () => {
+  const rerank = getRagRerankConfig({
+    RAG_PROVIDER: "zhipu",
+    ZHIPU_API_KEY: "zhipu-key",
+    ARK_API_KEY: "leftover-ark-key",
+  });
+
+  assert.deepEqual(rerank, {
+    enabled: true,
+    baseURL: "https://open.bigmodel.cn/api/paas/v4",
+    model: "rerank",
+    apiKey: "zhipu-key",
+  });
+});
+
+test("RAG_RERANK=off turns the zhipu reranker off", () => {
+  assert.equal(
+    getRagRerankConfig({ RAG_PROVIDER: "zhipu", RAG_RERANK: "off" }).enabled,
+    false,
+  );
+});
+
+test("providers without a reranker preset rerank only when one is configured", () => {
+  assert.equal(getRagRerankConfig({ RAG_PROVIDER: "ark" }).enabled, false);
+
+  const configured = getRagRerankConfig({
+    RAG_PROVIDER: "ark",
+    RAG_RERANK_BASE_URL: "https://rerank.invalid/v1",
+    RAG_RERANK_MODEL: "some-reranker",
+    RAG_RERANK_API_KEY: "rerank-key",
+  });
+  assert.equal(configured.enabled, true);
+  assert.equal(configured.apiKey, "rerank-key");
 });

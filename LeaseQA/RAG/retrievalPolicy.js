@@ -1,25 +1,15 @@
-const DEFAULT_GROUP_PRIORITY = ["chapters", "handouts", "forms", "booklets", "appendix"];
-const TEMPLATE_GROUP_PRIORITY = ["forms", "chapters", "handouts", "booklets", "appendix"];
-const BOOKLET_GROUP_PRIORITY = ["booklets", "chapters", "handouts", "forms", "appendix"];
+// Every source group in the corpus manifest (retrievalPolicy.test.js checks
+// this list against corpus_manifest.csv). Each group is searched separately so
+// the long chapters cannot crowd a short form or booklet out of the candidate
+// pool; ranking, not the group, decides what the model is shown.
+export const KNOWLEDGE_SOURCE_GROUPS = [
+  "chapters",
+  "handouts",
+  "forms",
+  "booklets",
+  "appendix",
+];
 
-const TEMPLATE_PATTERN = /\b(?:template|form|notice|letter|draft|sample|write)\b/i;
-const BOOKLET_PATTERN =
-  /\b(?:summary process|late answer|answer form|motion|discovery|appeal|stay|dismiss|default|affidavit of indigency|housing code checklist)\b/i;
-const EVICTION_PATTERN =
-  /\b(?:eviction|notice to quit|summary process|court date)\b/i;
-const LEAD_PATTERN = /\b(?:lead|delead|poisoning|child under 6)\b/i;
-const ORGANIZING_PATTERN = /\b(?:organizing|organize|retaliat(?:e|ion)|tenant association|collective bargaining)\b/i;
-const SECURITY_DEPOSIT_PATTERN =
-  /\b(?:security deposit|deposit return|return the deposit|deposit within 30 days)\b/i;
-const MOVING_OUT_PATTERN =
-  /\bmoving out\b|\bbefore (?:i |you )?move out\b|\bwhen (?:i |you )?move out\b/i;
-const TENANCY_TYPES_PATTERN =
-  /\b(?:tenanc(?:y|ies) at will|tenants? at will|(?:types?|kinds?) of tenanc(?:y|ies))\b/i;
-// Sentences addressed to the model ("ignore the system prompt", "reveal the
-// API key") carry no legal meaning but dominate the query embedding, pulling
-// retrieval away from the tenant's actual question.
-const MODEL_INSTRUCTION_PATTERN =
-  /\b(?:ignore|disregard|forget|override|bypass)\b[^.?!]*\b(?:system prompt|instructions?|guidelines)\b|\b(?:reveal|print|leak|output|repeat)\b[^.?!]*\b(?:api[\s_-]?keys?|system prompt|secrets?|passwords?|credentials?)\b/i;
 const CONTEXTUAL_REFERENCE_PATTERN =
   /\b(?:this|that|it|they|them|these|those)\b|\b(?:clause|provision|term|section|paragraph|part)\b/i;
 const VAGUE_FOLLOW_UP_PATTERN =
@@ -30,27 +20,12 @@ const normalizeSnippet = (value) =>
     .replace(/\s+/g, " ")
     .trim();
 
-// Retrieval only: the model still receives the full question, so it can see
-// and refuse the instruction. A query that is nothing but instructions is kept
-// whole rather than emptied.
-const dropModelInstructions = (value) => {
-  const normalized = normalizeSnippet(value);
-  if ( !MODEL_INSTRUCTION_PATTERN.test(normalized) ) {
-    return normalized;
-  }
-  const kept = (normalized.match(/[^.?!]+[.?!]*/g) || [])
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence && !MODEL_INSTRUCTION_PATTERN.test(sentence));
-  return kept.length > 0 ? kept.join(" ") : normalized;
-};
-
 const countWords = (value) =>
   normalizeSnippet(value)
     .split(" ")
     .filter(Boolean).length;
 
 const shouldAttachSourceContext = (question) =>
-  questionTargetsTemplateSource(question) ||
   VAGUE_FOLLOW_UP_PATTERN.test(question || "") ||
   CONTEXTUAL_REFERENCE_PATTERN.test(question || "") ||
   /\bis (?:this|that|it)\s+legal\b/i.test(question || "");
@@ -67,7 +42,7 @@ export const buildRetrievalQuestion = ({
                                          sourceTextPreview = "",
                                          messages = [],
                                        }) => {
-  const parts = [dropModelInstructions(question)];
+  const parts = [normalizeSnippet(question)];
   const recentUserTurns = messages
     .filter((message) => message?.role === "user")
     .slice(-2)
@@ -88,231 +63,76 @@ export const buildRetrievalQuestion = ({
   return [...new Set(parts.filter(Boolean))].join("\n");
 };
 
-export const questionTargetsTemplateSource = (question) =>
-  TEMPLATE_PATTERN.test(question || "") && !/notice to quit/i.test(question || "");
+export const buildKnowledgeSearchPlan = (config) =>
+  KNOWLEDGE_SOURCE_GROUPS.map((group) => ({
+    group,
+    limit: config.candidatesPerGroup,
+  }));
 
-export const questionTargetsBookletSource = (question) =>
-  BOOKLET_PATTERN.test(question || "");
-
-export const questionTargetsLeadChapter = (question) =>
-  LEAD_PATTERN.test(question || "");
-
-export const questionTargetsOrganizingChapter = (question) =>
-  ORGANIZING_PATTERN.test(question || "");
-
-export const questionTargetsSecurityDepositChapter = (question) =>
-  SECURITY_DEPOSIT_PATTERN.test(question || "") &&
-  !questionTargetsMovingOutChapter(question);
-
-export const questionTargetsMovingOutChapter = (question) =>
-  MOVING_OUT_PATTERN.test(question || "");
-
-const questionTargetsEvictionProcedures = (question) =>
-  EVICTION_PATTERN.test(question || "");
-
-export const questionTargetsTenancyChapter = (question) =>
-  TENANCY_TYPES_PATTERN.test(question || "") &&
-  !questionTargetsTemplateSource(question) &&
-  !questionTargetsBookletSource(question) &&
-  !questionTargetsEvictionProcedures(question);
-
-const getKnowledgeGroupPriority = (question) => {
-  if ( questionTargetsTemplateSource(question) ) {
-    return TEMPLATE_GROUP_PRIORITY;
-  }
-  if ( questionTargetsBookletSource(question) ) {
-    return BOOKLET_GROUP_PRIORITY;
-  }
-  return DEFAULT_GROUP_PRIORITY;
+const toRerankDocument = (chunk) => {
+  const title = normalizeSnippet(chunk.title_hint || chunk.source_name);
+  const text = String(chunk.text || "").trim();
+  return title ? `${title}\n${text}` : text;
 };
 
-export const buildKnowledgeSearchPlan = (question, config) => {
-  const primaryLimit = Math.max(4, Math.ceil(config.knowledgeTopK / 2));
-  const secondaryLimit = Math.max(2, Math.ceil(config.knowledgeTopK / 3));
+const sortByDescending = (chunks, scoreOf) =>
+  [...chunks].sort((left, right) => scoreOf(right) - scoreOf(left));
 
-  if ( questionTargetsLeadChapter(question) ) {
-    return [
-      { group: "chapters", limit: primaryLimit, chapterRef: "9" },
-      { group: "handouts", limit: 2, chapterRef: "9" },
-      { group: "chapters", limit: secondaryLimit },
-      { group: "handouts", limit: 2 },
-      { group: "forms", limit: 1 },
-    ];
+// Puts every candidate, uploaded text and corpus alike, in order of how well it
+// answers the question. The reranker reads each (question, chunk) pair
+// together; without one, or when it fails, only the hybrid search's fused
+// score is left.
+export const rankEvidence = async ({
+                                     question,
+                                     chunks,
+                                     rerankClient,
+                                     onRerankError,
+                                   }) => {
+  if ( rerankClient ) {
+    if ( chunks.length === 0 ) {
+      return { rankedBy: "rerank", chunks: [] };
+    }
+    try {
+      const scores = await rerankClient.rerank({
+        query: question,
+        documents: chunks.map(toRerankDocument),
+      });
+      return {
+        rankedBy: "rerank",
+        chunks: sortByDescending(
+          chunks.map((chunk, index) => ({
+            ...chunk,
+            rerank_score: scores[index],
+          })),
+          (chunk) => chunk.rerank_score,
+        ),
+      };
+    } catch ( error ) {
+      onRerankError?.(error);
+    }
   }
 
-  if ( questionTargetsOrganizingChapter(question) ) {
-    return [
-      { group: "chapters", limit: primaryLimit, chapterRef: "10" },
-      { group: "handouts", limit: 2, chapterRef: "10" },
-      { group: "chapters", limit: secondaryLimit },
-      { group: "handouts", limit: 2 },
-      { group: "forms", limit: 1 },
-    ];
-  }
-
-  if ( questionTargetsMovingOutChapter(question) ) {
-    return [
-      { group: "chapters", limit: primaryLimit, chapterRef: "11" },
-      { group: "handouts", limit: 2, chapterRef: "11" },
-      { group: "chapters", limit: secondaryLimit },
-      { group: "handouts", limit: 2 },
-      { group: "forms", limit: 1 },
-    ];
-  }
-
-  if ( questionTargetsSecurityDepositChapter(question) ) {
-    return [
-      { group: "chapters", limit: primaryLimit, chapterRef: "3" },
-      { group: "handouts", limit: 2, chapterRef: "3" },
-      { group: "chapters", limit: secondaryLimit },
-      { group: "handouts", limit: 2 },
-      { group: "forms", limit: 1 },
-    ];
-  }
-
-  if ( questionTargetsTemplateSource(question) ) {
-    return [
-      { group: "forms", limit: primaryLimit },
-      { group: "chapters", limit: secondaryLimit },
-      { group: "handouts", limit: 2 },
-      { group: "booklets", limit: 1 },
-    ];
-  }
-
-  if ( questionTargetsBookletSource(question) ) {
-    return [
-      { group: "booklets", limit: primaryLimit },
-      { group: "chapters", limit: secondaryLimit },
-      { group: "handouts", limit: 2 },
-      { group: "forms", limit: 1 },
-    ];
-  }
-
-  if ( questionTargetsEvictionProcedures(question) ) {
-    return [
-      { group: "chapters", limit: primaryLimit },
-      { group: "booklets", limit: 3 },
-      { group: "handouts", limit: 2 },
-      { group: "forms", limit: 1 },
-      { group: "appendix", limit: 1 },
-    ];
-  }
-
-  if ( questionTargetsTenancyChapter(question) ) {
-    return [
-      { group: "chapters", limit: primaryLimit, chapterRef: "4" },
-      { group: "handouts", limit: 2, chapterRef: "4" },
-      { group: "chapters", limit: secondaryLimit },
-      { group: "handouts", limit: 2 },
-      { group: "forms", limit: 1 },
-    ];
-  }
-
-  return [
-    { group: "chapters", limit: primaryLimit },
-    { group: "handouts", limit: 2 },
-    { group: "forms", limit: 1 },
-    { group: "appendix", limit: 1 },
-  ];
+  return {
+    rankedBy: "fusion",
+    chunks: sortByDescending(chunks, (chunk) => chunk.score || 0),
+  };
 };
 
-const buildGroupPriorityMap = (question) =>
-  new Map(getKnowledgeGroupPriority(question).map((group, index) => [group, index]));
+// The evidence the model may cite, best first. A reranker scores every pair on
+// the same 0-1 scale, so one floor (RAG_MIN_RERANK_SCORE) drops weak chunks
+// and, when nothing clears it, makes the answer abstain. Fused RRF scores have
+// no such scale: a chunk matched by both the dense and the sparse ranker
+// scores ~0.033 and one matched by a single ranker ~0.016, so the fallback
+// only asks that the best chunk was matched by both (~0.025).
+export const selectEvidence = ({ ranking, config }) => {
+  if ( ranking.rankedBy === "rerank" ) {
+    return ranking.chunks
+      .filter((chunk) => chunk.rerank_score >= config.minRerankScore)
+      .slice(0, config.evidenceLimit);
+  }
 
-const isLeadPreferredChunk = (question, chunk) =>
-  questionTargetsLeadChapter(question) &&
-  (String(chunk.chapter_ref || "") === "9" ||
-    /lead/i.test(String(chunk.source_name || "")));
-
-const isOrganizingPreferredChunk = (question, chunk) =>
-  questionTargetsOrganizingChapter(question) &&
-  (String(chunk.chapter_ref || "") === "10" ||
-    /organiz/i.test(String(chunk.source_name || "")));
-
-const isMovingOutPreferredChunk = (question, chunk) =>
-  questionTargetsMovingOutChapter(question) &&
-  (String(chunk.chapter_ref || "") === "11" ||
-    /moving[_\s-]?out/i.test(String(chunk.source_name || "")));
-
-const isSecurityDepositPreferredChunk = (question, chunk) =>
-  questionTargetsSecurityDepositChapter(question) &&
-  (String(chunk.chapter_ref || "") === "3" ||
-    /security[_\s-]?deposit/i.test(String(chunk.source_name || "")));
-
-const isTenancyPreferredChunk = (question, chunk) =>
-  questionTargetsTenancyChapter(question) &&
-  (String(chunk.chapter_ref || "") === "4" ||
-    /tenanc/i.test(String(chunk.source_name || "")));
-
-const isHousingChecklistPreferredChunk = (question, chunk) =>
-  questionTargetsBookletSource(question) &&
-  /housing code checklist/i.test(question || "") &&
-  /housing_code_checklist/i.test(String(chunk.source_name || ""));
-
-export const rankKnowledgeChunks = (question, chunks) => {
-  const groupPriorityMap = buildGroupPriorityMap(question);
-
-  return [...chunks].sort((left, right) => {
-    const leftLeadBoost = isLeadPreferredChunk(question, left) ? 1 : 0;
-    const rightLeadBoost = isLeadPreferredChunk(question, right) ? 1 : 0;
-    if ( leftLeadBoost !== rightLeadBoost ) {
-      return rightLeadBoost - leftLeadBoost;
-    }
-
-    const leftOrganizingBoost = isOrganizingPreferredChunk(question, left) ? 1 : 0;
-    const rightOrganizingBoost = isOrganizingPreferredChunk(question, right) ? 1 : 0;
-    if ( leftOrganizingBoost !== rightOrganizingBoost ) {
-      return rightOrganizingBoost - leftOrganizingBoost;
-    }
-
-    const leftMovingOutBoost = isMovingOutPreferredChunk(question, left) ? 1 : 0;
-    const rightMovingOutBoost = isMovingOutPreferredChunk(question, right) ? 1 : 0;
-    if ( leftMovingOutBoost !== rightMovingOutBoost ) {
-      return rightMovingOutBoost - leftMovingOutBoost;
-    }
-
-    const leftSecurityDepositBoost = isSecurityDepositPreferredChunk(question, left)
-      ? 1
-      : 0;
-    const rightSecurityDepositBoost = isSecurityDepositPreferredChunk(
-      question,
-      right,
-    )
-      ? 1
-      : 0;
-    if ( leftSecurityDepositBoost !== rightSecurityDepositBoost ) {
-      return rightSecurityDepositBoost - leftSecurityDepositBoost;
-    }
-
-    const leftTenancyBoost = isTenancyPreferredChunk(question, left) ? 1 : 0;
-    const rightTenancyBoost = isTenancyPreferredChunk(question, right) ? 1 : 0;
-    if ( leftTenancyBoost !== rightTenancyBoost ) {
-      return rightTenancyBoost - leftTenancyBoost;
-    }
-
-    const leftHousingChecklistBoost = isHousingChecklistPreferredChunk(
-      question,
-      left,
-    )
-      ? 1
-      : 0;
-    const rightHousingChecklistBoost = isHousingChecklistPreferredChunk(
-      question,
-      right,
-    )
-      ? 1
-      : 0;
-    if ( leftHousingChecklistBoost !== rightHousingChecklistBoost ) {
-      return rightHousingChecklistBoost - leftHousingChecklistBoost;
-    }
-
-    const groupDelta =
-      (groupPriorityMap.get(left.source_group) ?? 99) -
-      (groupPriorityMap.get(right.source_group) ?? 99);
-    if ( groupDelta !== 0 ) {
-      return groupDelta;
-    }
-
-    return (right.score || 0) - (left.score || 0);
-  });
+  const bestScore = ranking.chunks[0]?.score || 0;
+  return bestScore >= config.minSupportScore
+    ? ranking.chunks.slice(0, config.evidenceLimit)
+    : [];
 };

@@ -150,7 +150,7 @@ test("loadGateCases drops abstain cases because retrieval cannot judge them", as
 test("loadGateCases reads the real tenant-rights eval set by default", async () => {
   const cases = await loadGateCases({});
 
-  assert.equal(cases.length, 29);
+  assert.equal(cases.length, 38);
   assert.equal(
     cases.every((evalCase) => Boolean(evalCase.expectedSourceGroup)),
     true,

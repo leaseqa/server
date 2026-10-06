@@ -19,12 +19,13 @@ import {
   extractTextFromUpload,
   splitTextToChunks,
 } from "./text.js";
-import { buildKnowledgeSearchPlan, buildRetrievalQuestion, rankKnowledgeChunks, } from "./retrievalPolicy.js";
 import {
-  hasReliableCitationSupport,
-  questionNeedsHandbookSupport,
-  selectCitationChunks,
-} from "./citationSelection.js";
+  buildKnowledgeSearchPlan,
+  buildRetrievalQuestion,
+  rankEvidence,
+  selectEvidence,
+} from "./retrievalPolicy.js";
+import { createRerankClient } from "./rerank.js";
 import {
   deleteChunkRows,
   deleteSessionChunks as deleteMilvusSessionChunks,
@@ -191,7 +192,7 @@ export const postOpenAICompatibleEmbedding = async ({
   });
 };
 
-const createEmbeddingsClient = (config, dependencies = {}) => ({
+export const createEmbeddingsClient = (config, dependencies = {}) => ({
   embedDocuments: async (texts) => {
     const vectors = [];
     const batchSize = config.ragProvider === "ark" ? 1 : 8;
@@ -475,44 +476,6 @@ export const finalizeAssistantCitations = ({
   };
 };
 
-export const resolveSupportedCitationChunks = ({
-                                                 question,
-                                                 citationChunks,
-                                                 knowledgeChunks,
-                                                 minSupportScore = 0.025,
-                                               }) => {
-  const questionNeedsDualSupport = questionNeedsHandbookSupport(question);
-  const hasDirectSupport = hasReliableCitationSupport({
-    question,
-    citationChunks,
-  });
-
-  let supported;
-  if ( hasDirectSupport ) {
-    supported = citationChunks;
-  } else if ( questionNeedsDualSupport ) {
-    return [];
-  } else if ( knowledgeChunks.length > 0 ) {
-    supported = dedupeById([
-      ...citationChunks,
-      ...rankKnowledgeChunks(question, knowledgeChunks),
-    ]).slice(0, 6);
-  } else {
-    return [];
-  }
-
-  // Relevance floor: with RRFRanker(60), a chunk matched by both dense and
-  // sparse rankers scores ~0.033 while one matched by a single ranker scores
-  // ~0.016. Requiring the best evidence to clear ~0.025 abstains when the
-  // corpus contains nothing semantically responsive to the question.
-  const bestScore = Math.max(...supported.map((chunk) => chunk.score || 0));
-  if ( bestScore < minSupportScore ) {
-    return [];
-  }
-
-  return supported;
-};
-
 const ensureViewerCanAccess = ({ session, userId, clientSessionId }) => {
   if ( !session ) {
     throw new Error("Session not found");
@@ -528,39 +491,60 @@ const ensureViewerCanAccess = ({ session, userId, clientSessionId }) => {
   }
 };
 
-export const retrieveKnowledgeChunks = async ({
-                                                config,
-                                                vector,
-                                                question,
-                                                collectionName,
-                                                searchHybridChunksFn = searchHybridChunks,
-                                                retryPolicy,
-                                              }) => {
+export const retrieveKnowledgeCandidates = async ({
+                                                  config,
+                                                  vector,
+                                                  question,
+                                                  collectionName,
+                                                  searchHybridChunksFn = searchHybridChunks,
+                                                  retryPolicy,
+                                                }) => {
   const targetCollection = collectionName || config.knowledgeCollection;
-  const searchPlan = buildKnowledgeSearchPlan(question, config);
   const groupedResults = await Promise.all(
-    searchPlan.map(({ group, limit, chapterRef }) =>
+    buildKnowledgeSearchPlan(config).map(({ group, limit }) =>
       searchHybridChunksFn({
         config,
         collectionName: targetCollection,
         denseVector: vector,
         sparseText: question,
         limit,
-        filter: chapterRef
-          ? `source_group == "${group}" && chapter_ref == "${chapterRef}"`
-          : `source_group == "${group}"`,
+        filter: `source_group == "${group}"`,
         retryPolicy,
       }),
     ),
   );
 
-  return rankKnowledgeChunks(question, dedupeById(groupedResults.flat())).slice(
-    0,
-    config.knowledgeTopK,
-  );
+  return dedupeById(groupedResults.flat());
 };
 
-const getKnowledgeResults = retrieveKnowledgeChunks;
+// What the model would be shown from the knowledge corpus alone. The ingest
+// gate judges a staging collection by exactly this.
+export const retrieveKnowledgeChunks = async ({
+                                                config,
+                                                vector,
+                                                question,
+                                                collectionName,
+                                                searchHybridChunksFn,
+                                                rerankClient = null,
+                                                onRerankError,
+                                                retryPolicy,
+                                              }) => {
+  const candidates = await retrieveKnowledgeCandidates({
+    config,
+    vector,
+    question,
+    collectionName,
+    searchHybridChunksFn,
+    retryPolicy,
+  });
+  const ranking = await rankEvidence({
+    question,
+    chunks: candidates,
+    rerankClient,
+    onRerankError,
+  });
+  return selectEvidence({ ranking, config });
+};
 
 export const createRagSession = async ({
                                          userId,
@@ -719,6 +703,8 @@ export const answerQuestion = async ({
     dependencies.readActiveCorpusVersion || readActiveCorpusVersion;
   let retrievalStartedAt = null;
   let retrievalDurationMs = null;
+  let evidenceRanking = null;
+  let topEvidenceScore = null;
   let providerStartedAt = null;
   let providerDurationMs = 0;
   let selectedCitationIds = [];
@@ -737,6 +723,8 @@ export const answerQuestion = async ({
       event: "rag_request",
       requestId: requestId || null,
       retrievalDurationMs,
+      evidenceRanking,
+      topEvidenceScore,
       providerDurationMs,
       selectedCitationIds,
       corpusVersion,
@@ -762,6 +750,10 @@ export const answerQuestion = async ({
     const embeddings =
       dependencies.embeddingsClient || createEmbeddingsClient(config);
     const chatModel = dependencies.chatModel || createChatClient(config);
+    const rerankClient =
+      dependencies.rerankClient === undefined
+        ? createRerankClient(config, { retryPolicy })
+        : dependencies.rerankClient;
     const retrievalQuestion = buildRetrievalQuestion({
       question,
       sourceTextPreview: session.sourceTextPreview,
@@ -769,7 +761,7 @@ export const answerQuestion = async ({
     });
     retrievalStartedAt = clock.now();
     const questionVector = await embeddings.embedQuery(retrievalQuestion);
-    const [sessionChunks, knowledgeChunks] = await Promise.all([
+    const [sessionChunks, knowledgeCandidates] = await Promise.all([
     searchHybridChunksFn({
       config,
       collectionName: config.sessionCollection,
@@ -779,7 +771,7 @@ export const answerQuestion = async ({
       filter: `session_id == "${sessionId}"`,
       retryPolicy,
     }),
-    getKnowledgeResults({
+    retrieveKnowledgeCandidates({
       config,
       vector: questionVector,
       question: retrievalQuestion,
@@ -787,10 +779,38 @@ export const answerQuestion = async ({
       retryPolicy,
     }),
     ]);
+    const ranking = await rankEvidence({
+      question: retrievalQuestion,
+      chunks: dedupeById([...sessionChunks, ...knowledgeCandidates]),
+      rerankClient,
+      onRerankError: (error) => {
+        try {
+          logger.error(
+            JSON.stringify({
+              event: "rag_rerank_failed",
+              requestId: requestId || null,
+              errorCode: getStableRagErrorCode(error, "RAG_RERANK_FAILED"),
+            }),
+          );
+        } catch {
+          // Observability must not change request behavior.
+        }
+      },
+    });
     retrievalDurationMs = Math.max(0, clock.now() - retrievalStartedAt);
+    evidenceRanking = ranking.rankedBy;
+    const topChunk = ranking.chunks[0];
+    topEvidenceScore = topChunk
+      ? Number(
+          (ranking.rankedBy === "rerank"
+            ? topChunk.rerank_score
+            : topChunk.score || 0
+          ).toFixed(4),
+        )
+      : null;
     corpusVersion =
       corpusVersion ||
-      knowledgeChunks.find((chunk) => chunk.corpus_version)?.corpus_version ||
+      knowledgeCandidates.find((chunk) => chunk.corpus_version)?.corpus_version ||
       null;
 
   const history = session.messages
@@ -798,18 +818,7 @@ export const answerQuestion = async ({
     .map((message) => `${message.role}: ${message.content}`)
     .join("\n");
 
-  const citationChunks = selectCitationChunks({
-    question,
-    sessionChunks,
-    knowledgeChunks,
-    limit: 6,
-  });
-  const supportedCitationChunks = resolveSupportedCitationChunks({
-    question,
-    citationChunks,
-    knowledgeChunks,
-    minSupportScore: config.minSupportScore,
-  });
+  const supportedCitationChunks = selectEvidence({ ranking, config });
   const candidateCitations =
     supportedCitationChunks.length > 0
       ? supportedCitationChunks.map(buildCitation)
@@ -1044,8 +1053,9 @@ export const ingestKnowledgeCorpus = async ({
   const writeState = dependencies.writeIngestState || writeIngestState;
   const runGate =
     dependencies.runIngestGate ||
-    (async ({ config: gateConfig, collectionName: gateCollection }) =>
-      runRetrievalGate({
+    (async ({ config: gateConfig, collectionName: gateCollection }) => {
+      const rerankClient = createRerankClient(gateConfig);
+      return runRetrievalGate({
         evalCases: await loadGateCases({}),
         collectionName: gateCollection,
         embedQuery: (question) => embeddings.embedQuery(question),
@@ -1055,9 +1065,11 @@ export const ingestKnowledgeCorpus = async ({
             vector,
             question,
             collectionName: target,
+            rerankClient,
           }),
         minHitRate: gateConfig.ingestGateMinHitRate ?? 0.9,
-      }));
+      });
+    });
 
   const manifestContents = await readFile(config.manifestPath, "utf-8");
   const manifest = parseManifestCsv(manifestContents);
