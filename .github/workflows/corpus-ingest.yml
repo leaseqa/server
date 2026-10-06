@@ -37,7 +37,10 @@ concurrency:
 
 jobs:
   ingest:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which moves to Ubuntu 26.04 on
+    # 2026-10-19. Bump deliberately, after checking that
+    # `playwright install --with-deps` and the service containers still come up.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       # Resolved once so the pre-flight check and the ingest cannot disagree.

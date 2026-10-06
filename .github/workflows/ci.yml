@@ -15,7 +15,10 @@ concurrency:
 
 jobs:
   server-test:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which moves to Ubuntu 26.04 on
+    # 2026-10-19. Bump deliberately, after checking that
+    # `playwright install --with-deps` and the service containers still come up.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Check out server
@@ -56,7 +59,10 @@ jobs:
         continue-on-error: true
 
   client-e2e:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which moves to Ubuntu 26.04 on
+    # 2026-10-19. Bump deliberately, after checking that
+    # `playwright install --with-deps` and the service containers still come up.
+    runs-on: ubuntu-24.04
     needs: server-test
     timeout-minutes: 30
     services:
