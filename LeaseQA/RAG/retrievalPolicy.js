@@ -13,6 +13,13 @@ const SECURITY_DEPOSIT_PATTERN =
   /\b(?:security deposit|deposit return|return the deposit|deposit within 30 days)\b/i;
 const MOVING_OUT_PATTERN =
   /\bmoving out\b|\bbefore (?:i |you )?move out\b|\bwhen (?:i |you )?move out\b/i;
+const TENANCY_TYPES_PATTERN =
+  /\b(?:tenanc(?:y|ies) at will|tenants? at will|(?:types?|kinds?) of tenanc(?:y|ies))\b/i;
+// Sentences addressed to the model ("ignore the system prompt", "reveal the
+// API key") carry no legal meaning but dominate the query embedding, pulling
+// retrieval away from the tenant's actual question.
+const MODEL_INSTRUCTION_PATTERN =
+  /\b(?:ignore|disregard|forget|override|bypass)\b[^.?!]*\b(?:system prompt|instructions?|guidelines)\b|\b(?:reveal|print|leak|output|repeat)\b[^.?!]*\b(?:api[\s_-]?keys?|system prompt|secrets?|passwords?|credentials?)\b/i;
 const CONTEXTUAL_REFERENCE_PATTERN =
   /\b(?:this|that|it|they|them|these|those)\b|\b(?:clause|provision|term|section|paragraph|part)\b/i;
 const VAGUE_FOLLOW_UP_PATTERN =
@@ -22,6 +29,20 @@ const normalizeSnippet = (value) =>
   String(value || "")
     .replace(/\s+/g, " ")
     .trim();
+
+// Retrieval only: the model still receives the full question, so it can see
+// and refuse the instruction. A query that is nothing but instructions is kept
+// whole rather than emptied.
+const dropModelInstructions = (value) => {
+  const normalized = normalizeSnippet(value);
+  if ( !MODEL_INSTRUCTION_PATTERN.test(normalized) ) {
+    return normalized;
+  }
+  const kept = (normalized.match(/[^.?!]+[.?!]*/g) || [])
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence && !MODEL_INSTRUCTION_PATTERN.test(sentence));
+  return kept.length > 0 ? kept.join(" ") : normalized;
+};
 
 const countWords = (value) =>
   normalizeSnippet(value)
@@ -46,7 +67,7 @@ export const buildRetrievalQuestion = ({
                                          sourceTextPreview = "",
                                          messages = [],
                                        }) => {
-  const parts = [normalizeSnippet(question)];
+  const parts = [dropModelInstructions(question)];
   const recentUserTurns = messages
     .filter((message) => message?.role === "user")
     .slice(-2)
@@ -88,6 +109,12 @@ export const questionTargetsMovingOutChapter = (question) =>
 
 const questionTargetsEvictionProcedures = (question) =>
   EVICTION_PATTERN.test(question || "");
+
+export const questionTargetsTenancyChapter = (question) =>
+  TENANCY_TYPES_PATTERN.test(question || "") &&
+  !questionTargetsTemplateSource(question) &&
+  !questionTargetsBookletSource(question) &&
+  !questionTargetsEvictionProcedures(question);
 
 const getKnowledgeGroupPriority = (question) => {
   if ( questionTargetsTemplateSource(question) ) {
@@ -171,6 +198,16 @@ export const buildKnowledgeSearchPlan = (question, config) => {
     ];
   }
 
+  if ( questionTargetsTenancyChapter(question) ) {
+    return [
+      { group: "chapters", limit: primaryLimit, chapterRef: "4" },
+      { group: "handouts", limit: 2, chapterRef: "4" },
+      { group: "chapters", limit: secondaryLimit },
+      { group: "handouts", limit: 2 },
+      { group: "forms", limit: 1 },
+    ];
+  }
+
   return [
     { group: "chapters", limit: primaryLimit },
     { group: "handouts", limit: 2 },
@@ -201,6 +238,11 @@ const isSecurityDepositPreferredChunk = (question, chunk) =>
   questionTargetsSecurityDepositChapter(question) &&
   (String(chunk.chapter_ref || "") === "3" ||
     /security[_\s-]?deposit/i.test(String(chunk.source_name || "")));
+
+const isTenancyPreferredChunk = (question, chunk) =>
+  questionTargetsTenancyChapter(question) &&
+  (String(chunk.chapter_ref || "") === "4" ||
+    /tenanc/i.test(String(chunk.source_name || "")));
 
 const isHousingChecklistPreferredChunk = (question, chunk) =>
   questionTargetsBookletSource(question) &&
@@ -240,6 +282,12 @@ export const rankKnowledgeChunks = (question, chunks) => {
       : 0;
     if ( leftSecurityDepositBoost !== rightSecurityDepositBoost ) {
       return rightSecurityDepositBoost - leftSecurityDepositBoost;
+    }
+
+    const leftTenancyBoost = isTenancyPreferredChunk(question, left) ? 1 : 0;
+    const rightTenancyBoost = isTenancyPreferredChunk(question, right) ? 1 : 0;
+    if ( leftTenancyBoost !== rightTenancyBoost ) {
+      return rightTenancyBoost - leftTenancyBoost;
     }
 
     const leftHousingChecklistBoost = isHousingChecklistPreferredChunk(
