@@ -246,7 +246,7 @@ export const createChatClient = (
 ) => {
   if ( !config.chatApiKey ) {
     throw new Error(
-      "RAG_CHAT_API_KEY, ARK_API_KEY, or DASHSCOPE_API_KEY is not configured",
+      "RAG_CHAT_API_KEY or the selected provider's key (ZHIPU_API_KEY, ARK_API_KEY, DASHSCOPE_API_KEY) is not configured",
     );
   }
   return new ChatModelClass({

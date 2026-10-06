@@ -10,6 +10,15 @@ export const ARK_DEFAULT_CHAT_MODEL = "doubao-seed-2.0-lite";
 export const ARK_DEFAULT_EMBEDDING_MODEL = "doubao-embedding-vision";
 export const ARK_DEFAULT_EMBEDDING_DIMENSION = 1024;
 
+// Zhipu BigModel (open.bigmodel.cn). glm-5.3-flash always thinks; the reasoning
+// comes back in reasoning_content, separate from the JSON answer in content.
+// embedding-3 defaults to 2048-d, so the 1024 here is load-bearing: it is what
+// the Milvus collections were created with.
+export const ZHIPU_COMPATIBLE_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
+export const ZHIPU_DEFAULT_CHAT_MODEL = "glm-5.3-flash";
+export const ZHIPU_DEFAULT_EMBEDDING_MODEL = "embedding-3";
+export const ZHIPU_DEFAULT_EMBEDDING_DIMENSION = 1024;
+
 const firstConfigured = (env, names) => {
   for ( const name of names ) {
     const value = env[name];
@@ -60,6 +69,22 @@ export const RAG_PROVIDERS = {
       "RAG_CHAT_API_KEY",
     ],
   },
+  zhipu: {
+    id: "zhipu",
+    aliases: ["zhipuai", "bigmodel", "glm"],
+    embeddingTransport: "openai",
+    embeddingPath: "embeddings",
+    chatBaseUrl: ZHIPU_COMPATIBLE_BASE_URL,
+    chatModel: ZHIPU_DEFAULT_CHAT_MODEL,
+    embeddingBaseUrl: ZHIPU_COMPATIBLE_BASE_URL,
+    embeddingModel: ZHIPU_DEFAULT_EMBEDDING_MODEL,
+    embeddingDimension: ZHIPU_DEFAULT_EMBEDDING_DIMENSION,
+    // Deliberately no fallback to ARK_API_KEY or DASHSCOPE_API_KEY: those stay
+    // set in production after a switch, and a BigModel request signed with
+    // either one fails authentication.
+    apiKeyEnv: ["RAG_CHAT_API_KEY", "ZHIPU_API_KEY"],
+    embeddingApiKeyEnv: ["RAG_EMBEDDING_API_KEY", "ZHIPU_API_KEY", "RAG_CHAT_API_KEY"],
+  },
 };
 
 const PROVIDER_BY_ALIAS = Object.fromEntries(
@@ -73,6 +98,9 @@ const inferProviderId = (env = {}) => {
   const base = `${env.RAG_CHAT_BASE_URL || ""} ${env.RAG_EMBEDDING_BASE_URL || ""}`;
   if ( /volces\.com/i.test(base) ) {
     return "ark";
+  }
+  if ( /bigmodel\.cn/i.test(base) ) {
+    return "zhipu";
   }
   return "dashscope";
 };
@@ -101,7 +129,7 @@ export const getRagChatConfig = (env = process.env) => {
 };
 
 // Label used only for corpus versioning (changing embedding vector space
-// forces a re-ingest). DashScope and Ark are both OpenAI-compatible in
+// forces a re-ingest). DashScope, Ark and Zhipu are all OpenAI-compatible in
 // transport but produce different vectors, so they keep distinct labels.
 export const fingerprintEmbeddingProvider = (providerId) =>
   providerId === "dashscope" ? "openai" : providerId;

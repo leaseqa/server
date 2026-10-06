@@ -71,6 +71,8 @@ services:
       # RAG providers / model keys
       - key: RAG_PROVIDER
         sync: false
+      - key: ZHIPU_API_KEY
+        sync: false
       - key: ARK_API_KEY
         sync: false
       - key: DASHSCOPE_API_KEY

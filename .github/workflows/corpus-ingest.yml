@@ -58,8 +58,8 @@ jobs:
         shell: bash
         env:
           DATABASE_CONNECTION_STRING: ${{ secrets.RAG_EVAL_DATABASE_CONNECTION_STRING }}
-          DASHSCOPE_API_KEY: ${{ secrets.RAG_EVAL_DASHSCOPE_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.RAG_EVAL_GEMINI_API_KEY }}
+          PROVIDER_API_KEY: ${{ secrets.RAG_EVAL_PROVIDER_API_KEY }}
+          RAG_PROVIDER: ${{ secrets.RAG_EVAL_EMBEDDING_PROVIDER }}
           RAG_MILVUS_ADDRESS: ${{ secrets.RAG_EVAL_MILVUS_ADDRESS }}
         run: |
           missing=0
@@ -79,8 +79,14 @@ jobs:
             echo "::error::RAG_EVAL_MILVUS_ADDRESS is required" >&2
             missing=1
           fi
-          if [ -z "$DASHSCOPE_API_KEY" ] && [ -z "$GEMINI_API_KEY" ]; then
-            echo "::error::RAG_EVAL_DASHSCOPE_API_KEY or RAG_EVAL_GEMINI_API_KEY is required" >&2
+          if [ -z "$PROVIDER_API_KEY" ]; then
+            echo "::error::RAG_EVAL_PROVIDER_API_KEY is required" >&2
+            missing=1
+          fi
+          # Without an explicit provider, config.js infers one from base URLs
+          # and falls back to dashscope -- the wrong vector space, silently.
+          if [ -z "$RAG_PROVIDER" ]; then
+            echo "::error::RAG_EVAL_EMBEDDING_PROVIDER is required (e.g. zhipu)" >&2
             missing=1
           fi
           test "$missing" -eq 0
@@ -136,8 +142,10 @@ jobs:
       - name: Ingest with the retrieval gate
         env:
           DATABASE_CONNECTION_STRING: ${{ secrets.RAG_EVAL_DATABASE_CONNECTION_STRING }}
-          DASHSCOPE_API_KEY: ${{ secrets.RAG_EVAL_DASHSCOPE_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.RAG_EVAL_GEMINI_API_KEY }}
+          # One vendor-neutral key, mapped onto the overrides every preset
+          # reads first, so changing vendor means changing secrets, not YAML.
+          RAG_CHAT_API_KEY: ${{ secrets.RAG_EVAL_PROVIDER_API_KEY }}
+          RAG_EMBEDDING_API_KEY: ${{ secrets.RAG_EVAL_PROVIDER_API_KEY }}
           RAG_MILVUS_ADDRESS: ${{ secrets.RAG_EVAL_MILVUS_ADDRESS }}
           RAG_MILVUS_TOKEN: ${{ secrets.RAG_EVAL_MILVUS_TOKEN }}
           RAG_PROVIDER: ${{ secrets.RAG_EVAL_EMBEDDING_PROVIDER }}
