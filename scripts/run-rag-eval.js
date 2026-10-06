@@ -32,6 +32,11 @@ Options:
   --ids=<id,...>      Run only comma-separated case IDs
   --help              Show this help without requiring credentials`;
 
+// The session text for a case without an upload. report-rag-retrieval.js ranks
+// the same text, so its report describes what the eval's answers are built on.
+export const EVAL_PLACEHOLDER_SOURCE_TEXT =
+  "Evaluation placeholder. Answers must use the knowledge corpus.";
+
 const parsePositiveRate = (value, fallback) => {
   const parsed = Number.parseFloat(value || "");
   return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1
@@ -161,10 +166,7 @@ const createSession = async ({ baseUrl, cookieJar, evalCase }) => {
       upload.sourceName || "uploaded-document.txt",
     );
   } else {
-    formData.append(
-      "sourceText",
-      "Evaluation placeholder. Answers must use the knowledge corpus.",
-    );
+    formData.append("sourceText", EVAL_PLACEHOLDER_SOURCE_TEXT);
   }
   const response = await requestJson({
     baseUrl,

@@ -275,5 +275,113 @@
     },
     "question": "My lease says my security deposit will be returned within 60 days after move-out. Is that consistent with Massachusetts law?",
     "expectedSourceGroup": "upload"
+  },
+  {
+    "id": "gen-landlord-entry",
+    "category": "generalization",
+    "question": "Can my landlord come into my apartment whenever they want without asking me first?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "8"
+    ]
+  },
+  {
+    "id": "gen-late-fee",
+    "category": "generalization",
+    "question": "Can my landlord charge me a late fee if I pay my rent five days late?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "5"
+    ]
+  },
+  {
+    "id": "gen-lockout",
+    "category": "generalization",
+    "question": "My landlord changed the locks while I was at work. Is that allowed?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "12",
+      "13"
+    ]
+  },
+  {
+    "id": "gen-voucher-discrimination",
+    "category": "generalization",
+    "question": "Can a landlord refuse to rent to me because I have a Section 8 voucher?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "7"
+    ]
+  },
+  {
+    "id": "gen-deposit-limit",
+    "category": "generalization",
+    "question": "How much can a landlord charge me for a security deposit?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "3"
+    ]
+  },
+  {
+    "id": "gen-deposit-interest",
+    "category": "generalization",
+    "question": "Does my landlord have to pay me interest on my security deposit?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "3"
+    ]
+  },
+  {
+    "id": "gen-retaliation-complaint",
+    "category": "generalization",
+    "question": "Can my landlord evict me because I reported bad conditions to the Board of Health?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "12",
+      "8",
+      "10"
+    ]
+  },
+  {
+    "id": "gen-form-lockout-letter",
+    "category": "generalization",
+    "question": "My landlord locked me out. Is there a letter I can send to demand that they let me back in?",
+    "expectedSourceGroup": "forms",
+    "expectedSourceNameIncludes": [
+      "lockout_demand_letter"
+    ]
+  },
+  {
+    "id": "gen-booklet-fee-waiver",
+    "category": "generalization",
+    "question": "I can't afford the court filing fees in my eviction case. How do I ask the court to waive them?",
+    "expectedSourceGroup": "booklets",
+    "expectedSourceNameIncludes": [
+      "indigency"
+    ]
+  },
+  {
+    "id": "oos-divorce",
+    "category": "out-of-scope",
+    "question": "How do I file for divorce in Massachusetts?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-employment",
+    "category": "out-of-scope",
+    "question": "Can my employer fire me for being late to work?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-home-sale-tax",
+    "category": "out-of-scope",
+    "question": "How much tax do I owe on the profit when I sell my house?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-drivers-license",
+    "category": "out-of-scope",
+    "question": "How do I renew my driver's license in Massachusetts?",
+    "expectAbstain": true
   }
 ]

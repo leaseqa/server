@@ -5,7 +5,9 @@ import * as service from "./service.js";
 
 const createConfig = () => ({
   knowledgeCollection: "leaseqa_knowledge_chunks",
-  knowledgeTopK: 8,
+  candidatesPerGroup: 10,
+  evidenceLimit: 6,
+  minSupportScore: 0.025,
 });
 
 test("knowledge retrieval defaults to the configured alias", async () => {

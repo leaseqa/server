@@ -5,6 +5,7 @@ import {
   fingerprintEmbeddingProvider,
   getRagChatConfig,
   getRagProvider,
+  getRagRerankConfig,
 } from "../shared/ragProviders.js";
 
 const serverRoot = path.resolve(
@@ -26,6 +27,11 @@ const parseInteger = (value, fallback) => {
 const parsePositiveInteger = (value, fallback) => {
   const parsed = parseInteger(value, fallback);
   return parsed > 0 ? parsed : fallback;
+};
+
+const parseNumber = (value, fallback) => {
+  const parsed = Number.parseFloat(value || "");
+  return Number.isFinite(parsed) ? parsed : fallback;
 };
 
 const parseRate = (value, fallback) => {
@@ -90,6 +96,7 @@ export const resolveCorpusRoot = ({
 export const getRagConfig = () => {
   const provider = getRagProvider();
   const chat = getRagChatConfig();
+  const rerank = getRagRerankConfig();
   const corpusRoot = resolveCorpusRoot();
 
   return {
@@ -125,7 +132,27 @@ export const getRagConfig = () => {
     ),
     chunkSize: parseInteger(process.env.RAG_CHUNK_SIZE, 1200),
     chunkOverlap: parseInteger(process.env.RAG_CHUNK_OVERLAP, 200),
-    knowledgeTopK: parseInteger(process.env.RAG_KNOWLEDGE_TOP_K, 8),
+    // Candidates fetched from each corpus source group before ranking. The
+    // reranker sees every one of them, so this sets recall, not answer length.
+    candidatesPerGroup: parsePositiveInteger(
+      process.env.RAG_CANDIDATES_PER_GROUP,
+      20,
+    ),
+    evidenceLimit: parsePositiveInteger(process.env.RAG_EVIDENCE_LIMIT, 6),
+    rerankEnabled: rerank.enabled,
+    rerankBaseUrl: rerank.baseURL,
+    rerankModel: rerank.model,
+    rerankApiKey: rerank.apiKey,
+    rerankRawScores: rerank.rawScores,
+    rerankTimeoutMs: parsePositiveInteger(
+      process.env.RAG_RERANK_TIMEOUT_MS,
+      15_000,
+    ),
+    // On the reranker's own scale: a 0-1 relevance score, or zhipu's raw logit.
+    minRerankScore: parseNumber(
+      process.env.RAG_MIN_RERANK_SCORE,
+      rerank.minScore,
+    ),
     ingestGateEnabled: process.env.RAG_INGEST_GATE !== "off",
     ingestGateMinHitRate: parseRate(
       process.env.RAG_INGEST_GATE_MIN_HIT_RATE,

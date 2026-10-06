@@ -109,7 +109,11 @@ services:
         sync: false
       - key: RAG_CHUNK_OVERLAP
         sync: false
-      - key: RAG_KNOWLEDGE_TOP_K
+      - key: RAG_CANDIDATES_PER_GROUP
+        sync: false
+      - key: RAG_EVIDENCE_LIMIT
+        sync: false
+      - key: RAG_MIN_RERANK_SCORE
         sync: false
       - key: RAG_SESSION_TOP_K
         sync: false
