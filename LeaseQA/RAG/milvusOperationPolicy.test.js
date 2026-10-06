@@ -331,13 +331,17 @@ test("runMilvusMutation waits for the real RPC deadline and never starts a concu
   assert.equal(maximumConcurrentAttempts, 1);
 });
 
-test("ensureCollectionLoaded starts one async mutation and polls load state with the remaining total deadline", async () => {
+test("ensureCollectionLoaded loads an unloaded collection once and polls load state with the remaining total deadline", async () => {
   let now = 0;
   let loadAttempts = 0;
   const loadTimeouts = [];
   const stateTimeouts = [];
   const sleeps = [];
-  const states = [LoadState.LoadStateLoading, LoadState.LoadStateLoaded];
+  const states = [
+    LoadState.LoadStateNotLoad,
+    LoadState.LoadStateLoading,
+    LoadState.LoadStateLoaded,
+  ];
   const client = {
     async loadCollectionAsync(request) {
       loadAttempts += 1;
@@ -365,8 +369,54 @@ test("ensureCollectionLoaded starts one async mutation and polls load state with
   });
 
   assert.equal(loadAttempts, 1);
-  assert.deepEqual(loadTimeouts, [1_000]);
-  assert.deepEqual(stateTimeouts, [900, 750]);
+  assert.deepEqual(loadTimeouts, [950]);
+  assert.deepEqual(stateTimeouts, [1_000, 850, 700]);
+  assert.deepEqual(sleeps, [100]);
+});
+
+test("ensureCollectionLoaded sends no load request when the collection is already loaded", async () => {
+  let loadAttempts = 0;
+  const client = {
+    async loadCollectionAsync() {
+      loadAttempts += 1;
+      return { error_code: "Success" };
+    },
+    async getLoadState() {
+      return { state: LoadState.LoadStateLoaded };
+    },
+  };
+
+  await ensureCollectionLoaded({ config, client, collectionName: "knowledge" });
+  await ensureCollectionLoaded({ config, client, collectionName: "knowledge" });
+
+  assert.equal(loadAttempts, 0);
+});
+
+test("ensureCollectionLoaded waits on a load already in progress without starting another", async () => {
+  let loadAttempts = 0;
+  const sleeps = [];
+  const states = [LoadState.LoadStateLoading, LoadState.LoadStateLoaded];
+  const client = {
+    async loadCollectionAsync() {
+      loadAttempts += 1;
+      return { error_code: "Success" };
+    },
+    async getLoadState() {
+      return { state: states.shift() };
+    },
+  };
+
+  await ensureCollectionLoaded({
+    config,
+    client,
+    collectionName: "knowledge",
+    sleep: async (milliseconds) => {
+      sleeps.push(milliseconds);
+    },
+    pollIntervalMs: 100,
+  });
+
+  assert.equal(loadAttempts, 0);
   assert.deepEqual(sleeps, [100]);
 });
 
@@ -378,7 +428,11 @@ test("ensureCollectionLoaded uses a created client when one is not passed", asyn
       return { error_code: "Success" };
     },
     async getLoadState() {
-      return { state: LoadState.LoadStateLoaded };
+      return {
+        state: loadRequests.length
+          ? LoadState.LoadStateLoaded
+          : LoadState.LoadStateNotLoad,
+      };
     },
   };
 
@@ -406,7 +460,11 @@ test("ensureCollectionLoaded throws stable RAG_TIMEOUT at its absolute deadline"
     async getLoadState(request) {
       stateTimeouts.push(request.timeout);
       now += 100;
-      return { state: LoadState.LoadStateLoading };
+      return {
+        state: loadAttempts
+          ? LoadState.LoadStateLoading
+          : LoadState.LoadStateNotLoad,
+      };
     },
   };
 
@@ -430,7 +488,7 @@ test("ensureCollectionLoaded throws stable RAG_TIMEOUT at its absolute deadline"
   );
 
   assert.equal(loadAttempts, 1);
-  assert.deepEqual(stateTimeouts, [400, 100]);
+  assert.deepEqual(stateTimeouts, [500, 300]);
   assert.deepEqual(sleeps, [200]);
 });
 

@@ -165,23 +165,36 @@ export const ensureCollectionLoaded = async ({
     }
   };
 
-  const loadStatus = await callBeforeDeadline("loadCollectionAsync", {
-    collection_name: collectionName,
-  });
-  assertSuccessfulStatus(loadStatus);
+  const readLoadState = async () =>
+    assertSuccessfulStatus(
+      await callBeforeDeadline("getLoadState", {
+        collection_name: collectionName,
+      }),
+    );
 
-  while ( true ) {
-    const state = await callBeforeDeadline("getLoadState", {
-      collection_name: collectionName,
-    });
-    assertSuccessfulStatus(state);
-    if ( state.state === LoadState.LoadStateLoaded ) {
-      return loadStatus;
-    }
+  // Every search calls this first, and Zilliz Cloud rate-limits load requests
+  // with the other collection DDL (20 req/s per cluster). Only request a load
+  // when the collection is neither loaded nor already loading.
+  let state = await readLoadState();
+  let loadStatus = null;
+  if (
+    state.state !== LoadState.LoadStateLoaded &&
+    state.state !== LoadState.LoadStateLoading
+  ) {
+    loadStatus = assertSuccessfulStatus(
+      await callBeforeDeadline("loadCollectionAsync", {
+        collection_name: collectionName,
+      }),
+    );
+    state = await readLoadState();
+  }
 
+  while ( state.state !== LoadState.LoadStateLoaded ) {
     const remaining = remainingTime();
     await sleep(Math.min(pollIntervalMs, remaining));
+    state = await readLoadState();
   }
+  return loadStatus || state;
 };
 
 const getCollectionSupportsSparse = async ({

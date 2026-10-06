@@ -36,6 +36,8 @@ const runCase = async ({ evalCase, collectionName, embedQuery, retrieveChunks })
         event: "rag_gate_case_failed",
         caseId: evalCase.id,
         errorCode: error?.code || "RAG_GATE_RETRIEVAL_ERROR",
+        providerStatus: error?.status ?? null,
+        providerReason: error?.providerReason ?? null,
       }),
     );
     chunks = [];

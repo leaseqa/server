@@ -93,6 +93,31 @@ test("a retrieval error counts as a miss instead of crashing the gate", async ()
   ]);
 });
 
+test("a failed case logs the provider status and reason so CI shows why", async (t) => {
+  const logged = t.mock.method(console, "error", () => {});
+  const error = new Error("Milvus RateLimit: rate limit exceeded");
+  error.code = "RAG_MILVUS_STATUS_ERROR";
+  error.status = "RateLimit";
+  error.providerReason = "rate limit exceeded";
+
+  await runRetrievalGate({
+    evalCases: [CASES[0]],
+    collectionName: "staging",
+    embedQuery: async () => [0.1, 0.2],
+    retrieveChunks: async () => {
+      throw error;
+    },
+  });
+
+  assert.deepEqual(JSON.parse(logged.mock.calls[0].arguments[0]), {
+    event: "rag_gate_case_failed",
+    caseId: "ch03-deposit",
+    errorCode: "RAG_MILVUS_STATUS_ERROR",
+    providerStatus: "RateLimit",
+    providerReason: "rate limit exceeded",
+  });
+});
+
 test("an empty case list fails closed rather than passing vacuously", async () => {
   const result = await runRetrievalGate({
     evalCases: [],
