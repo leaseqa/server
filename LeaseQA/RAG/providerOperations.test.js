@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   createChatClient,
-  invokeChatModel,
   postOpenAICompatibleEmbedding,
+  streamChatModel,
 } from "./service.js";
 
 const retryPolicy = {
@@ -178,33 +178,133 @@ test("postOpenAICompatibleEmbedding retries HTTP 5xx responses whose body is not
   assert.equal(attempts, 2);
 });
 
-test("invokeChatModel retries transient model failures and passes the message array", async () => {
+test("streamChatModel retries a transient failure before the first chunk and passes the message array", async () => {
   let attempts = 0;
+  const seen = [];
   const messages = [
     { role: "system", content: "fixed instructions" },
     { role: "user", content: "untrusted data" },
   ];
   const chatModel = {
-    invoke: async (receivedMessages, options) => {
+    async *stream(receivedMessages, options) {
       attempts += 1;
       assert.deepEqual(receivedMessages, messages);
       assert.ok(options.signal instanceof AbortSignal);
       if ( attempts === 1 ) {
         throw Object.assign(new Error("rate limited"), { status: 429 });
       }
-      return { content: "model answer" };
+      yield { content: "model " };
+      yield { content: "" };
+      yield { content: [{ type: "text", text: "answer" }, { type: "reasoning", reasoning: "hidden" }] };
     },
   };
 
-  const response = await invokeChatModel({
+  const text = await streamChatModel({
     config: { chatTimeoutMs: 100 },
     chatModel,
     messages,
     retryPolicy,
+    onText: (soFar) => seen.push(soFar),
   });
 
-  assert.deepEqual(response, { content: "model answer" });
+  assert.equal(text, "model answer");
+  assert.deepEqual(seen, ["model ", "model answer"]);
   assert.equal(attempts, 2);
+});
+
+test("streamChatModel retries a failure mid-stream from empty, unless the caller vetoes it", async () => {
+  const failsOnceMidStream = () => {
+    let attempts = 0;
+    return {
+      get attempts() {
+        return attempts;
+      },
+      async *stream() {
+        attempts += 1;
+        yield { content: "{\"summary\": \"The dep" };
+        if ( attempts === 1 ) {
+          throw Object.assign(new Error("provider unavailable"), { status: 503 });
+        }
+        yield { content: "osit\"}" };
+      },
+    };
+  };
+  const messages = [{ role: "user", content: "test" }];
+
+  const retried = failsOnceMidStream();
+  const seen = [];
+  const text = await streamChatModel({
+    config: { chatTimeoutMs: 100 },
+    chatModel: retried,
+    messages,
+    retryPolicy,
+    onText: (soFar) => seen.push(soFar),
+  });
+  assert.equal(text, "{\"summary\": \"The deposit\"}");
+  assert.equal(retried.attempts, 2);
+  assert.deepEqual(seen, [
+    "{\"summary\": \"The dep",
+    "{\"summary\": \"The dep",
+    "{\"summary\": \"The deposit\"}",
+  ]);
+
+  const vetoed = failsOnceMidStream();
+  await assert.rejects(
+    streamChatModel({
+      config: { chatTimeoutMs: 100 },
+      chatModel: vetoed,
+      messages,
+      retryPolicy: { ...retryPolicy, shouldRetry: () => false },
+    }),
+    /provider unavailable/,
+  );
+  assert.equal(vetoed.attempts, 1);
+});
+
+test("streamChatModel bounds the whole stream by the chat timeout", async () => {
+  const chatModel = {
+    async *stream(_messages, { signal }) {
+      yield { content: "{\"summary\": \"slow" };
+      await new Promise((resolve) => {
+        signal.addEventListener("abort", resolve);
+      });
+      yield { content: " and late" };
+    },
+  };
+  const seen = [];
+
+  await assert.rejects(
+    streamChatModel({
+      config: { chatTimeoutMs: 20 },
+      chatModel,
+      messages: [{ role: "user", content: "test" }],
+      retryPolicy: { ...retryPolicy, maxAttempts: 1 },
+      onText: (soFar) => seen.push(soFar),
+    }),
+    (error) => error.code === "RAG_TIMEOUT",
+  );
+  // The chunk that arrives after the timeout belongs to an abandoned attempt.
+  assert.deepEqual(seen, ["{\"summary\": \"slow"]);
+});
+
+test("createChatClient asks for no usage report, so no stream_options goes to the provider", () => {
+  let constructorOptions;
+  class RecordingChatModel {
+    constructor(options) {
+      constructorOptions = options;
+    }
+  }
+
+  createChatClient(
+    {
+      chatApiKey: "fake-key",
+      chatModel: "fake-model",
+      chatBaseUrl: "https://chat.invalid/v1",
+    },
+    { ChatModelClass: RecordingChatModel },
+  );
+
+  assert.equal(constructorOptions.streamUsage, false);
 });
 
 test("createChatClient disables internal retries so total provider attempts stay capped at three", async () => {
@@ -215,7 +315,8 @@ test("createChatClient disables internal retries so total provider attempts stay
       this.internalMaxRetries = options.maxRetries ?? 6;
     }
 
-    async invoke() {
+    // eslint-disable-next-line require-yield
+    async *stream() {
       let lastError;
       for (
         let attempt = 0;
@@ -242,7 +343,7 @@ test("createChatClient disables internal retries so total provider attempts stay
   );
 
   await assert.rejects(
-    invokeChatModel({
+    streamChatModel({
       config: { chatTimeoutMs: 100 },
       chatModel,
       messages: [{ role: "user", content: "test" }],

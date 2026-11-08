@@ -3,6 +3,11 @@ import multer from "multer";
 import { z } from "zod";
 import { sendData, sendError, sendNotFound } from "../utils/responses.js";
 import {
+  acceptsEventStream,
+  createEventStream,
+  saveSessionBeforeStream,
+} from "../utils/eventStream.js";
+import {
   answerQuestion,
   createSessionWithOptionalInitialAnswer,
   deleteViewerSession,
@@ -143,7 +148,14 @@ router.get("/sessions/:sessionId", async (req, res) => {
   }
 });
 
+// The two calls that wait on the chat model can stream. With
+// `Accept: text/event-stream` they send progress events, then a `done` event
+// whose payload is the JSON response body ({ data }); a failure once the
+// stream is open arrives as an `error` event with the usual { error } body and
+// the status the JSON response would have had. Without that header they
+// answer with JSON exactly as before.
 router.post("/sessions", upload.single("file"), async (req, res) => {
+  const stream = acceptsEventStream(req) ? createEventStream(res) : null;
   try {
     const { sourceText, initialQuestion: rawInitialQuestion } =
       createSessionSchema.parse(req.body);
@@ -155,6 +167,9 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
       });
     }
 
+    if ( stream ) {
+      await saveSessionBeforeStream(req);
+    }
     const session = await createSessionFn({
       userId: req.session?.currentUser?._id || null,
       clientSessionId: req.sessionID,
@@ -163,67 +178,84 @@ router.post("/sessions", upload.single("file"), async (req, res) => {
       initialQuestion: rawInitialQuestion,
       requestId: req.requestId,
       logger,
+      onEvent: stream?.send,
     });
+    if ( stream ) {
+      return stream.done(session);
+    }
     sendData(res, session, 201);
   } catch ( error ) {
     const status = getErrorStatus(error);
+    const code = status === 400 ? "VALIDATION_ERROR" : "RAG_CREATE_FAILED";
     logRouteError({
       event: "rag_create_failed",
       requestId: req.requestId,
       error,
-      fallbackCode: status === 400 ? "VALIDATION_ERROR" : "RAG_CREATE_FAILED",
+      fallbackCode: code,
     });
-    sendError(res, {
-      code: status === 400 ? "VALIDATION_ERROR" : "RAG_CREATE_FAILED",
+    const failure = {
+      code,
       message:
         status === 400
           ? error.message
           : "Failed to start chat session.",
       status,
-    });
+    };
+    if ( stream?.opened ) {
+      return stream.fail(failure);
+    }
+    sendError(res, failure);
   }
 });
 
 router.post("/sessions/:sessionId/messages", async (req, res) => {
+  const stream = acceptsEventStream(req) ? createEventStream(res) : null;
   try {
     const { message } = messageSchema.parse(req.body);
+    if ( stream ) {
+      await saveSessionBeforeStream(req);
+    }
     const result = await answerQuestionFn({
       sessionId: req.params.sessionId,
       userId: req.session?.currentUser?._id || null,
       clientSessionId: req.sessionID,
       question: message,
       requestId: req.requestId,
+      onEvent: stream?.send,
     });
+    if ( stream ) {
+      return stream.done(result);
+    }
     sendData(res, result);
   } catch ( error ) {
     const status = getErrorStatus(error);
+    const code =
+      status === 400
+        ? "VALIDATION_ERROR"
+        : status === 403
+          ? "FORBIDDEN"
+          : "RAG_MESSAGE_FAILED";
     logRouteError({
       event: "rag_message_failed",
       requestId: req.requestId,
       error,
-      fallbackCode:
-        status === 400
-          ? "VALIDATION_ERROR"
-          : status === 403
-            ? "FORBIDDEN"
-            : "RAG_MESSAGE_FAILED",
+      fallbackCode: code,
     });
-    if ( status === 404 ) {
-      return sendNotFound(res, "Chat session not found");
-    }
-    sendError(res, {
-      code:
-        status === 400
-          ? "VALIDATION_ERROR"
-          : status === 403
-            ? "FORBIDDEN"
-            : "RAG_MESSAGE_FAILED",
+    const failure = {
+      code,
       message:
         status === 400 || status === 403
           ? error.message
           : "Failed to answer question.",
       status,
-    });
+    };
+    if ( stream?.opened ) {
+      return stream.fail(failure);
+    }
+    if ( status === 404 ) {
+      return sendNotFound(res, "Chat session not found");
+    }
+    sendError(res, failure);
   }
 });
 

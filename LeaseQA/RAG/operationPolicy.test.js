@@ -243,3 +243,29 @@ test("runBoundedOperation applies a fresh timeout to each transient attempt", as
   assert.equal(attempts, 2);
   assert.deepEqual(delays, [500]);
 });
+
+test("retryTransient lets the caller veto a retry the error alone would allow", async () => {
+  let attempts = 0;
+  const seenByVeto = [];
+  const unavailable = Object.assign(new Error("unavailable"), { status: 503 });
+
+  await assert.rejects(
+    retryTransient(
+      async () => {
+        attempts += 1;
+        throw unavailable;
+      },
+      {
+        sleep: async () => {},
+        shouldRetry: (error) => {
+          seenByVeto.push(error);
+          return false;
+        },
+      },
+    ),
+    unavailable,
+  );
+
+  assert.equal(attempts, 1);
+  assert.deepEqual(seenByVeto, [unavailable]);
+});

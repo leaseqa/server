@@ -152,3 +152,33 @@ test("logged-in sessions write an ai review activity after creation", async () =
   assert.equal(recorded[0].userId, "user-9");
   assert.equal(recorded[0].metadata.sessionId, "session-activity");
 });
+
+test("progress from indexing and from the first answer reaches the same listener", async () => {
+  const session = buildSession("session-progress");
+  const events = [];
+  const onEvent = (event, data) => events.push([event, data]);
+
+  await createSessionWithOptionalInitialAnswer({
+    userId: null,
+    clientSessionId: "client-1",
+    sourceText: "Clause text",
+    file: null,
+    initialQuestion: "What does this clause mean?",
+    onEvent,
+    createSessionFn: async (input) => {
+      input.onEvent("status", { stage: "indexing" });
+      return session;
+    },
+    answerFn: async (input) => {
+      input.onEvent("status", { stage: "retrieving" });
+      input.onEvent("delta", { part: "summary", text: "It means" });
+      return { session };
+    },
+  });
+
+  assert.deepEqual(events, [
+    ["status", { stage: "indexing" }],
+    ["status", { stage: "retrieving" }],
+    ["delta", { part: "summary", text: "It means" }],
+  ]);
+});
