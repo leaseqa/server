@@ -134,6 +134,23 @@ npm run ingest:rag:reset
 npm run seed:demo-users
 ```
 
+## Streaming answers
+
+`POST /api/rag/sessions` and `POST /api/rag/sessions/:sessionId/messages` stream server-sent events when the request
+sends `Accept: text/event-stream`, and answer with the usual JSON envelope otherwise; the eval runner relies on that.
+The event format is documented once, in the client repo's `docs/api-design.md` ("Streaming the two model calls").
+
+How the server produces it:
+
+- `utils/eventStream.js` opens the stream on the first event, so a failure before any progress keeps its own HTTP
+  status and JSON body. It saves the browser session before opening, since express-session would otherwise store a
+  new guest's session only when the stream ends.
+- The model is always called with streaming, JSON callers included. `RAG/answerDraft.js` reads the summary and bullet
+  text out of the model's partial JSON and turns it into `delta` events.
+- A transient model failure is retried until part of the draft has reached the client; after that the request fails
+  instead, because a fresh attempt would not match what the client shows. JSON callers keep their retries.
+- A client that disconnects stops receiving events, but the answer is still generated and stored.
+
 ## RAG lifecycle operations
 
 Delete a RAG session and its uploaded-source vectors with:

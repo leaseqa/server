@@ -110,12 +110,19 @@ export const retryTransient = async (operation, policy = {}) => {
     : DEFAULT_JITTER_RATIO;
   const sleep = policy.sleep || defaultSleep;
   const random = policy.random || Math.random;
+  // Lets a caller veto a retry the error alone would allow, for when a fresh
+  // attempt would no longer match what has already reached the client.
+  const shouldRetry = policy.shouldRetry || (() => true);
 
   for ( let attempt = 1; attempt <= maxAttempts; attempt += 1 ) {
     try {
       return await operation(attempt);
     } catch ( error ) {
-      if ( attempt === maxAttempts || !isTransientError(error) ) {
+      if (
+        attempt === maxAttempts ||
+        !isTransientError(error) ||
+        !shouldRetry(error)
+      ) {
         throw error;
       }
 

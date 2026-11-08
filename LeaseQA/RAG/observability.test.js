@@ -16,7 +16,7 @@ const createDependencies = ({
   logs,
   clock,
   embedQuery,
-  chatInvoke,
+  chatReply,
   storedCorpusVersion = "corpus-version-abc",
 } = {}) => {
   const session = createSession();
@@ -56,20 +56,24 @@ const createDependencies = ({
             },
           ],
     chatModel: {
-      invoke:
-        chatInvoke ||
-        (async () => ({
-          content: JSON.stringify({
-            summary: "The handbook describes a deposit deadline.",
-            summarySupports: ["c1"],
-            bullets: [
-              {
-                text: "The source states the deadline rule.",
-                supports: ["c1"],
-              },
-            ],
-          }),
-        })),
+      // The model streams; each fake answers in one chunk.
+      async *stream(...args) {
+        const respond =
+          chatReply ||
+          (async () => ({
+            content: JSON.stringify({
+              summary: "The handbook describes a deposit deadline.",
+              summarySupports: ["c1"],
+              bullets: [
+                {
+                  text: "The source states the deadline rule.",
+                  supports: ["c1"],
+                },
+              ],
+            }),
+          }));
+        yield await respond(...args);
+      },
     },
     appendMessages: async (_sessionId, messages) => ({ ...session, messages }),
     readActiveCorpusVersion: async () => storedCorpusVersion,
@@ -161,7 +165,7 @@ test("provider failures retain elapsed provider time without logging the respons
   const dependencies = createDependencies({
     logs,
     clock: { now: () => times.shift() },
-    chatInvoke: async () => {
+    chatReply: async () => {
       throw providerError;
     },
   });
@@ -214,7 +218,7 @@ test("answerQuestion tags the abstention reason when the model's structured outp
   const dependencies = createDependencies({
     logs,
     clock: { now: () => 10 },
-    chatInvoke: async () => ({ content: "not valid json" }),
+    chatReply: async () => ({ content: "not valid json" }),
   });
 
   await answerQuestion(
@@ -288,7 +292,7 @@ test("answerQuestion abstains without calling the model when the best reranked c
   const dependencies = createDependencies({
     logs,
     clock: { now: () => 10 },
-    chatInvoke: async () => {
+    chatReply: async () => {
       modelCalled = true;
       return { content: "{}" };
     },

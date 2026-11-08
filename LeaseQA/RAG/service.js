@@ -13,6 +13,7 @@ import {
   getEvidenceId,
 } from "./prompt.js";
 import { runBoundedOperation } from "./operationPolicy.js";
+import { createDraftTracker } from "./answerDraft.js";
 import {
   createTextPreview,
   extractCorpusPages,
@@ -70,15 +71,39 @@ const dedupeById = (items) => {
   });
 };
 
-const getMessageText = (message) => {
-  if ( typeof message.content === "string" ) {
-    return message.content;
+// Progress is best effort, like the metrics: a listener that throws must not
+// cost the renter an answer that would otherwise be stored and returned.
+// Returns null when nobody is listening, so callers can skip the work. The
+// reporter answers whether the event was delivered: a listener says no by
+// returning false (the event stream does once its client has gone).
+const createProgressReporter = (onEvent) =>
+  onEvent
+    ? (event, data) => {
+        try {
+          return onEvent(event, data) !== false;
+        } catch {
+          // Reporting must not change the result.
+          return false;
+        }
+      }
+    : null;
+
+// A streamed chunk's answer text. Reasoning models (glm-5.3-flash) send their
+// thinking separately, in additional_kwargs, so it never lands here; typed
+// content parts other than text are skipped for the same reason.
+const getChunkText = (chunk) => {
+  if ( typeof chunk?.content === "string" ) {
+    return chunk.content;
   }
-  if ( Array.isArray(message.content) ) {
-    return message.content
-      .map((part) => (typeof part === "string" ? part : part?.text || ""))
-      .join("\n")
-      .trim();
+  if ( Array.isArray(chunk?.content) ) {
+    return chunk.content
+      .map((part) => {
+        if ( typeof part === "string" ) {
+          return part;
+        }
+        return part?.type === "text" ? part.text || "" : "";
+      })
+      .join("");
   }
   return "";
 };
@@ -228,17 +253,37 @@ export const createEmbeddingsClient = (config, dependencies = {}) => ({
     }),
 });
 
-export const invokeChatModel = ({
+/**
+ * Streams the model's answer and resolves with the whole text. onText sees the
+ * text so far after every chunk; each attempt starts from empty again. The
+ * timeout bounds the whole stream, and transient failures are retried like any
+ * other provider call unless retryPolicy.shouldRetry says otherwise.
+ */
+export const streamChatModel = ({
                                   config,
                                   chatModel,
                                   messages,
                                   retryPolicy,
+                                  onText,
                                 }) =>
   runBoundedOperation({
     label: "chat generation",
     timeoutMs: config.chatTimeoutMs,
     retryPolicy,
-    operation: (signal) => chatModel.invoke(messages, { signal }),
+    operation: async (signal) => {
+      let text = "";
+      const stream = await chatModel.stream(messages, { signal });
+      for await ( const chunk of stream ) {
+        const piece = getChunkText(chunk);
+        // Once the attempt has timed out, late chunks belong to nobody.
+        if ( !piece || signal.aborted ) {
+          continue;
+        }
+        text += piece;
+        onText?.(text);
+      }
+      return text;
+    },
   });
 
 export const createChatClient = (
@@ -255,6 +300,9 @@ export const createChatClient = (
     model: config.chatModel,
     temperature: 0.2,
     maxRetries: 0,
+    // Token usage is never read, and asking for it adds stream_options to
+    // every request, a field not every OpenAI-compatible provider accepts.
+    streamUsage: false,
     configuration: { baseURL: config.chatBaseUrl },
   });
 };
@@ -551,6 +599,7 @@ export const createRagSession = async ({
                                          clientSessionId,
                                          sourceText,
                                          file,
+                                         onEvent,
                                        }) => {
   const config = getRagConfig();
   const embeddings = createEmbeddingsClient(config);
@@ -577,6 +626,9 @@ export const createRagSession = async ({
     sourceCharCount: extractedText.length,
     messages: [],
   });
+  // Only now: an unreadable or unsupported upload has already failed above,
+  // with its own status code instead of an error inside an open stream.
+  createProgressReporter(onEvent)?.("status", { stage: "indexing" });
 
   try {
     const documents = await splitTextToChunks({
@@ -684,12 +736,20 @@ export const deleteViewerSession = async (
   return { sessionId, deleted: true };
 };
 
+/**
+ * onEvent(event, data), when given, hears progress as it happens:
+ *   ("status", { stage: "retrieving" | "generating" })
+ *   ("delta", { part: "summary", text } | { part: "bullet", index, text })
+ * The deltas are a draft. The resolved answer is the one that counts: it can
+ * drop bullets the evidence does not support, or abstain altogether.
+ */
 export const answerQuestion = async ({
                                        sessionId,
                                        userId,
                                        clientSessionId,
                                        question,
                                        requestId,
+                                       onEvent,
                                      }, dependencies = {}) => {
   const config = dependencies.config || getRagConfig();
   const findSessionById = dependencies.findSessionById || dao.findSessionById;
@@ -701,6 +761,7 @@ export const answerQuestion = async ({
   const logger = dependencies.logger || console;
   const readCorpusVersion =
     dependencies.readActiveCorpusVersion || readActiveCorpusVersion;
+  const report = createProgressReporter(onEvent);
   let retrievalStartedAt = null;
   let retrievalDurationMs = null;
   let evidenceRanking = null;
@@ -746,6 +807,9 @@ export const answerQuestion = async ({
     if ( session.status !== "ready" ) {
       throw new Error("Session is not ready yet");
     }
+    // After the access and readiness checks, so those failures keep their own
+    // status codes instead of arriving inside an open stream.
+    report?.("status", { stage: "retrieving" });
 
     const embeddings =
       dependencies.embeddingsClient || createEmbeddingsClient(config);
@@ -833,17 +897,33 @@ export const answerQuestion = async ({
   });
   let candidateAnswer;
   if ( candidateCitations.length > 0 ) {
+    report?.("status", { stage: "generating" });
+    const draft = createDraftTracker();
+    // Once part of the draft has reached the client, a fresh attempt would not
+    // match what it shows, so from then on a failure ends the request. Before
+    // that, including when the client left before any text, and always for
+    // JSON callers, transient failures are retried.
+    let draftShown = false;
     providerStartedAt = clock.now();
-    const providerResponse = await invokeChatModel({
+    const rawAnswer = await streamChatModel({
       config,
       chatModel,
       messages,
-      retryPolicy,
+      retryPolicy: { ...retryPolicy, shouldRetry: () => !draftShown },
+      onText: report
+        ? (text) => {
+            for ( const delta of draft.update(text) ) {
+              if ( report("delta", delta) ) {
+                draftShown = true;
+              }
+            }
+          }
+        : undefined,
     });
     providerDurationMs = Math.max(0, clock.now() - providerStartedAt);
     providerStartedAt = null;
     candidateAnswer = normalizeAssistantAnswer({
-      rawAnswer: getMessageText(providerResponse),
+      rawAnswer,
       citationIdToIndex,
     });
   } else {
@@ -902,6 +982,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
                                                                file,
                                                                initialQuestion,
                                                                requestId,
+                                                               onEvent,
                                                                createSessionFn = createRagSession,
                                                                answerFn = answerQuestion,
                                                                recordActivityFn = createActivity,
@@ -912,6 +993,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
     clientSessionId,
     sourceText,
     file,
+    onEvent,
   });
   if ( userId ) {
     try {
@@ -957,6 +1039,7 @@ export const createSessionWithOptionalInitialAnswer = async ({
       clientSessionId,
       question: trimmedQuestion,
       requestId,
+      onEvent,
     });
     return result.session;
   } catch ( error ) {
