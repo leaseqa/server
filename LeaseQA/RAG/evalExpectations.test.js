@@ -5,9 +5,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  expectedSourceGroupsOf,
   matchesExpectation,
   normalizeChunkExpectationInput,
   normalizeCitationExpectationInput,
+  pastedSourceTextOf,
 } from "./evalExpectations.js";
 
 const evalSetPath = path.join(
@@ -114,12 +116,56 @@ test("a group-only expectation matches any chunk in that group", () => {
   );
 });
 
+test("a list of source groups matches any of them, with the same chapter refs", () => {
+  const evalCase = {
+    expectedSourceGroup: ["chapters", "handouts"],
+    expectedChapterRefs: ["3"],
+  };
+  const matches = (chunk) =>
+    matchesExpectation(evalCase, normalizeChunkExpectationInput(chunk));
+
+  assert.equal(matches({ source_group: "chapters", chapter_ref: "3" }), true);
+  assert.equal(matches({ source_group: "handouts", chapter_ref: "3" }), true);
+  assert.equal(matches({ source_group: "handouts", chapter_ref: "12" }), false);
+  assert.equal(matches({ source_group: "forms", chapter_ref: "3" }), false);
+});
+
 test("every non-abstaining eval case declares an expected source group", async () => {
   const cases = JSON.parse(await readFile(evalSetPath, "utf8"));
 
   const missing = cases
-    .filter((evalCase) => !evalCase.expectAbstain && !evalCase.expectedSourceGroup)
+    .filter((evalCase) => {
+      if ( evalCase.expectAbstain ) {
+        return false;
+      }
+      const groups = expectedSourceGroupsOf(evalCase);
+      return (
+        groups.length === 0 ||
+        !groups.every((group) => typeof group === "string" && group.length > 0)
+      );
+    })
     .map((evalCase) => evalCase.id);
 
   assert.deepEqual(missing, []);
+});
+
+test("only non-blank pasted text counts as a case's own source text", () => {
+  assert.equal(
+    pastedSourceTextOf({ sourceText: "Tenant will pay two months of rent." }),
+    "Tenant will pay two months of rent.",
+  );
+  assert.equal(pastedSourceTextOf({ sourceText: "  \n " }), null);
+  assert.equal(pastedSourceTextOf({ sourceText: 42 }), null);
+  assert.equal(pastedSourceTextOf({}), null);
+  assert.equal(pastedSourceTextOf(undefined), null);
+});
+
+test("no eval case both uploads a document and pastes text", async () => {
+  const cases = JSON.parse(await readFile(evalSetPath, "utf8"));
+
+  const both = cases
+    .filter((evalCase) => evalCase.upload && pastedSourceTextOf(evalCase) !== null)
+    .map((evalCase) => evalCase.id);
+
+  assert.deepEqual(both, []);
 });

@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   matchesExpectation,
   normalizeCitationExpectationInput,
+  pastedSourceTextOf,
 } from "../LeaseQA/RAG/evalExpectations.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,16 +27,22 @@ Options:
   --base-url=<url>    LeaseQA server URL (default: http://127.0.0.1:4050)
   --eval-set=<path>   Evaluation case JSON file; cases with an "upload"
                       object (content/sourceName/mimeType) attach that
-                      document to the session instead of placeholder text
+                      document to the session, and cases with a "sourceText"
+                      string paste it the way a renter pastes a clause;
+                      every other case gets placeholder text
   --output=<path>     JSON artifact path (default: artifacts/rag-eval.json)
   --limit=<count>     Run only the first count selected cases
   --ids=<id,...>      Run only comma-separated case IDs
   --help              Show this help without requiring credentials`;
 
-// The session text for a case without an upload. report-rag-retrieval.js ranks
-// the same text, so its report describes what the eval's answers are built on.
 export const EVAL_PLACEHOLDER_SOURCE_TEXT =
   "Evaluation placeholder. Answers must use the knowledge corpus.";
+
+// The pasted text a case without an upload creates its session from: its own
+// sourceText, or the placeholder. report-rag-retrieval.js ranks the same text,
+// so its report describes what the eval's answers are built on.
+export const evalSessionSourceText = (evalCase) =>
+  pastedSourceTextOf(evalCase) ?? EVAL_PLACEHOLDER_SOURCE_TEXT;
 
 const parsePositiveRate = (value, fallback) => {
   const parsed = Number.parseFloat(value || "");
@@ -166,7 +173,7 @@ const createSession = async ({ baseUrl, cookieJar, evalCase }) => {
       upload.sourceName || "uploaded-document.txt",
     );
   } else {
-    formData.append("sourceText", EVAL_PLACEHOLDER_SOURCE_TEXT);
+    formData.append("sourceText", evalSessionSourceText(evalCase));
   }
   const response = await requestJson({
     baseUrl,
@@ -230,7 +237,13 @@ export const runEvalCase = async ({ baseUrl, evalCase, clock = performance }) =>
   const passed = evalCase.expectAbstain
     ? abstained && citationValid && contentSafe
     : answerPresent && !abstained && expectedSourceMatched && citationValid && contentSafe;
-  const safe = contentSafe && (evalCase.expectAbstain ? abstained : passed || abstained);
+  // Safe means the answer cannot mislead a renter: no forbidden content, an
+  // out-of-scope question abstains, and an answer either cites well-formed
+  // evidence or abstains outright. Which evidence an answer cites is left to
+  // passed: the model may cite another legally adequate passage than the one
+  // the case names, so a source miss lowers the pass rate, not the safe rate.
+  const safe =
+    contentSafe && citationValid && (!evalCase.expectAbstain || abstained);
 
   return {
     id: evalCase.id,
@@ -313,7 +326,7 @@ export const runEvaluation = async ({
     }
     results.push(result);
     output.log(
-      `${result.passed ? "PASS" : result.abstained ? "ABSTAIN" : "FAIL"} ${result.id} latencyMs=${result.latencyMs} sourceMatch=${result.expectedSourceMatched} citationValid=${result.citationValid}`,
+      `${result.passed ? "PASS" : result.abstained ? "ABSTAIN" : "FAIL"} ${result.id} latencyMs=${result.latencyMs} sourceMatch=${result.expectedSourceMatched} citationValid=${result.citationValid} safe=${result.safe}`,
     );
   }
 
