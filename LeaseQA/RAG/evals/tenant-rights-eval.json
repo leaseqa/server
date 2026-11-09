@@ -329,7 +329,10 @@
       {
         "point": "Housing Court",
         "anyOf": [
-          "housing court"
+          "housing court",
+          "housing or district court",
+          "housing and district court",
+          "housing or district courts"
         ],
         "source": "Handout 14: most landlord-tenant cases in Housing Court or District Court. If there is a Housing Court where you live, consider starting your case there."
       }
