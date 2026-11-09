@@ -80,7 +80,13 @@
           "certain period",
           "one year",
           "12 months",
-          "a year"
+          "a year",
+          "set time",
+          "1 year",
+          "an end date",
+          "set end date",
+          "fixed end date",
+          "specific end date"
         ],
         "source": "Handout 4: Tenant with Lease: If you have a written agreement to rent for a specific time period at a specific rent ..."
       },
@@ -348,7 +354,12 @@
         "point": "rules and evictions are regulated",
         "anyOf": [
           "attorney general",
-          "court"
+          "court",
+          "cannot evict",
+          "can't evict",
+          "only evict",
+          "against eviction",
+          "eviction protection"
         ],
         "source": "Handout 16: The rules the park owner makes must be approved by the Attorney General's Office ... A park owner cannot: Evict you unless they get a court order."
       }
@@ -587,7 +598,10 @@
           "more than one month",
           "more than a month",
           "one month is the max",
-          "1 month is the max"
+          "1 month is the max",
+          "one month limit",
+          "one month maximum",
+          "one month cap"
         ],
         "source": "Handout 3: A security deposit cannot be more than your 1st month's rent."
       },
@@ -683,7 +697,13 @@
           "unlawful",
           "against the law",
           "prohibited",
-          "not allowed"
+          "not allowed",
+          "cannot refuse",
+          "can't refuse",
+          "cannot deny",
+          "can't deny",
+          "cannot discriminate",
+          "can't discriminate"
         ],
         "source": "Handout 7 lists as illegal discrimination: A landlord refuses to rent to you because you have a Section 8 voucher."
       }

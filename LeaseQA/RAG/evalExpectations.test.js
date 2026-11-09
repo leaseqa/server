@@ -200,6 +200,14 @@ test("an answer meets a required point when it says any of the point's phrasings
     [],
   );
   assert.deepEqual(missingRequiredPoints(evalCase, "Return it within 30 days."), ["deposit capped at one month"]);
+  // Hyphens and dashes read as spaces, on either side.
+  assert.deepEqual(
+    missingRequiredPoints(
+      { requiredPoints: [{ point: "cap", anyOf: ["one month limit"] }, { point: "deadline", anyOf: ["30-day"] }] },
+      "It breaks the one-month limit—and the 30 day deadline.",
+    ),
+    [],
+  );
   // Two months' rent is not one month's rent.
   assert.deepEqual(
     missingRequiredPoints(evalCase, "You must pay two months' rent; the evidence doesn't confirm a limit."),

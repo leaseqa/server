@@ -56,12 +56,16 @@ export const matchesAnswerCitation = (evalCase, citation) =>
     matchesExpectation({ ...evalCase, expectedSourceGroup: "handouts" }, citation));
 
 // Answers and phrasings are compared in one spelling: lower case, straight
-// quotes, single spaces. The model writes "month’s" as often as "month's".
+// quotes, hyphens and dashes as spaces, single spaces. The model writes
+// "month’s" as often as "month's", and "one-month limit" as often as "one
+// month limit".
 const normalizeAnswerText = (text) =>
   asText(text)
     .toLowerCase()
     .replace(/[‘’ʼ]/g, "'")
     .replace(/[“”]/g, '"')
+    // The hyphen, then U+2010 to U+2015: hyphen, figure, en and em dashes.
+    .replace(/[-‐-―]/g, " ")
     .replace(/\s+/g, " ");
 
 // The points a case requires that the answer never states, by label. A point
