@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   matchesExpectation,
   normalizeChunkExpectationInput,
+  pastedSourceTextOf,
 } from "./evalExpectations.js";
 
 const defaultEvalSetPath = path.join(
@@ -18,7 +19,13 @@ export const loadGateCases = async ({
   readFileFn = fs.readFile,
 } = {}) => {
   const raw = await readFileFn(evalSetPath, "utf8");
-  return JSON.parse(raw).filter((evalCase) => !evalCase.expectAbstain);
+  // Retrieval cannot judge an abstain case, and a pasted-text case asks about
+  // "this clause", which means nothing without its session. Upload cases have
+  // the same problem but stay: they already count as misses here, and dropping
+  // them would loosen min_hit_rate.
+  return JSON.parse(raw).filter(
+    (evalCase) => !evalCase.expectAbstain && pastedSourceTextOf(evalCase) === null,
+  );
 };
 
 const runCase = async ({ evalCase, collectionName, embedQuery, retrieveChunks }) => {

@@ -8,6 +8,7 @@ import {
   matchesExpectation,
   normalizeChunkExpectationInput,
   normalizeCitationExpectationInput,
+  pastedSourceTextOf,
 } from "./evalExpectations.js";
 
 const evalSetPath = path.join(
@@ -122,4 +123,25 @@ test("every non-abstaining eval case declares an expected source group", async (
     .map((evalCase) => evalCase.id);
 
   assert.deepEqual(missing, []);
+});
+
+test("only non-blank pasted text counts as a case's own source text", () => {
+  assert.equal(
+    pastedSourceTextOf({ sourceText: "Tenant will pay two months of rent." }),
+    "Tenant will pay two months of rent.",
+  );
+  assert.equal(pastedSourceTextOf({ sourceText: "  \n " }), null);
+  assert.equal(pastedSourceTextOf({ sourceText: 42 }), null);
+  assert.equal(pastedSourceTextOf({}), null);
+  assert.equal(pastedSourceTextOf(undefined), null);
+});
+
+test("no eval case both uploads a document and pastes text", async () => {
+  const cases = JSON.parse(await readFile(evalSetPath, "utf8"));
+
+  const both = cases
+    .filter((evalCase) => evalCase.upload && pastedSourceTextOf(evalCase) !== null)
+    .map((evalCase) => evalCase.id);
+
+  assert.deepEqual(both, []);
 });

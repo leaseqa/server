@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import * as evalRunner from "../../scripts/run-rag-eval.js";
+import { sessionChunkFor } from "../../scripts/report-rag-retrieval.js";
 
 const knowledgeCitation = (chapterRef) => ({
   citationId: `knowledge-${chapterRef}`,
@@ -307,6 +308,57 @@ test("upload cases attach the document file to session creation and assert uploa
   assert.equal(artifact.results[0].expectedSourceMatched, true);
   assert.equal(artifact.results[0].citationValid, true);
   assert.equal(artifact.results[0].passed, true);
+});
+
+test("pasted-text cases create their session from their own text", async (t) => {
+  const { baseUrl, receivedSessionBodies } = await startFakeRagServer(t);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-pasted-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const evalSetPath = await writeEvalSet(directory, "pasted", [
+    {
+      ...supportedCase,
+      id: "clause-review",
+      sourceText: "EVAL_PASTED_MARKER Tenant will pay two months of rent as a deposit.",
+      question: "Is this clause legal?",
+    },
+    supportedCase,
+  ]);
+
+  await evalRunner.runEvaluation({
+    baseUrl,
+    evalSetPath,
+    outputPath: path.join(directory, "artifact.json"),
+  });
+
+  assert.equal(receivedSessionBodies.length, 2);
+  assert.match(receivedSessionBodies[0], /name="sourceText"[\s\S]*EVAL_PASTED_MARKER/);
+  assert.doesNotMatch(receivedSessionBodies[0], /filename=/);
+  assert.equal(
+    receivedSessionBodies[0].includes(evalRunner.EVAL_PLACEHOLDER_SOURCE_TEXT),
+    false,
+  );
+  assert.equal(
+    receivedSessionBodies[1].includes(evalRunner.EVAL_PLACEHOLDER_SOURCE_TEXT),
+    true,
+  );
+});
+
+test("the retrieval report ranks the same session text the eval sends", () => {
+  const pastedCase = {
+    ...supportedCase,
+    sourceText: "Tenant will pay two months of rent as a deposit.",
+  };
+
+  assert.equal(sessionChunkFor(pastedCase).text, pastedCase.sourceText);
+  assert.equal(sessionChunkFor(pastedCase).source_group, "text");
+  assert.equal(
+    sessionChunkFor(supportedCase).text,
+    evalRunner.EVAL_PLACEHOLDER_SOURCE_TEXT,
+  );
+  assert.equal(
+    sessionChunkFor({ ...supportedCase, sourceText: "   " }).text,
+    evalRunner.EVAL_PLACEHOLDER_SOURCE_TEXT,
+  );
 });
 
 test("a source miss costs the pass rate, not the safe rate", async (t) => {

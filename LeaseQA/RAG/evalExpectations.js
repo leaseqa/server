@@ -1,5 +1,12 @@
 const asText = (value) => String(value ?? "");
 
+// The text a case pastes into its session, the way a renter pastes a clause,
+// or null when it has none.
+export const pastedSourceTextOf = (evalCase) =>
+  typeof evalCase?.sourceText === "string" && evalCase.sourceText.trim()
+    ? evalCase.sourceText
+    : null;
+
 export const normalizeCitationExpectationInput = (citation) => ({
   sourceGroup: asText(citation?.sourceGroup),
   sourceName: asText(citation?.sourceName),

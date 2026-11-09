@@ -18,7 +18,11 @@ import {
   createEmbeddingsClient,
   retrieveKnowledgeCandidates,
 } from "../LeaseQA/RAG/service.js";
-import { EVAL_PLACEHOLDER_SOURCE_TEXT } from "./run-rag-eval.js";
+import { createTextPreview } from "../LeaseQA/RAG/text.js";
+import {
+  EVAL_PLACEHOLDER_SOURCE_TEXT,
+  evalSessionSourceText,
+} from "./run-rag-eval.js";
 
 // For every eval case, how its evidence ranks under the live provider: the
 // best chunk's score, where the first chunk from the expected source lands,
@@ -38,8 +42,9 @@ const evalSetPath = path.join(
 
 // The one session chunk the eval's session holds. Its fused score is what the
 // session search gives a single chunk: both rankers when the question shares
-// words with an upload, the dense ranker alone for the placeholder.
-const sessionChunkFor = (evalCase) => {
+// words with the case's own upload or pasted text, the dense ranker alone for
+// the placeholder.
+export const sessionChunkFor = (evalCase) => {
   const upload = evalCase.upload;
   if ( upload && upload.content != null ) {
     const sourceName = upload.sourceName || "uploaded-document.txt";
@@ -52,13 +57,14 @@ const sessionChunkFor = (evalCase) => {
       score: 2 / 61,
     };
   }
+  const text = evalSessionSourceText(evalCase);
   return {
     source_group: "text",
     source_name: "pasted-text",
     title_hint: "pasted-text",
     chapter_ref: "",
-    text: EVAL_PLACEHOLDER_SOURCE_TEXT,
-    score: 1 / 61,
+    text,
+    score: text === EVAL_PLACEHOLDER_SOURCE_TEXT ? 1 / 61 : 2 / 61,
   };
 };
 
@@ -81,9 +87,11 @@ const reachesModel = (evalCase, evidence) =>
 
 export const reportCase = async ({ evalCase, config, embeddings, rerankClient }) => {
   const sessionChunk = sessionChunkFor(evalCase);
+  // The server keeps only this preview of the session text, and that is what
+  // a question about "this clause" carries into retrieval.
   const question = buildRetrievalQuestion({
     question: evalCase.question,
-    sourceTextPreview: sessionChunk.text,
+    sourceTextPreview: createTextPreview(sessionChunk.text),
     messages: [],
   });
   const vector = await embeddings.embedQuery(question);

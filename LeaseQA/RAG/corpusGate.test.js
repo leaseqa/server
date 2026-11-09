@@ -147,6 +147,33 @@ test("loadGateCases drops abstain cases because retrieval cannot judge them", as
   );
 });
 
+test("loadGateCases drops pasted-text cases because their question needs the session", async () => {
+  const cases = await loadGateCases({
+    evalSetPath: "/fake/eval.json",
+    readFileFn: async () =>
+      JSON.stringify([
+        { id: "a", expectedSourceGroup: "chapters", question: "q1" },
+        {
+          id: "clause",
+          expectedSourceGroup: "chapters",
+          sourceText: "Tenant will pay two months of rent as a deposit.",
+          question: "Is this clause legal?",
+        },
+        {
+          id: "upload",
+          expectedSourceGroup: "upload",
+          upload: { content: "lease text" },
+          question: "q3",
+        },
+      ]),
+  });
+
+  assert.deepEqual(
+    cases.map((evalCase) => evalCase.id),
+    ["a", "upload"],
+  );
+});
+
 test("loadGateCases reads the real tenant-rights eval set by default", async () => {
   const cases = await loadGateCases({});
 
