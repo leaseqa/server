@@ -8,6 +8,7 @@ import path from "node:path";
 import {
   CHANGED_EXIT_CODE,
   INCONCLUSIVE_EXIT_CODE,
+  OVERDUE_EXIT_CODE,
   formatIssueBody,
   formatIssueTitle,
   isSameReport,
@@ -95,7 +96,7 @@ test("rows with no candidate are reported apart from blocked pages", () => {
 test("a run with nothing to report is refused rather than filed", () => {
   const clean = report();
 
-  for ( const status of [0, 1, 2, 5, "3", null, undefined] ) {
+  for ( const status of [0, 1, 2, 6, "3", null, undefined] ) {
     assert.throws(
       () => formatIssueBody({ status, report: clean }),
       /exit code/i,
@@ -263,9 +264,24 @@ test("every npm command in the issue keeps the -- separator", () => {
   // npm run corpus:refresh --dry-run forwards nothing and performs a real
   // write; the issue must never tell a maintainer to type that.
   assert.ok(!body.includes("npm run corpus:refresh --dry-run"));
-  assert.ok(!body.includes("npm run corpus:check --write-state"));
+  assert.ok(!body.includes("npm run corpus:check --capture"));
   assert.ok(body.includes("npm run corpus:refresh -- --dry-run"));
-  assert.ok(body.includes("npm run corpus:check -- --write-state"));
+  assert.ok(body.includes("npm run corpus:check -- --capture=<capture file> --write-state"));
+});
+
+test("neither procedure sends a maintainer back to a crawl Cloudflare challenges", () => {
+  for ( const status of [CHANGED_EXIT_CODE, INCONCLUSIVE_EXIT_CODE] ) {
+    const body = formatIssueBody({
+      status,
+      report: report({ changed: [CH03_CHANGED], blocked: ["handout_17_condos.pdf"] }),
+    });
+
+    assert.ok(!body.includes("Re-run `Corpus Upstream Check`"), status);
+    assert.ok(!body.includes("corpus_manifest.csv.bak"), status);
+    for ( const command of body.match(/npm run corpus:check[^`]*/g) || [] ) {
+      assert.ok(command.includes("--capture=") || command.includes("--help"), command);
+    }
+  }
 });
 
 test("the diagnostic re-run reads the report without rewriting recorded state", () => {
@@ -364,7 +380,7 @@ test("the CLI fails loudly on a missing or unreadable report", async () => {
 });
 
 
-// The workflow suppresses a Monday report that repeats the last one. It compares
+// The workflow suppresses a report that repeats the last one. It compares
 // the body it is about to post, fresh from this formatter, with the previous
 // report as `gh issue view --jq .body` hands it back -- and that round trip does
 // not return the same bytes. The CLI writes exactly one trailing newline; the
@@ -417,4 +433,48 @@ test("isSameReport ignores line-ending and trailing-space differences", () => {
   const padded = posted.split("\n").map((line) => `${line}  `).join("\n");
   assert.equal(isSameReport(crlf, posted), true);
   assert.equal(isSameReport(padded, posted), true);
+});
+
+const overdueReport = (overrides = {}) => ({
+  checkedAt: "2026-12-01T13:00:04.000Z",
+  lastConfirmedAt: "2026-11-09T11:45:20.852Z",
+  overdueAfterDays: 40,
+  ...overrides,
+});
+
+test("an overdue reminder names the last confirmed check and only a validated date reaches the title", () => {
+  assert.equal(
+    formatIssueTitle({ status: OVERDUE_EXIT_CODE, report: overdueReport() }),
+    "Corpus check overdue: last confirmed 2026-11-09",
+  );
+  assert.equal(
+    formatIssueTitle({ status: OVERDUE_EXIT_CODE, report: overdueReport({ lastConfirmedAt: null }) }),
+    "Corpus check overdue: never confirmed",
+  );
+  // The title goes through a command substitution, so nothing past the date may.
+  assert.equal(
+    formatIssueTitle({
+      status: OVERDUE_EXIT_CODE,
+      report: overdueReport({ lastConfirmedAt: "2026-11-09$(rm -rf /)\n" }),
+    }),
+    "Corpus check overdue: last confirmed 2026-11-09",
+  );
+});
+
+test("an overdue reminder asks for a capture check and for the state that records it", () => {
+  const body = formatIssueBody({
+    status: OVERDUE_EXIT_CODE,
+    report: overdueReport(),
+    runUrl: "https://github.com/leaseqa/server/actions/runs/1",
+  });
+
+  assert.ok(body.includes("2026-11-09"));
+  assert.ok(body.includes("40 days"));
+  assert.ok(body.includes("npm run corpus:check -- --capture=<capture file> --write-state"));
+  assert.ok(body.includes("Commit `upstream_state.json`"));
+  assert.ok(!body.includes("Re-run `Corpus Upstream Check`"));
+  // The two lines every run changes are where the dedupe expects them.
+  assert.match(body, /^- Checked at: /m);
+  assert.match(body, /^- Workflow run: /m);
+  assert.equal(parseArgs(["--status=5"]).status, OVERDUE_EXIT_CODE);
 });

@@ -1,5 +1,499 @@
 {
-  "checkedAt": null,
-  "note": "Written by scripts/check-corpus-upstream.js. Never referenced by corpus_manifest.csv, so it is not part of corpusVersion.",
-  "entries": {}
+  "checkedAt": "2026-11-09T12:18:06.607Z",
+  "checkedGroups": [
+    "chapters",
+    "handouts",
+    "forms",
+    "booklets",
+    "appendix"
+  ],
+  "note": "Written by scripts/check-corpus-upstream.js. Never referenced by corpus_manifest.csv, so it is not part of corpusVersion. Entries outside checkedGroups are carried over from an earlier run and are older than checkedAt.",
+  "entries": {
+    "appendix_00_using_legal_tactics.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/00%20Using%20LegalTactics_2025.pdf",
+      "revision": "00 Using LegalTactics_2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/using-legal-tactics"
+    },
+    "ch01_moving_in.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-10/01%20Moving%202025%20Updated%208-13-25.pdf",
+      "revision": "01 Moving 2025 Updated 8-13-25",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch02_tenant_screening.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/02%20Tenant%20Screening%202025.pdf",
+      "revision": "02 Tenant Screening 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch03_security_deposits.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-10/03%20Security%20Deposits%202025-%20Updated%208-13-25.pdf",
+      "revision": "03 Security Deposits 2025- Updated 8-13-25",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch04_tenancies.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-02/04%20Tenancies%202025.pdf",
+      "revision": "04 Tenancies 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch05_rent.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-02/05%20Rent%202025%20v2.pdf",
+      "revision": "05 Rent 2025 v2",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch06_utilities.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-02/06%20Utilities%202025_0.pdf",
+      "revision": "06 Utilities 2025_0",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch07_discrimination.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/07%20Discrimination%202025.pdf",
+      "revision": "07 Discrimination 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch08_getting_repairs_made.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/08%20Getting%20Repairs%20Made%202025_0.pdf",
+      "revision": "08 Getting Repairs Made 2025_0",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch09_lead_poisoning.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/09%20Lead%20Poisoning%202025.pdf",
+      "revision": "09 Lead Poisoning 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch10_organizing.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-09/10%20Organizing%202025%20-%20Updated%209-17-2025.pdf",
+      "revision": "10 Organizing 2025 - Updated 9-17-2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch11_moving_out.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/11%20Moving%20Out%202025.pdf",
+      "revision": "11 Moving Out 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch12_evictions.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/12%20Evictions%202025.pdf",
+      "revision": "12 Evictions 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch13_taking_landlords_to_court.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/13%20Taking%20Landlords%20to%20Court%202025.pdf",
+      "revision": "13 Taking Landlords to Court 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch14_using_the_court_system.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/14%20Using%20the%20Court%20System%202025.pdf",
+      "revision": "14 Using the Court System 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch15_rooming_houses.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/15%20Rooming%20Houses%202025.pdf",
+      "revision": "15 Rooming Houses 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch16_mobile_homes.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/16%20Mobile%20Homes%202025.pdf",
+      "revision": "16 Mobile Homes 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch17_condominium_control.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-01/17%20Condos_2025_chapter.pdf",
+      "revision": "17 Condos_2025_chapter",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "ch18_foreclosures.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/18%20Foreclosures%202025.pdf",
+      "revision": "18 Foreclosures 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/chapter-pdfs-legal-tactics"
+    },
+    "appendix_01_acknowledgments.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/2.%20Acknowledgments_2025.pdf",
+      "revision": "2. Acknowledgments_2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/using-legal-tactics"
+    },
+    "booklet_1_representing_yourself.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%201%20Representing%20Yourself%202025.pdf",
+      "revision": "Booklet 1 Representing Yourself 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_10_affidavit_of_indigency.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%2010%20Affidavit-of-indigency_2025.pdf",
+      "revision": "Booklet 10 Affidavit-of-indigency_2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_11_negotiating_an_agreement.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%2011%20Negotiating%20an%20Agreement%202025.pdf",
+      "revision": "Booklet 11 Negotiating an Agreement 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_12_error_correction_booklet.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%2012%20Error%20Correction%20Booklet%202025.pdf",
+      "revision": "Booklet 12 Error Correction Booklet 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_2_housing_code_checklist.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%202%20Housing%20Code%20Checklist%202025.pdf",
+      "revision": "Booklet 2 Housing Code Checklist 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_3_answer.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-07/Booklet%203%20Answer%202024.pdf",
+      "revision": "Booklet 3 Answer 2024",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_3a_motion_for_late_answer.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%203A%20Motion%20for%20Late%20Answer%202025.pdf",
+      "revision": "Booklet 3A Motion for Late Answer 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_3_answer_instructions_and_form.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-07/Booklet%203_Answer_Instructions%20and%20Form%202025.pdf",
+      "revision": "Booklet 3_Answer_Instructions and Form 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_4_discovery.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%204%20Discovery%202024.pdf",
+      "revision": "Booklet 4 Discovery 2024",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_5_transfer.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%205%20Transfer%202025_0.pdf",
+      "revision": "Booklet 5 Transfer 2025_0",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_6_removing_default.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%206%20Removing%20Default%202025.pdf",
+      "revision": "Booklet 6 Removing Default 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_7_to_dismiss.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%207%20to%20Dismiss%202025.pdf",
+      "revision": "Booklet 7 to Dismiss 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_8a_appeals.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%208A-Appeals%202025.pdf",
+      "revision": "Booklet 8A-Appeals 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_8b_appeals.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%208B-Appeals%202025.pdf",
+      "revision": "Booklet 8B-Appeals 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "booklet_9_stay.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Booklet%209%20Stay%202025.pdf",
+      "revision": "Booklet 9 Stay 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/eviction/booklets-representing-yourself-eviction"
+    },
+    "appendix_03_directory.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-08/Directory%20Legal%20Tactics%202025%20-%20Update%208-26-2025.pdf",
+      "revision": "Directory Legal Tactics 2025 - Update 8-26-2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/using-legal-tactics"
+    },
+    "form_01_moving_in_checklist.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%201.Moving%20In%20Checklist%202025.pdf",
+      "revision": "Form 1.Moving In Checklist 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_10_repair_demand_letter.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2010.Repair%20Demand%20Ltr%202025.pdf",
+      "revision": "Form 10.Repair Demand Ltr 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_11_inspection_request_letter.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2011.Inspection%20Req%20Ltr%202025.pdf",
+      "revision": "Form 11.Inspection Req Ltr 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_12_rent_withholding_letter.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2012.Rent%20W-holdg%20Ltr%202025.pdf",
+      "revision": "Form 12.Rent W-holdg Ltr 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_13_repair_deduct_letter.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2013.RepairDeduct%20Ltr%202025.pdf",
+      "revision": "Form 13.RepairDeduct Ltr 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_14_tenant_petition.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2014.Tenant%20Petition%202025.pdf",
+      "revision": "Form 14.Tenant Petition 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_15_tro.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2015.TRO%202025.pdf",
+      "revision": "Form 15.TRO 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_16_tenant_lead_law.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2016.Tenant%20Lead%20Law%202025.pdf",
+      "revision": "Form 16.Tenant Lead Law 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_17_moving_out_checklist.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2017.Moving%20Out%20Chklst%202025.pdf",
+      "revision": "Form 17.Moving Out Chklst 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_18_lockout_demand_letter.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2018.Lockout%20Demand%20Ltr%202025.pdf",
+      "revision": "Form 18.Lockout Demand Ltr 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_19_summary_process_and_summons_complaint.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2019.Summary%20Process%20and%20Summons%20Complaint%202025.pdf",
+      "revision": "Form 19.Summary Process and Summons Complaint 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_02_sample_rent_receipt.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%202.Sample%20Rent%20Rcpt%202025.pdf",
+      "revision": "Form 2.Sample Rent Rcpt 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_20_sample_execution.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2020.Sample%20Execution%202025.pdf",
+      "revision": "Form 20.Sample Execution 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_21_tenant_survey.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2021.Tenant%20Survey%202025.pdf",
+      "revision": "Form 21.Tenant Survey 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_22_sample_collective_bargaining_agreement.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2022.Sample%20Collective%20Bargaining%20Agreement%202025.pdf",
+      "revision": "Form 22.Sample Collective Bargaining Agreement 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_23_sample_resolution.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2023.Sample%20Resolution%202025.pdf",
+      "revision": "Form 23.Sample Resolution 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_24_sample_organizing_petition.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2024.Sample%20Organizing%20Petition%202025.pdf",
+      "revision": "Form 24.Sample Organizing Petition 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_25_sample_letter_to_owner.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%2025.Sample%20Letter%20to%20Owner%202025.pdf",
+      "revision": "Form 25.Sample Letter to Owner 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_03_statement_of_condition.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%203.Statemt%20of%20Condn%202025.pdf",
+      "revision": "Form 3.Statemt of Condn 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_04_security_dep_and_last_months_rent_receipt.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%204.Security%20Dep%20%26%20Last%20Month%27s%20Rent%20Receipt%202025.pdf",
+      "revision": "Form 4.Security Dep & Last Month's Rent Receipt 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_05_security_deposit_demand_letter.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%205.Security%20Deposit%20DemandLtr%202025.pdf",
+      "revision": "Form 5.Security Deposit DemandLtr 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_06_security_deposit_demand_letter.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%206.Security%20Deposit%20DemandLtr%202025.pdf",
+      "revision": "Form 6.Security Deposit DemandLtr 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_07_illness_utility_doctor_letter.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%207.Illness-Utility-Dr_s%20Ltr%202025.pdf",
+      "revision": "Form 7.Illness-Utility-Dr_s Ltr 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_08_illness_utility_form.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%208.Illness-Utility%20Form%202025.pdf",
+      "revision": "Form 8.Illness-Utility Form 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "form_09_repair_letter.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Form%209.Repair%20Letter%202025.pdf",
+      "revision": "Form 9.Repair Letter 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/taking-your-landlord-court/housing-forms-checklists-and-letters"
+    },
+    "appendix_02_glossary.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/Glossary-2025.pdf",
+      "revision": "Glossary-2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/using-legal-tactics"
+    },
+    "handout_ch07_discrimination.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/Handout%2007%20Discrimination%202025%20v2.pdf",
+      "revision": "Handout 07 Discrimination 2025 v2",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch09_lead_poisoning.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/Handout%2009%20Lead%20Poisoning%202025%20v2.pdf",
+      "revision": "Handout 09 Lead Poisoning 2025 v2",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch10_organizing.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/Handout%2010%20Organizing%202025.pdf",
+      "revision": "Handout 10 Organizing 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch11_moving_out.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/Handout%2011%20Moving%20Out%202025.pdf",
+      "revision": "Handout 11 Moving Out 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch12_evictions.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-02/Handout%2012%20Evictions%20v2.pdf",
+      "revision": "Handout 12 Evictions v2",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch13_taking_landlord_to_court.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/Handout%2013%20Taking%20Landlord%20to%20Court%202025.pdf",
+      "revision": "Handout 13 Taking Landlord to Court 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch14_using_the_court_system.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/Handout%2014%20Using%20the%20Court%20System.pdf",
+      "revision": "Handout 14 Using the Court System",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch15_rooming_house.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/Handout%2015%20Rooming%20House%202025.pdf",
+      "revision": "Handout 15 Rooming House 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch16_mobile_homes.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/Handout%2016%20Mobile%20Homes%202025.pdf",
+      "revision": "Handout 16 Mobile Homes 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch17_condos.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-01/Handout%2017%20-%20Condos%2C%202025.pdf",
+      "revision": "Handout 17 - Condos, 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch18_foreclosures.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-03/Handout%2018%20Foreclosures.pdf",
+      "revision": "Handout 18 Foreclosures",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch01a_moving_in.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-10/Handout%201A%20Moving%20In%202025.pdf",
+      "revision": "Handout 1A Moving In 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch01b_leases.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-10/Handout%201B%20Leases%202025.pdf",
+      "revision": "Handout 1B Leases 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch02_tenant_screening.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Handout%202%20Tenant%20Screening%202025.pdf",
+      "revision": "Handout 2 Tenant Screening 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch03_security_deposits.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-10/Handout%203%20Security%20Deposits%202025.pdf",
+      "revision": "Handout 3 Security Deposits 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch04_tenancies.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-02/Handout%204%20Tenancies%20v2.pdf",
+      "revision": "Handout 4 Tenancies v2",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch05_rent.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-02/Handout%205%20Rent%202025.pdf",
+      "revision": "Handout 5 Rent 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch06_utilities.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-02/Handout%206%20Utilities%202025.pdf",
+      "revision": "Handout 6 Utilities 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    },
+    "handout_ch08_getting_repairs_made.pdf": {
+      "pdfUrl": "https://www.masslegalhelp.org/sites/default/files/2025-04/Handout%208%20Gettting%20Repairs%20Made%202025.pdf",
+      "revision": "Handout 8 Gettting Repairs Made 2025",
+      "status": "ok",
+      "pageUrl": "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/handout-pdfs-legal-tactics"
+    }
+  }
 }

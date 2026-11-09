@@ -10,17 +10,18 @@ import { pathToFileURL } from "node:url";
 // do contain commas, and a heredoc inside YAML inside $(...) is three layers of
 // quoting over data we do not control. The workflow redirects this to a file and
 // passes --body-file, so no scraped byte is ever interpolated into a shell word.
-const HELP = `Usage: node scripts/format-upstream-issue.js --status=<3|4> [options]
+const HELP = `Usage: node scripts/format-upstream-issue.js --status=<3|4|5> [options]
 
 Reads the report written by scripts/check-corpus-upstream.js and writes the
 GitHub issue body to stdout. Reads and formats only: it opens no issue, makes no
 network call, and never touches the upstream site.
 
-Only exit codes 3 and 4 file an issue. 0 means every row was confirmed against
-the live site and 1 means the checker itself broke, so both are refused here.
+Only exit codes 3, 4 and 5 file an issue: 5 is the reminder that no capture
+check has confirmed the corpus recently. 0 means the check was clean, or not
+yet due, and 1 means the checker itself broke, so both are refused here.
 
 Options:
-  --status=<3|4>      The checker's exit code: 3 changed, 4 inconclusive (required)
+  --status=<3|4|5>    The checker's exit code: 3 changed, 4 inconclusive, 5 overdue (required)
   --report=<path>     JSON report path (default: artifacts/corpus-upstream.json)
   --run-url=<url>     Workflow run to link from the issue
   --title             Print the issue title instead of the body
@@ -28,6 +29,9 @@ Options:
 
 export const CHANGED_EXIT_CODE = 3;
 export const INCONCLUSIVE_EXIT_CODE = 4;
+export const OVERDUE_EXIT_CODE = 5;
+
+const ISSUE_STATUSES = [CHANGED_EXIT_CODE, INCONCLUSIVE_EXIT_CODE, OVERDUE_EXIT_CODE];
 
 export const UPSTREAM_ISSUE_LABEL = "corpus-upstream";
 
@@ -87,9 +91,9 @@ const plural = (count, singular, many) => `${count} ${count === 1 ? singular : m
 const asArray = (value) => ( Array.isArray(value) ? value : [] );
 
 const assertStatusFilesAnIssue = (status) => {
-  if ( status !== CHANGED_EXIT_CODE && status !== INCONCLUSIVE_EXIT_CODE ) {
+  if ( !ISSUE_STATUSES.includes(status) ) {
     throw new Error(
-      `Refusing to build an issue for exit code ${JSON.stringify(status)}: only ${CHANGED_EXIT_CODE} (upstream changed) and ${INCONCLUSIVE_EXIT_CODE} (inconclusive) file one.`,
+      `Refusing to build an issue for exit code ${JSON.stringify(status)}: only ${CHANGED_EXIT_CODE} (upstream changed), ${INCONCLUSIVE_EXIT_CODE} (inconclusive) and ${OVERDUE_EXIT_CODE} (overdue) file one.`,
     );
   }
 };
@@ -106,14 +110,18 @@ const ISO_DATE_PATTERN = /^(\d{4}-\d{2}-\d{2})/;
 
 // The title is the one string that cannot be handed to gh through a file, so it
 // carries no scraped text at all -- only a date this pattern accepted.
-const checkedOn = (report) => {
-  const match = ISO_DATE_PATTERN.exec(collapse(report?.checkedAt));
-  return match ? match[1] : "unknown date";
-};
+const isoDate = (value) => ISO_DATE_PATTERN.exec(collapse(value))?.[1] ?? null;
+
+const checkedOn = (report) => isoDate(report?.checkedAt) ?? "unknown date";
 
 export const formatIssueTitle = ({ status, report }) => {
   assertStatusFilesAnIssue(status);
   assertReadableReport(report);
+
+  if ( status === OVERDUE_EXIT_CODE ) {
+    const confirmed = isoDate(report.lastConfirmedAt);
+    return `Corpus check overdue: ${confirmed ? `last confirmed ${confirmed}` : "never confirmed"}`;
+  }
 
   const suffix = `(checked ${checkedOn(report)})`;
   return status === CHANGED_EXIT_CODE
@@ -169,7 +177,7 @@ const changedProcedure = () => [
   "For the changed files:",
   "",
   `1. Open each download page above in a real browser and save the new PDF over the existing one under \`${CORPUS_PDF_DIRECTORY}/<group>/\`, keeping its current file name.`,
-  "2. `npm run corpus:check -- --write-state` from the repository root, to record the new revision and upload URL in `upstream_state.json`.",
+  "2. Capture the eight index pages again in your browser (the page list and the console snippet are in `npm run corpus:check -- --help`), then run `npm run corpus:check -- --capture=<capture file> --write-state` from the repository root, to record the new revision and upload URL in `upstream_state.json`.",
   "3. `npm run corpus:refresh -- --dry-run` to preview, then `npm run corpus:refresh` to write. The `--` separator is required: without it npm forwards nothing to the script and the preview performs a real write.",
   "4. Commit the changed PDFs, `corpus_manifest.csv` and `upstream_state.json` together.",
   "5. Run the `corpus-ingest` workflow (`workflow_dispatch`; `min_hit_rate` defaults to `0.9`). Supply the `knowledge_alias` input, or have the `RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION` secret set: the workflow refuses to start without an explicit target alias. The retrieval gate then decides whether that alias moves.",
@@ -179,16 +187,15 @@ const changedProcedure = () => [
 const unconfirmedProcedure = () => [
   "For the rows this run could not confirm:",
   "",
-  "1. Re-run `Corpus Upstream Check` from the Actions tab. A blocked page is usually transient, and a second run at another hour normally clears it.",
-  "2. If it stays blocked, run `npm run corpus:check` locally and read the report. A desktop connection is not challenged the way a datacenter one is. Leave `--write-state` off: reading needs no state write, and for a row that is still blocked locally the checker records the manifest's own `pdf_url` -- usually empty -- over the live URL an earlier successful run captured.",
-  "3. For a row with no candidate, open its group index page by hand: upstream may have renamed the PDF beyond what the matcher can join, or withdrawn it.",
+  "1. Capture the eight index pages in an ordinary browser and run `npm run corpus:check -- --capture=<capture file>` (the page list and the console snippet are in `npm run corpus:check -- --help`). Re-running this workflow or crawling locally will not clear a block: a crawl cannot get past the bot check, and `--help` says why. Leave `--write-state` off until every row is confirmed: for a row that is still blocked the checker records the manifest's own `pdf_url` -- usually empty -- over the live URL an earlier run captured.",
+  "2. For a row with no candidate, open its group index page by hand: upstream may have renamed the PDF beyond what the matcher can join, or withdrawn it.",
   "",
 ];
 
 // Two reports are the same report when they differ only in what every run
 // changes on its own: when it ran, which run it was, and whitespace. The
-// workflow uses this to avoid re-posting an identical inconclusive report every
-// Monday while a page stays blocked.
+// workflow uses this to avoid re-posting an identical inconclusive report on
+// every run while a page stays blocked.
 //
 // Whitespace has to be forgiving, and not only inside lines. The previous report
 // arrives through `gh issue view --jq .body`, which hands back one more trailing
@@ -211,9 +218,45 @@ export const isSameReport = (previous, next) => {
   return before !== "" && before === normaliseReport(next);
 };
 
+const NEVER_EVADE = `**Never** add a retry loop, a user-agent change, or anything else that defeats, solves, or evades the upstream bot check. A blocked page is reported and left to a human ${EM_DASH} that rule is why this check reports rather than downloads.`;
+
+const overdueBody = ({ report, runUrl }) => {
+  const confirmed = isoDate(report.lastConfirmedAt);
+  const limit = Number.isInteger(report.overdueAfterDays) ? `, and the limit is ${report.overdueAfterDays} days` : "";
+  const facts = [
+    `- Checked at: ${inlineCode(report.checkedAt) || EM_DASH}`,
+    `- Last confirmed: ${confirmed ? inlineCode(confirmed) : "never"}, from the committed \`upstream_state.json\`.`,
+  ];
+  if ( collapse(runUrl) !== "" ) {
+    facts.splice(1, 0, `- Workflow run: ${inlineCode(runUrl)}`);
+  }
+
+  return [
+    "## Corpus check overdue",
+    "",
+    `No capture check has confirmed the corpus ${confirmed ? `since ${confirmed}` : "yet"}${limit}. A crawl cannot get past MassLegalHelp's bot check (see \`npm run corpus:check -- --help\`), so the check runs on pages read in a browser.`,
+    "",
+    ...facts,
+    "",
+    "### Next steps",
+    "",
+    "1. Capture the eight index pages in an ordinary browser and run `npm run corpus:check -- --capture=<capture file> --write-state` (the page list and the console snippet are in `npm run corpus:check -- --help`).",
+    "2. Commit `upstream_state.json`. This reminder reads the committed copy, so a check that is not committed does not count.",
+    "3. If the check reports changed files, follow the refresh procedure in `resources/rag-corpus/mass tenant rights/CORPUS_GUIDE.md`.",
+    "",
+    "---",
+    "",
+    NEVER_EVADE,
+  ];
+};
+
 export const formatIssueBody = ({ status, report, runUrl = "" }) => {
   assertStatusFilesAnIssue(status);
   assertReadableReport(report);
+
+  if ( status === OVERDUE_EXIT_CODE ) {
+    return `${overdueBody({ report, runUrl }).join("\n")}\n`;
+  }
 
   const changed = asArray(report.changed);
   const blocked = asArray(report.blocked).map(collapse).filter(Boolean);
@@ -279,7 +322,7 @@ export const formatIssueBody = ({ status, report, runUrl = "" }) => {
   lines.push(
     "---",
     "",
-    `**Never** add a retry loop, a user-agent change, or anything else that defeats, solves, or evades the upstream bot check. A blocked page is reported and left to a human ${EM_DASH} that rule is why this check reports rather than downloads.`,
+    NEVER_EVADE,
   );
 
   return `${lines.join("\n")}\n`;
@@ -306,9 +349,9 @@ export const parseArgs = (argv) => {
       if ( argument.startsWith("--status=") ) {
         const raw = argument.slice("--status=".length);
         const status = Number.parseInt(raw, 10);
-        if ( status !== CHANGED_EXIT_CODE && status !== INCONCLUSIVE_EXIT_CODE ) {
+        if ( !ISSUE_STATUSES.includes(status) ) {
           throw new Error(
-            `--status must be the checker's exit code ${CHANGED_EXIT_CODE} (changed) or ${INCONCLUSIVE_EXIT_CODE} (inconclusive), got ${JSON.stringify(raw)}. Exit code 0 confirms every row, so it files nothing.`,
+            `--status must be the checker's exit code ${CHANGED_EXIT_CODE} (changed), ${INCONCLUSIVE_EXIT_CODE} (inconclusive) or ${OVERDUE_EXIT_CODE} (overdue), got ${JSON.stringify(raw)}. Exit code 0 files nothing.`,
           );
         }
         return { ...current, status };
@@ -329,7 +372,7 @@ export const parseArgs = (argv) => {
 
   if ( !options.help && options.status === null ) {
     throw new Error(
-      `--status is required: pass the checker's exit code, ${CHANGED_EXIT_CODE} or ${INCONCLUSIVE_EXIT_CODE}.`,
+      `--status is required: pass the checker's exit code, ${ISSUE_STATUSES.join(", ")}.`,
     );
   }
 

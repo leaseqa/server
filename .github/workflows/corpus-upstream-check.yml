@@ -1,9 +1,20 @@
 name: Corpus Upstream Check
 
-# Weekly drift check against masslegalhelp.org. It observes and reports only: it
+# Drift check against masslegalhelp.org. It observes and reports only: it
 # downloads no PDF, and it must never attempt to defeat, solve, or evade the
 # upstream bot check. A challenged page is reported as blocked and left to a
 # human.
+#
+# A crawl cannot get past MassLegalHelp's bot check (scripts/check-corpus-upstream.js
+# --help says why), so the check itself runs on pages read in a browser, with
+# --capture. Until 2026-11-09 this workflow crawled every Monday and could only
+# file the same inconclusive report while the run showed green. Now:
+#   - on the 1st of each month it reads nothing upstream and asks the committed
+#     upstream_state.json whether a check has confirmed the corpus in the last
+#     40 days; if not, it files a reminder and the run goes red;
+#   - dispatched with no input it crawls, to see whether a crawl gets through
+#     again, for instance after MassLegalHelp lets the checker in;
+#   - dispatched with overdue_after_days it runs the monthly due check.
 #
 # The corpus is committed in this repository at
 # resources/rag-corpus/mass tenant rights, so a single checkout is enough and
@@ -17,25 +28,30 @@ name: Corpus Upstream Check
 #      script's --help.
 #   3  upstream changed                                           -> file an issue
 #   4  ran but could not confirm every row (blocked page, or a row with no
-#      candidate) -> file an issue, framed as inconclusive
+#      candidate) -> file an issue, framed as inconclusive, and fail the job
+#   5  the due check found no recent confirmed check -> file a reminder, and
+#      fail the job
 #   1  the tool itself failed                                     -> fail the job
-# 4 files an issue for the same reason it exists: a run where every page was
-# challenged has observed nothing, and monitoring that stays silent after
-# observing nothing is the failure this check was built to prevent.
+# 4 and 5 file an issue for the same reason 4 exists: a run that observed
+# nothing must never pass for a clean one. They fail the job for that reason
+# too: a green run is read as "checked, all fine".
 
 on:
   schedule:
-    # Monday 13:00 UTC = 09:00 America/New_York in EDT: a weekday morning for
-    # the maintainer, and low traffic for a legal-aid nonprofit's site.
-    - cron: "0 13 * * 1"
+    - cron: "0 13 1 * *"
   workflow_dispatch:
+    inputs:
+      overdue_after_days:
+        description: "Leave empty to crawl. A number of days runs the monthly due check instead."
+        required: false
+        default: ""
 
 permissions:
   contents: read
   issues: write
 
-# A manual dispatch racing the Monday schedule would otherwise have both runs
-# find no open issue and each create one.
+# Two dispatches at once would otherwise both find no open issue and each
+# create one.
 concurrency:
   group: corpus-upstream-check
   cancel-in-progress: false
@@ -50,6 +66,8 @@ jobs:
     env:
       REPORT_PATH: artifacts/corpus-upstream.json
       UPSTREAM_ISSUE_LABEL: corpus-upstream
+      # The checker validates it; it reaches the shell only as a quoted variable.
+      OVERDUE_AFTER_DAYS: ${{ github.event_name == 'schedule' && '40' || inputs.overdue_after_days }}
     steps:
       - name: Check out server and corpus
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -64,6 +82,7 @@ jobs:
         run: npm ci
 
       - name: Install Chromium
+        if: env.OVERDUE_AFTER_DAYS == ''
         run: npx playwright install --with-deps chromium
 
       - name: Check upstream
@@ -71,7 +90,11 @@ jobs:
         shell: bash
         run: |
           set +e
-          node scripts/check-corpus-upstream.js --report="$REPORT_PATH"
+          if [ -n "$OVERDUE_AFTER_DAYS" ]; then
+            node scripts/check-corpus-upstream.js --overdue-after-days="$OVERDUE_AFTER_DAYS" --report="$REPORT_PATH"
+          else
+            node scripts/check-corpus-upstream.js --report="$REPORT_PATH"
+          fi
           status=$?
           set -e
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -88,6 +111,9 @@ jobs:
             4)
               echo "::warning::The check could not confirm every row; opening or updating the corpus issue as inconclusive."
               ;;
+            5)
+              echo "::warning::No check has confirmed the corpus within $OVERDUE_AFTER_DAYS days; commenting on the corpus issue."
+              ;;
             *)
               echo "::error::check-corpus-upstream.js failed with exit $status. No conclusion was reached about the corpus." >&2
               exit 1
@@ -102,10 +128,10 @@ jobs:
           path: ${{ env.REPORT_PATH }}
           if-no-files-found: warn
 
-      # Both 3 and 4 file an issue; the body and title differ. Scraped strings
+      # 3, 4 and 5 each file an issue; the body and title differ. Scraped strings
       # reach gh only through --body-file, never through a shell word.
       - name: Open or update the corpus upstream issue
-        if: steps.check.outputs.status == '3' || steps.check.outputs.status == '4'
+        if: steps.check.outputs.status == '3' || steps.check.outputs.status == '4' || steps.check.outputs.status == '5'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -133,8 +159,8 @@ jobs:
           existing="$(gh issue list --label "$UPSTREAM_ISSUE_LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')"
 
           if [ -n "$existing" ]; then
-            # A runner that stays blocked reports the same thing every Monday.
-            # Four identical comments bury the one run that finds real drift, so
+            # A runner that stays blocked reports the same thing on every run.
+            # Identical comments bury the one run that finds real drift, so
             # an exact repeat of the last report is dropped. Only status 4 is
             # eligible: published drift is news every single time it is seen.
             # The comparison ignores the two lines that always move, and runs
@@ -172,3 +198,9 @@ jobs:
               --label "$UPSTREAM_ISSUE_LABEL" \
               --body-file "$BODY_FILE"
           fi
+
+      - name: Fail when nothing was confirmed
+        if: steps.check.outputs.status == '4' || steps.check.outputs.status == '5'
+        run: |
+          echo "::error::Exit ${{ steps.check.outputs.status }}: this run confirmed nothing about the corpus. The corpus-upstream issue says what to do."
+          exit 1

@@ -6,35 +6,65 @@ import { chromium } from "playwright";
 import { resolveCorpusRoot } from "../LeaseQA/RAG/config.js";
 import { parseManifestCsv } from "../LeaseQA/RAG/corpusManifest.js";
 import {
+  CAPTURE_SNIPPET,
+  CHALLENGE_TEXT_LENGTH,
   GROUP_INDEX_PAGES,
   diffAgainstManifest,
-  extractPdfCandidates,
-  isChallengePage,
+  isCheckOverdue,
+  lastConfirmedCheckAt,
+  observationsFromPages,
+  parseCapture,
 } from "../LeaseQA/RAG/upstreamCheck.js";
+
+const OVERDUE_EXIT_CODE = 5;
 
 const HELP = `Usage: node scripts/check-corpus-upstream.js [options]
 
-Opens the MassLegalHelp index page for each manifest source_group in a real
-browser, reads the PDF links, and reports what changed upstream. It downloads
-nothing: a human downloads any changed PDF, then npm run corpus:refresh
-re-hashes the corpus and rewrites the manifest.
+Reads the PDF links on the MassLegalHelp index page for each manifest
+source_group and reports what changed upstream. It downloads nothing: a human
+downloads any changed PDF, then npm run corpus:refresh re-hashes the corpus and
+rewrites the manifest.
 
-Eight page loads cover all 81 rows, because the site lists each group on one
-index page. The appendix is four sub-pages; its hub carries no PDFs.
+Eight pages cover all 81 rows, because the site lists each group on one index
+page. The appendix is four sub-pages; its hub carries no PDFs:
+${Object.values(GROUP_INDEX_PAGES).flat().map((url) => `  ${url}`).join("\n")}
 
-If a page returns a bot challenge it is recorded as "blocked" and left for a
-human. This tool must never attempt to solve or evade that challenge. A group
-whose pages load but expose no PDF links at all is also recorded as "blocked":
-every hub is known to carry PDFs, so an empty one is an outage, not upstream
-deleting the whole group.
+Why it reads pages you captured: MassLegalHelp sits behind Cloudflare, which
+challenges automated browsers. A headless crawl has met a challenge on every
+page since 2026-08. A headed Chrome, tried on 2026-11-09, read the first page and
+met one on every page after it, on a GitHub runner and on a home connection
+alike. This tool must never attempt to solve or evade that challenge, so no crawl
+setting fixes it, while an ordinary browser session loads all eight pages.
+
+So run it with --capture. Open the eight pages in your browser, run this in each
+page's devtools console, and paste each result as one line of the capture file:
+
+  ${CAPTURE_SNIPPET}
+
+Without --capture it crawls in Playwright's Chromium, as the
+corpus-upstream-check workflow does when dispatched, which is how to see whether
+a crawl gets through again. In either mode a page showing a bot challenge counts
+as not read, and its group is "blocked", as is a group whose pages expose no PDF
+links at all: every hub is known to carry PDFs, so an empty one is an outage,
+not upstream deleting the whole group. The log names each page that was not
+read, so you know which to capture again.
+
+--overdue-after-days=<n> reads nothing upstream. It asks upstream_state.json
+when a run last read every group and confirmed every row, and exits 5 if that
+was more than n days ago or never. The workflow runs it on the 1st of each
+month, so commit upstream_state.json after each check.
 
 Exit codes:
   0  every manifest row still has a PDF linked on its group index page whose
-     decoded file name normalizes to the upstream_revision the manifest records
+     decoded file name normalizes to the upstream_revision the manifest records;
+     with --overdue-after-days, a recent enough check confirmed that
   3  upstream changed; the report lists what
-  4  ran, but at least one row could not be confirmed -- a blocked page, or a
+  4  ran, but at least one row could not be confirmed -- a page not read, or a
      manifest row with no matching PDF on a page that did load. Inconclusive,
-     NOT a clean run: re-run, or look at the row by hand
+     NOT a clean run: capture the pages the log names and use --capture, or
+     look at the row by hand
+  5  --overdue-after-days only: no check has confirmed the corpus within that
+     many days
   1  the tool itself failed
 
 0 is never "we saw nothing": a run that could not confirm a row exits 4. But it
@@ -53,45 +83,69 @@ Catching either needs a human reading the index pages. Neither is something a
 0 from this tool rules out.
 
 Options:
-  --corpus-root=<path>   Corpus directory (default: RAG_CORPUS_ROOT or auto-detected)
-  --report=<path>        JSON report path (default: artifacts/corpus-upstream.json)
-  --groups=<a,b>         Check only these source groups (default: all)
-  --delay-ms=<ms>        Pause between page loads (default: 4000)
-  --headed               Show the browser
-  --dump-html=<path>     Save the first page's HTML for selector inspection
-  --write-state          Update <corpus-root>/upstream_state.json
-  --help                 Show this help`;
+  --corpus-root=<path>      Corpus directory (default: RAG_CORPUS_ROOT or auto-detected)
+  --report=<path>           JSON report path (default: artifacts/corpus-upstream.json)
+  --groups=<a,b>            Check only these source groups (default: all)
+  --capture=<path>          Read pages captured in a browser instead of crawling:
+                            one JSON object per line, as the snippet above copies it
+  --write-state             Update <corpus-root>/upstream_state.json
+  --overdue-after-days=<n>  Only report whether a check is due (see above)
+  --delay-ms=<ms>           Crawl only: pause between page loads (default: 4000)
+  --headed                  Crawl only: show the browser
+  --dump-html=<path>        Crawl only: save the first page's HTML for selector inspection
+  --help                    Show this help`;
 
 const KNOWN_GROUPS = Object.keys(GROUP_INDEX_PAGES);
 
-const parseArgs = (argv) =>
-  argv.reduce(
-    (options, argument) => {
+const parsePositiveInteger = (argument, flag) => {
+  const raw = argument.slice(flag.length + 1);
+  const value = Number.parseInt(raw, 10);
+  if ( !/^\d+$/.test(raw) || value < 1 ) {
+    throw new Error(`${flag} needs a positive whole number of days, got ${argument}`);
+  }
+  return value;
+};
+
+const parseArgs = (argv) => {
+  const options = argv.reduce(
+    (current, argument) => {
       if ( argument === "--help" || argument === "-h" ) {
-        return { ...options, help: true };
+        return { ...current, help: true };
       }
       if ( argument === "--headed" ) {
-        return { ...options, headed: true };
+        return { ...current, headed: true };
       }
       if ( argument === "--write-state" ) {
-        return { ...options, writeState: true };
+        return { ...current, writeState: true };
       }
       if ( argument.startsWith("--corpus-root=") ) {
         return {
-          ...options,
+          ...current,
           corpusRoot: path.resolve(argument.slice("--corpus-root=".length)),
         };
       }
       if ( argument.startsWith("--report=") ) {
         return {
-          ...options,
+          ...current,
           reportPath: path.resolve(argument.slice("--report=".length)),
         };
       }
       if ( argument.startsWith("--dump-html=") ) {
         return {
-          ...options,
+          ...current,
           dumpHtml: path.resolve(argument.slice("--dump-html=".length)),
+        };
+      }
+      if ( argument.startsWith("--capture=") ) {
+        return {
+          ...current,
+          capturePath: path.resolve(argument.slice("--capture=".length)),
+        };
+      }
+      if ( argument.startsWith("--overdue-after-days=") ) {
+        return {
+          ...current,
+          overdueAfterDays: parsePositiveInteger(argument, "--overdue-after-days"),
         };
       }
       if ( argument.startsWith("--groups=") ) {
@@ -106,14 +160,14 @@ const parseArgs = (argv) =>
             `Unknown source group(s): ${unknown.join(", ") || "(none given)"}. Known: ${KNOWN_GROUPS.join(", ")}`,
           );
         }
-        return { ...options, groups };
+        return { ...current, groups };
       }
       if ( argument.startsWith("--delay-ms=") ) {
         const value = Number.parseInt(argument.slice("--delay-ms=".length), 10);
         if ( !Number.isFinite(value) || value < 0 ) {
           throw new Error(`--delay-ms needs a non-negative integer, got ${argument}`);
         }
-        return { ...options, delayMs: value };
+        return { ...current, delayMs: value };
       }
       // Silently ignoring a typo like --write-stat would make the operator
       // believe state was written when it was not.
@@ -128,8 +182,18 @@ const parseArgs = (argv) =>
       dumpHtml: null,
       groups: KNOWN_GROUPS,
       delayMs: 4000,
+      capturePath: null,
+      overdueAfterDays: null,
     },
   );
+
+  // The due check only reads the committed state. Accepting a capture or a state
+  // write alongside it would let an operator believe the pages were checked.
+  if ( options.overdueAfterDays !== null && (options.capturePath || options.writeState) ) {
+    throw new Error("--overdue-after-days reads upstream_state.json only; it does not combine with --capture or --write-state");
+  }
+  return options;
+};
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -142,85 +206,99 @@ const readPageAnchors = async (page) =>
 // this file stays lintable under the repo's Node-only globals.
 const readBodyText = async (page) => {
   try {
-    return (await page.$eval("body", (node) => node.innerText || "")).slice(0, 2000);
+    return (await page.$eval("body", (node) => node.innerText || "")).slice(0, CHALLENGE_TEXT_LENGTH);
   } catch {
     return "";
   }
 };
 
-// Returns the page's anchors, or null when the page could not be read. null
-// means "we do not know what is on this page", which diffAgainstManifest turns
-// into blocked rather than not_found.
-const observePage = async ({ page, url, dumpHtml }) => {
+// One page record, the shape the capture snippet writes, or null when the page
+// could not be loaded at all. Whether it shows a challenge is decided along with
+// captured records, in observationsFromPages; nothing here retries a page or
+// tries to get past a challenge.
+const crawlPage = async ({ page, url, dumpHtml }) => {
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-
-    const title = await page.title();
-    const bodyText = await readBodyText(page);
 
     if ( dumpHtml ) {
       await fs.mkdir(path.dirname(dumpHtml), { recursive: true });
       await fs.writeFile(dumpHtml, await page.content());
     }
 
-    if ( isChallengePage(title, bodyText) ) {
-      // Record and move on. No retry loop, and never an attempt to get past it.
-      console.warn(`[corpus check] ${url} returned a bot challenge; recorded as blocked`);
-      return null;
-    }
-
-    return await readPageAnchors(page);
+    return {
+      url,
+      title: await page.title(),
+      bodyText: await readBodyText(page),
+      anchors: await readPageAnchors(page),
+    };
   } catch ( error ) {
-    // One unreadable page degrades to blocked for its group; it must not abort
-    // the crawl and lose the groups already read.
-    console.warn(`[corpus check] ${url} could not be read: ${error.message}`);
+    // One page that will not load degrades to blocked for its group; it must not
+    // abort the crawl and lose the pages already read.
+    console.warn(`[corpus check] ${url} could not be loaded: ${error.message}`);
     return null;
   }
 };
 
-const observeGroup = async ({ page, group, urls, delayMs, dumpHtml }) => {
-  const anchors = [];
-  let blocked = false;
+const crawl = async ({ groups, headed, delayMs, dumpHtml }) => {
+  const urls = groups.flatMap((group) => GROUP_INDEX_PAGES[group]);
+  const browser = await chromium.launch({ headless: !headed });
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    locale: "en-US",
+  });
+  const page = await context.newPage();
+  const records = [];
 
-  for ( const [index, url] of urls.entries() ) {
-    const pageAnchors = await observePage({
-      page,
-      url,
-      dumpHtml: index === 0 ? dumpHtml : null,
-    });
-    if ( pageAnchors === null ) {
-      blocked = true;
-    } else {
-      anchors.push(...pageAnchors);
+  try {
+    for ( const [index, url] of urls.entries() ) {
+      const record = await crawlPage({ page, url, dumpHtml: index === 0 ? dumpHtml : null });
+      if ( record ) {
+        records.push(record);
+      }
+      if ( index < urls.length - 1 ) {
+        await sleep(delayMs);
+      }
     }
-    if ( index < urls.length - 1 ) {
-      await sleep(delayMs);
-    }
+  } finally {
+    await browser.close();
   }
+  return records;
+};
 
-  const candidates = extractPdfCandidates(anchors);
+const readCapture = async (filePath) => {
+  try {
+    return parseCapture(await fs.readFile(filePath, "utf8"));
+  } catch ( error ) {
+    throw new Error(`${filePath}: ${error.message}`);
+  }
+};
 
-  // Recon measured 18/19/26/19 PDFs on the four hubs, so an empty group is
-  // never healthy -- it means a challenge variant outside CHALLENGE_MARKERS, a
-  // redesign, a soft 404, or anchors rendered after domcontentloaded. Calling
-  // that "ok" would route every row in the group to not_found and present an
-  // outage as upstream having deleted the documents.
-  if ( candidates.length === 0 ) {
+const UNREAD_REASONS = {
+  missing: { capture: "is not in the capture", crawl: "was not loaded" },
+  challenge: { capture: "showed a bot challenge", crawl: "showed a bot challenge" },
+  "no link list": { capture: "has no link list in its record", crawl: "has no link list" },
+};
+
+const reportPages = ({ unread, unmatched, mode }) => {
+  for ( const { url, reason } of unread ) {
+    console.warn(`[corpus check] ${url} ${UNREAD_REASONS[reason][mode]}; its group is blocked`);
+  }
+  for ( const url of unmatched ) {
     console.warn(
-      `[corpus check] ${group}: page(s) loaded but exposed no PDF links; recorded as blocked, not as missing documents`,
+      `[corpus check] a record for ${url || "(no url)"} matches none of the eight index pages and was ignored`,
     );
   }
+};
 
-  return {
-    status: blocked || candidates.length === 0 ? "blocked" : "ok",
-    // The group's primary index page. For the multi-page appendix this is the
-    // first sub-page; diffAgainstManifest falls back to each row's own
-    // source_url, which for appendix rows is already the exact sub-page.
-    pageUrl: urls[0],
-    // One extractPdfCandidates call over the merged anchor list, so a PDF
-    // linked from two pages in the same group yields a single candidate.
-    candidates,
-  };
+const reportGroup = (group, observation) => {
+  if ( observation.candidates.length === 0 ) {
+    console.warn(
+      `[corpus check] ${group}: no PDF links read; recorded as blocked, not as missing documents`,
+    );
+  }
+  console.info(
+    `[corpus check] ${group}: ${observation.status}, ${observation.candidates.length} PDFs across ${GROUP_INDEX_PAGES[group].length} page(s)`,
+  );
 };
 
 const readJsonIfPresent = async (filePath) => {
@@ -251,6 +329,23 @@ const writeJsonSafely = async ({ filePath, value }) => {
   }
 };
 
+const checkOverdue = async ({ corpusRoot, reportPath, overdueAfterDays }) => {
+  const now = new Date();
+  const lastConfirmedAt = lastConfirmedCheckAt(
+    await readJsonIfPresent(path.join(corpusRoot, "upstream_state.json")),
+  );
+  const overdue = isCheckOverdue({ lastConfirmedAt, now, maxAgeDays: overdueAfterDays });
+
+  await writeJsonSafely({
+    filePath: reportPath,
+    value: { checkedAt: now.toISOString(), lastConfirmedAt, overdueAfterDays },
+  });
+  console.log(
+    `SUMMARY lastConfirmed=${lastConfirmedAt ?? "never"} overdueAfterDays=${overdueAfterDays} overdue=${overdue} report=${reportPath}`,
+  );
+  return overdue ? OVERDUE_EXIT_CODE : 0;
+};
+
 const main = async () => {
   const options = parseArgs(process.argv.slice(2));
   if ( options.help ) {
@@ -263,6 +358,11 @@ const main = async () => {
   // corpus, and --write-state writes upstream_state.json into whichever root
   // won. CORPUS_GUIDE.md tells the operator to stop if this is not the checkout.
   console.log(`[corpus check] corpusRoot: ${corpusRoot}`);
+
+  if ( options.overdueAfterDays !== null ) {
+    return checkOverdue({ ...options, corpusRoot });
+  }
+
   const manifestPath = path.join(corpusRoot, "corpus_manifest.csv");
   const manifestText = await fs.readFile(manifestPath, "utf8");
   if ( manifestText.trim() === "" ) {
@@ -270,7 +370,7 @@ const main = async () => {
   }
 
   // Checking a subset of groups must also narrow the rows, or every row in an
-  // uncrawled group would be reported blocked.
+  // unchecked group would be reported blocked.
   const rows = parseManifestCsv(manifestText).filter((row) =>
     options.groups.includes(row.source_group),
   );
@@ -278,38 +378,16 @@ const main = async () => {
     throw new Error(`No manifest rows for group(s): ${options.groups.join(", ")}`);
   }
 
-  const browser = await chromium.launch({ headless: !options.headed });
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 900 },
-    locale: "en-US",
+  const mode = options.capturePath ? "capture" : "crawl";
+  const records =
+    mode === "capture" ? await readCapture(options.capturePath) : await crawl(options);
+  const { observations, unread, unmatched } = observationsFromPages({
+    pages: records,
+    groups: options.groups,
   });
-  const page = await context.newPage();
-
-  const observations = {};
-  let dumpHtml = options.dumpHtml;
-
-  try {
-    for ( const [index, group] of options.groups.entries() ) {
-      const urls = GROUP_INDEX_PAGES[group];
-      observations[group] = await observeGroup({
-        page,
-        group,
-        urls,
-        delayMs: options.delayMs,
-        dumpHtml,
-      });
-      dumpHtml = null;
-
-      console.info(
-        `[corpus check] ${group}: ${observations[group].status}, ${observations[group].candidates.length} PDFs across ${urls.length} page(s)`,
-      );
-
-      if ( index < options.groups.length - 1 ) {
-        await sleep(options.delayMs);
-      }
-    }
-  } finally {
-    await browser.close();
+  reportPages({ unread, unmatched, mode });
+  for ( const group of options.groups ) {
+    reportGroup(group, observations[group]);
   }
 
   const diff = diffAgainstManifest({ rows, observations, now: new Date() });
@@ -340,7 +418,9 @@ const main = async () => {
     );
   }
   if ( diff.blocked.length > 0 ) {
-    console.warn(`BLOCKED (inconclusive, re-run later): ${diff.blocked.join(", ")}`);
+    console.warn(
+      `BLOCKED (inconclusive; capture the pages named above and use --capture): ${diff.blocked.join(", ")}`,
+    );
   }
   if ( diff.notFound.length > 0 ) {
     console.warn(`NOT FOUND (needs a human): ${diff.notFound.join(", ")}`);

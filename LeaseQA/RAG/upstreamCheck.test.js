@@ -1,13 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
 
 import {
+  CAPTURE_SNIPPET,
   CHALLENGE_MARKERS,
+  CHALLENGE_TEXT_LENGTH,
   GROUP_INDEX_PAGES,
   diffAgainstManifest,
   extractPdfCandidates,
   isChallengePage,
+  isCheckOverdue,
+  lastConfirmedCheckAt,
   matchCandidateForRow,
+  observeGroupFromPages,
+  observationsFromPages,
+  parseCapture,
 } from "./upstreamCheck.js";
 
 // Every literal below is a real value: revisions and source_urls come from
@@ -457,4 +465,161 @@ test("the diff sanitizes revisions the manifest serializer would reject", () => 
     assert.ok(!/[\r\n]/.test(value), "a line break would split a manifest row");
     assert.ok(!/[\u0000-\u001f\u007f]/.test(value), "planManifestRefresh rejects these");
   }
+});
+test("a group is ok only when every one of its pages was read and showed PDFs", () => {
+  const [pageUrl] = GROUP_INDEX_PAGES.appendix;
+  const glossary = { href: `${FILES}/2025-03/Glossary-2025.pdf`, text: "Glossary" };
+
+  const allRead = observeGroupFromPages({ pageUrl, anchorsPerPage: [[glossary], [], [glossary], []] });
+  assert.equal(allRead.status, "ok");
+  assert.equal(allRead.pageUrl, pageUrl);
+  // One PDF linked from two pages of the same group is one candidate.
+  assert.deepEqual(allRead.candidates.map((candidate) => candidate.revision), ["Glossary-2025"]);
+
+  // A page that was not read keeps the whole group blocked, so its rows can
+  // never be reported not_found on the strength of the pages that loaded.
+  assert.equal(
+    observeGroupFromPages({ pageUrl, anchorsPerPage: [[glossary], null, [], []] }).status,
+    "blocked",
+  );
+  // Every hub carries PDFs, so a group that showed none is an outage.
+  assert.equal(observeGroupFromPages({ pageUrl, anchorsPerPage: [[], [], [], []] }).status, "blocked");
+});
+
+const record = (url, anchors, overrides = {}) => ({
+  url,
+  title: "Chapter PDFs - Legal Tactics | Massachusetts Legal Help",
+  bodyText: "Chapter PDFs from Legal Tactics: Tenants' Rights",
+  anchors,
+  ...overrides,
+});
+
+test("page records are matched to index pages whatever their host prefix or trailing slash", () => {
+  const [chaptersUrl] = GROUP_INDEX_PAGES.chapters;
+
+  const { observations, unread, unmatched } = observationsFromPages({
+    pages: [record(`${chaptersUrl.replace("://www.", "://")}/`, [{ href: CH03_HREF, text: "Chapter 3" }])],
+    groups: ["chapters"],
+  });
+
+  assert.deepEqual(Object.keys(observations), ["chapters"]);
+  assert.equal(observations.chapters.status, "ok");
+  assert.deepEqual(observations.chapters.candidates.map((candidate) => candidate.href), [CH03_HREF]);
+  assert.deepEqual(unread, []);
+  assert.deepEqual(unmatched, []);
+});
+
+test("each page that was not read is named with its reason, and its group is blocked", () => {
+  const [chaptersUrl] = GROUP_INDEX_PAGES.chapters;
+  const [handoutsUrl] = GROUP_INDEX_PAGES.handouts;
+  const [formsUrl] = GROUP_INDEX_PAGES.forms;
+
+  const { observations, unread } = observationsFromPages({
+    pages: [
+      record(chaptersUrl, [{ href: CH03_HREF, text: "Chapter 3" }], {
+        title: "Just a moment...",
+        bodyText: "Checking your browser",
+      }),
+      record(handoutsUrl, "not a list"),
+    ],
+    groups: ["chapters", "handouts", "forms"],
+  });
+
+  assert.equal(observations.chapters.status, "blocked");
+  assert.deepEqual(observations.chapters.candidates, []);
+  assert.equal(observations.handouts.status, "blocked");
+  assert.equal(observations.forms.status, "blocked");
+  assert.deepEqual(unread, [
+    { url: chaptersUrl, reason: "challenge" },
+    { url: handoutsUrl, reason: "no link list" },
+    { url: formsUrl, reason: "missing" },
+  ]);
+});
+
+test("a record that belongs to no index page is reported, not silently dropped", () => {
+  const [chaptersUrl] = GROUP_INDEX_PAGES.chapters;
+  const redirected = "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights";
+
+  const { unmatched } = observationsFromPages({
+    pages: [record(chaptersUrl, [{ href: CH03_HREF, text: "Chapter 3" }]), record(redirected, [])],
+    // A record for a known index page outside the requested groups is not a
+    // mistake: the operator may have captured all eight and checked one group.
+    groups: ["handouts"],
+  });
+
+  assert.deepEqual(unmatched, [redirected]);
+});
+
+test("a capture file is one page record per line, and a bad line is named", () => {
+  const [chaptersUrl] = GROUP_INDEX_PAGES.chapters;
+  const line = JSON.stringify(record(chaptersUrl, []));
+
+  assert.deepEqual(parseCapture(`${line}\r\n\n${line}\n`).map((page) => page.url), [chaptersUrl, chaptersUrl]);
+  assert.throws(() => parseCapture(`${line}\n{"url": oops\n`), /capture line 2 is not a page record/);
+});
+
+test("the console snippet, run on an index page, writes a record the check reads", () => {
+  const [chaptersUrl] = GROUP_INDEX_PAGES.chapters;
+  let clipboard = "";
+  const page = {
+    location: { href: chaptersUrl },
+    document: {
+      title: "Chapter PDFs - Legal Tactics | Massachusetts Legal Help",
+      body: { innerText: `Chapter PDFs from Legal Tactics ${"x".repeat(2000)}` },
+      querySelectorAll: () => [
+        { href: CH03_HREF, textContent: "Chapter 3: Security Deposits" },
+        { href: "https://www.masslegalhelp.org/housing-apartments-shelter", textContent: "Housing" },
+      ],
+    },
+    copy: (text) => {
+      clipboard = text;
+    },
+  };
+
+  vm.runInNewContext(CAPTURE_SNIPPET, page);
+
+  const [captured] = parseCapture(clipboard);
+  assert.equal(captured.url, chaptersUrl);
+  assert.equal(captured.bodyText.length, CHALLENGE_TEXT_LENGTH);
+  // Only the PDF link is kept.
+  assert.deepEqual(captured.anchors, [{ href: CH03_HREF, text: "Chapter 3: Security Deposits" }]);
+  assert.equal(observationsFromPages({ pages: [captured], groups: ["chapters"] }).observations.chapters.status, "ok");
+});
+
+const fullState = (overrides = {}) => ({
+  checkedAt: "2026-11-09T11:45:20.852Z",
+  checkedGroups: ["chapters", "handouts", "forms", "booklets", "appendix"],
+  entries: {
+    "ch03_security_deposits.pdf": { status: "ok" },
+    "handout_ch03_security_deposits.pdf": { status: "ok" },
+  },
+  ...overrides,
+});
+
+test("only a run that read every group and confirmed every row counts as a confirmed check", () => {
+  assert.equal(lastConfirmedCheckAt(fullState()), "2026-11-09T11:45:20.852Z");
+
+  assert.equal(lastConfirmedCheckAt(null), null);
+  // The committed state before the first check: nothing confirmed yet.
+  assert.equal(lastConfirmedCheckAt({ checkedAt: null, entries: {} }), null);
+  // A --groups run leaves the other groups unconfirmed.
+  assert.equal(lastConfirmedCheckAt(fullState({ checkedGroups: ["chapters"] })), null);
+  // Upstream changed and the refresh is still owed, so the corpus is not current.
+  assert.equal(
+    lastConfirmedCheckAt(fullState({ entries: { "ch03_security_deposits.pdf": { status: "changed" } } })),
+    null,
+  );
+  assert.equal(
+    lastConfirmedCheckAt(fullState({ entries: { "ch03_security_deposits.pdf": { status: "blocked" } } })),
+    null,
+  );
+});
+
+test("a check is overdue once its last confirmation is older than the limit, or never happened", () => {
+  const now = new Date("2026-12-18T13:00:00.000Z");
+
+  assert.equal(isCheckOverdue({ lastConfirmedAt: "2026-11-09T11:45:20.852Z", now, maxAgeDays: 40 }), false);
+  assert.equal(isCheckOverdue({ lastConfirmedAt: "2026-11-08T11:45:20.852Z", now, maxAgeDays: 40 }), true);
+  assert.equal(isCheckOverdue({ lastConfirmedAt: null, now, maxAgeDays: 40 }), true);
+  assert.equal(isCheckOverdue({ lastConfirmedAt: "not a date", now, maxAgeDays: 40 }), true);
 });

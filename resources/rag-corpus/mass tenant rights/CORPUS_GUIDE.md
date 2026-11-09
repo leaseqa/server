@@ -88,9 +88,15 @@ walks up to parent directories if the repository has no copy. Set
 Run every command from the `leaseqa-server` repository root. Every script
 prints the `corpusRoot` it resolved — if it is not inside this checkout, stop.
 
-1. `npm run corpus:check -- --write-state` — reports which upstream documents
-   changed and records the observation in `upstream_state.json`. It never
-   downloads and never attempts to defeat the upstream bot check.
+1. Open the eight index pages in your own browser, run the console snippet from
+   `npm run corpus:check -- --help` on each, and paste each result as one line
+   of a capture file. Then `npm run corpus:check -- --capture=<capture file>
+   --write-state` reports which upstream documents changed and records the
+   observation in `upstream_state.json`. Commit that file even when nothing
+   changed: the monthly reminder in the `corpus-upstream-check` workflow reads
+   the committed copy. The check never downloads and never attempts to defeat
+   the upstream bot check; its `--help` explains why a crawl cannot replace the
+   capture.
 2. For each changed file, open the page URL from the report **in a real
    browser**, download the new PDF, and overwrite the existing file in place,
    keeping its current name.

@@ -175,6 +175,130 @@ export const matchCandidateForRow = (row, candidates, siblingRows = []) => {
   return claimedBySibling ? null : byPrefix[0];
 };
 
+// How much of a page's text is kept to recognize a challenge. Cloudflare's
+// interstitial says what it is in its first lines.
+export const CHALLENGE_TEXT_LENGTH = 500;
+
+// One page as both modes observe it: the crawl builds it in the browser it
+// drives, and a person makes it with this snippet in an ordinary browser's
+// devtools console, which copies it to the clipboard as one line of a capture
+// file. Only PDF links are kept; nothing else on the page is read.
+export const CAPTURE_SNIPPET = `copy(JSON.stringify({url: location.href, title: document.title, bodyText: document.body.innerText.slice(0, ${CHALLENGE_TEXT_LENGTH}), anchors: [...document.querySelectorAll("a[href]")].filter((a) => ${PDF_HREF_PATTERN}.test(a.href)).map((a) => ({href: a.href, text: a.textContent}))}))`;
+
+// A capture file holds one page record per line, as the snippet copies it.
+// Blank lines are allowed; anything else that is not JSON is the operator's to
+// fix, so name the line.
+export const parseCapture = (text) =>
+  String(text ?? "")
+    .split(/\r?\n/)
+    .flatMap((line, index) => {
+      if ( line.trim() === "" ) {
+        return [];
+      }
+      try {
+        return [JSON.parse(line)];
+      } catch ( error ) {
+        throw new Error(`capture line ${index + 1} is not a page record: ${error.message}`);
+      }
+    });
+
+// One group's observation from its pages, in GROUP_INDEX_PAGES order: each entry
+// is that page's anchors, or null when the page was not read. Recon measured
+// 18/19/26/19 PDFs on the four hubs, so a group that shows none is never healthy
+// -- it means a challenge variant outside CHALLENGE_MARKERS, a redesign, or a
+// soft 404. Calling that "ok" would route every row in the group to not_found
+// and present an outage as upstream having deleted the documents, so it is
+// blocked, like a group with an unread page.
+export const observeGroupFromPages = ({ pageUrl, anchorsPerPage }) => {
+  // One extractPdfCandidates call over the merged anchor list, so a PDF linked
+  // from two pages in the same group yields a single candidate.
+  const candidates = extractPdfCandidates(anchorsPerPage.flatMap((anchors) => anchors || []));
+  const unread = anchorsPerPage.some((anchors) => anchors === null);
+
+  return {
+    status: unread || candidates.length === 0 ? "blocked" : "ok",
+    // The group's primary index page. For the multi-page appendix this is the
+    // first sub-page; diffAgainstManifest falls back to each row's own
+    // source_url, which for appendix rows is already the exact sub-page.
+    pageUrl,
+    candidates,
+  };
+};
+
+const pageKey = (url) => {
+  try {
+    const { hostname, pathname } = new URL(url);
+    return `${hostname.replace(/^www\./, "")}${pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return "";
+  }
+};
+
+const unreadReason = (record) => {
+  if ( !record ) {
+    return "missing";
+  }
+  if ( isChallengePage(record.title, record.bodyText) ) {
+    return "challenge";
+  }
+  return Array.isArray(record.anchors) ? null : "no link list";
+};
+
+// Observations for the requested groups from page records, crawled or
+// captured. A page with no record, or whose record shows a challenge, is unread
+// and keeps its group blocked; the crawl never retries it and a person
+// captures it again. unread names each such page so the operator knows which,
+// and unmatched names records that belong to no index page, such as a page
+// captured after a redirect.
+export const observationsFromPages = ({ pages, groups }) => {
+  const recordByPage = new Map((pages || []).map((record) => [pageKey(record?.url), record]));
+  const unread = [];
+
+  const observations = Object.fromEntries(
+    groups.map((group) => {
+      const urls = GROUP_INDEX_PAGES[group];
+      const anchorsPerPage = urls.map((url) => {
+        const record = recordByPage.get(pageKey(url));
+        const reason = unreadReason(record);
+        if ( reason ) {
+          unread.push({ url, reason });
+          return null;
+        }
+        return record.anchors;
+      });
+      return [group, observeGroupFromPages({ pageUrl: urls[0], anchorsPerPage })];
+    }),
+  );
+
+  const indexPages = new Set(Object.values(GROUP_INDEX_PAGES).flat().map(pageKey));
+  const unmatched = (pages || [])
+    .map((record) => String(record?.url ?? ""))
+    .filter((url) => !indexPages.has(pageKey(url)));
+
+  return { observations, unread, unmatched };
+};
+
+// When a check last confirmed the whole corpus current: the checkedAt of an
+// upstream_state.json written by a run that read every group and confirmed
+// every row, or null. A --groups run, a blocked row, or an upstream change still
+// waiting for its refresh does not count.
+export const lastConfirmedCheckAt = (state) => {
+  const checkedGroups = new Set(Array.isArray(state?.checkedGroups) ? state.checkedGroups : []);
+  const entries = Object.values(state?.entries ?? {});
+  const everyGroup = Object.keys(GROUP_INDEX_PAGES).every((group) => checkedGroups.has(group));
+  const everyRowOk = entries.length > 0 && entries.every((entry) => entry?.status === "ok");
+  return everyGroup && everyRowOk && typeof state?.checkedAt === "string" ? state.checkedAt : null;
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// A crawl cannot get past the upstream bot check, so the check depends on a
+// person running it; this is what decides they are due a reminder.
+export const isCheckOverdue = ({ lastConfirmedAt, now, maxAgeDays }) => {
+  const confirmed = Date.parse(lastConfirmedAt ?? "");
+  return !Number.isFinite(confirmed) || now.getTime() - confirmed > maxAgeDays * DAY_MS;
+};
+
 // observations is keyed by source_group -- one crawled index page serves every
 // row in its group. Matching is deliberately asymmetric: the site carries PDFs
 // our corpus does not (a stray booklet on the forms page, four non-English
