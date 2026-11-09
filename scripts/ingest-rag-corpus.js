@@ -75,10 +75,10 @@ const main = async () => {
     process.env.RAG_INGEST_GATE_MIN_HIT_RATE = String(options.minHitRate);
   }
 
-  // A pre-migration copy of the corpus may still exist outside this repository.
-  // This is the command that spends the embedding budget and moves the alias,
-  // so print the root it resolved before doing either: CORPUS_GUIDE.md tells
-  // the operator to stop if it is not inside this checkout.
+  // resolveCorpusRoot() walks up to parent directories when the checkout has no
+  // corpus. This is the command that spends the embedding budget and moves the
+  // alias, so print the root it resolved before doing either: CORPUS_GUIDE.md
+  // tells the operator to stop if it is not inside this checkout.
   console.log(`[RAG ingest] corpusRoot: ${resolveCorpusRoot()}`);
 
   await mongoose.connect(process.env.DATABASE_CONNECTION_STRING);

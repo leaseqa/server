@@ -19,8 +19,8 @@ byte-identical and does not trigger a re-ingest.
 
 A write goes to a temp file and is renamed into place, and the previous good
 manifest is kept at corpus_manifest.csv.bak (overwritten each time a write
-happens). That single rolling backup is committed alongside the manifest and is
-the only backup the corpus keeps.
+happens), so a refresh can be undone before it is committed. git ignores that
+file: the repository history already holds every committed manifest.
 
 Options:
   --corpus-root=<path>  Corpus directory (default: RAG_CORPUS_ROOT or auto-detected)

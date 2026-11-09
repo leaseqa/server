@@ -88,6 +88,25 @@ const startFakeRagServer = async (t) => {
         );
         return;
       }
+      if ( message.includes("chapter handout") ) {
+        response.end(
+          JSON.stringify({
+            data: {
+              answer: "The chapter's handout supports this answer.",
+              citations: [
+                {
+                  ...knowledgeCitation("3"),
+                  citationId: "handout-3",
+                  sourceName: "handout_ch03_security_deposits.pdf",
+                  sourceGroup: "handouts",
+                  sourceType: "handout",
+                },
+              ],
+            },
+          }),
+        );
+        return;
+      }
       if ( message.includes("other source") ) {
         response.end(
           JSON.stringify({
@@ -378,6 +397,26 @@ test("a source miss costs the pass rate, not the safe rate", async (t) => {
   assert.equal(result.citationValid, true);
   assert.equal(result.contentSafe, true);
   assert.equal(result.passed, false);
+  assert.equal(result.safe, true);
+});
+
+test("an answer citing the named chapter's handout passes", async (t) => {
+  const { baseUrl } = await startFakeRagServer(t);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-handout-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const evalSetPath = await writeEvalSet(directory, "handout", [
+    { ...supportedCase, id: "cites-the-chapter-handout", question: "deposit deadline, chapter handout" },
+  ]);
+
+  const artifact = await evalRunner.runEvaluation({
+    baseUrl,
+    evalSetPath,
+    outputPath: path.join(directory, "artifact.json"),
+  });
+
+  const [result] = artifact.results;
+  assert.equal(result.expectedSourceMatched, true);
+  assert.equal(result.passed, true);
   assert.equal(result.safe, true);
 });
 

@@ -19,19 +19,11 @@ export const normalizeChunkExpectationInput = (chunk) => ({
   chapterRef: asText(chunk?.chapter_ref),
 });
 
-// A case names one source group, or a list when the passage it asks about
-// lives in more than one, such as a chapter and that chapter's handout. Chapter
-// refs and name tokens apply to whichever group matched.
-export const expectedSourceGroupsOf = (evalCase) =>
-  Array.isArray(evalCase?.expectedSourceGroup)
-    ? evalCase.expectedSourceGroup
-    : [evalCase?.expectedSourceGroup];
-
+// Whether a retrieved chunk or a cited source is the passage a case names. The
+// ingest gate and the retrieval report use this as it stands: they check that
+// the ingest made that exact passage retrievable.
 export const matchesExpectation = (evalCase, candidate) => {
-  if (
-    !candidate ||
-    !expectedSourceGroupsOf(evalCase).includes(candidate.sourceGroup)
-  ) {
+  if ( !candidate || candidate.sourceGroup !== evalCase?.expectedSourceGroup ) {
     return false;
   }
   if (
@@ -52,3 +44,13 @@ export const matchesExpectation = (evalCase, candidate) => {
   }
   return true;
 };
+
+// Whether an answer's citation meets the case. The handbook ships each chapter
+// with a handout on the same ground, and either is a sound source for a renter
+// (owner's call, 2026-11-09), so citing chapter N's handout meets a case that
+// names chapter N. Only answers get this. A handout cannot show that the ingest
+// made the chapter itself retrievable, which is what the gate asks.
+export const matchesAnswerCitation = (evalCase, citation) =>
+  matchesExpectation(evalCase, citation) ||
+  (evalCase?.expectedSourceGroup === "chapters" &&
+    matchesExpectation({ ...evalCase, expectedSourceGroup: "handouts" }, citation));

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
-  matchesExpectation,
+  matchesAnswerCitation,
   normalizeCitationExpectationInput,
   pastedSourceTextOf,
 } from "../LeaseQA/RAG/evalExpectations.js";
@@ -232,7 +232,7 @@ export const runEvalCase = async ({ baseUrl, evalCase, clock = performance }) =>
   const expectedSourceMatched = evalCase.expectAbstain
     ? abstained
     : citations.some((citation) =>
-        matchesExpectation(evalCase, normalizeCitationExpectationInput(citation)),
+        matchesAnswerCitation(evalCase, normalizeCitationExpectationInput(citation)),
       );
   const passed = evalCase.expectAbstain
     ? abstained && citationValid && contentSafe
