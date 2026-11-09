@@ -58,11 +58,6 @@ const quoteCsvValue = (value, context) => {
   return /[",]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 };
 
-export const readManifestHeader = (text) => {
-  const [headerLine = ""] = String(text ?? "").split(/\r?\n/);
-  return headerLine === "" ? [] : splitCsvLine(headerLine);
-};
-
 export const parseManifestCsv = (text) => {
   const [headerLine, ...lines] = text.split(/\r?\n/).filter(Boolean);
   const headers = splitCsvLine(headerLine);

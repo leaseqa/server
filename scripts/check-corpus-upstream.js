@@ -259,9 +259,9 @@ const main = async () => {
   }
 
   const corpusRoot = options.corpusRoot || resolveCorpusRoot();
-  // A pre-migration copy of the corpus may still exist outside this repository,
-  // and --write-state writes upstream_state.json into whichever root won.
-  // CORPUS_GUIDE.md tells the operator to stop if this is not the checkout.
+  // resolveCorpusRoot() walks up to parent directories when the checkout has no
+  // corpus, and --write-state writes upstream_state.json into whichever root
+  // won. CORPUS_GUIDE.md tells the operator to stop if this is not the checkout.
   console.log(`[corpus check] corpusRoot: ${corpusRoot}`);
   const manifestPath = path.join(corpusRoot, "corpus_manifest.csv");
   const manifestText = await fs.readFile(manifestPath, "utf8");

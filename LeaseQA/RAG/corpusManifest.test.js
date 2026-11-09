@@ -5,7 +5,6 @@ import {
   MANIFEST_COLUMNS,
   parseManifestCsv,
   planManifestRefresh,
-  readManifestHeader,
   serializeManifestCsv,
 } from "./corpusManifest.js";
 
@@ -290,12 +289,3 @@ test("trailing blank lines do not become rows", () => {
   );
 });
 
-test("readManifestHeader reads the real header, quotes and all", () => {
-  assert.deepEqual(readManifestHeader(`${HEADER}\nignored\n`), MANIFEST_COLUMNS);
-  assert.deepEqual(
-    readManifestHeader(`${HEADER}\r\nignored\r\n`),
-    MANIFEST_COLUMNS,
-  );
-  assert.deepEqual(readManifestHeader('"a,b",c\n1,2\n'), ["a,b", "c"]);
-  assert.deepEqual(readManifestHeader(""), []);
-});

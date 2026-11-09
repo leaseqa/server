@@ -21,3 +21,6 @@ server.out
 server.err
 artifacts/
 .rag-knowledge-ingest-state.json
+
+# corpus:refresh keeps the previous manifest here; git history already has it.
+resources/rag-corpus/**/corpus_manifest.csv.bak

@@ -77,18 +77,16 @@ walks up to parent directories if the repository has no copy. Set
 - Corpus root: `<leaseqa-server>/resources/rag-corpus/mass tenant rights`
 - PDF root: `<corpus root>/pdf`
 - Machine-readable index: `<corpus root>/corpus_manifest.csv`
-- Previous manifest: `<corpus root>/corpus_manifest.csv.bak` (exactly one backup,
-  rewritten by `npm run corpus:refresh` on every write)
+- Previous manifest: `<corpus root>/corpus_manifest.csv.bak` (one local backup,
+  rewritten by `npm run corpus:refresh` on every write and ignored by git,
+  which already holds every committed manifest)
 - Last upstream check: `<corpus root>/upstream_state.json` (never referenced by
   the manifest, so it is not part of `corpusVersion`)
 
 ## 5) Refresh Procedure
 
-Run every command from the `leaseqa-server` repository root. A pre-migration
-copy of this corpus may still exist outside the repository at
-`<workspace>/resources/rag-corpus` on the original development machine; it is
-redundant and is not what these commands operate on. Every script prints the
-`corpusRoot` it resolved — if it is not inside this checkout, stop.
+Run every command from the `leaseqa-server` repository root. Every script
+prints the `corpusRoot` it resolved — if it is not inside this checkout, stop.
 
 1. `npm run corpus:check -- --write-state` — reports which upstream documents
    changed and records the observation in `upstream_state.json`. It never
@@ -106,9 +104,8 @@ redundant and is not what these commands operate on. Every script prints the
    nothing to the script and performs a **real write** — overwriting
    `corpus_manifest.csv.bak` and changing `corpusVersion` while appearing to
    have previewed nothing.
-4. Commit the changed PDFs, `corpus_manifest.csv`, `corpus_manifest.csv.bak`
-   and `upstream_state.json` together, with the upstream revision strings in
-   the message.
+4. Commit the changed PDFs, `corpus_manifest.csv` and `upstream_state.json`
+   together, with the upstream revision strings in the message.
 5. Ingest: run the `corpus-ingest` workflow, or `npm run ingest:rag` locally.
    The retrieval gate decides whether the knowledge alias is repointed; a
    failing gate leaves the run in `staging` and does not move the alias.

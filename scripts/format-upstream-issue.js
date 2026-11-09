@@ -171,7 +171,7 @@ const changedProcedure = () => [
   `1. Open each download page above in a real browser and save the new PDF over the existing one under \`${CORPUS_PDF_DIRECTORY}/<group>/\`, keeping its current file name.`,
   "2. `npm run corpus:check -- --write-state` from the repository root, to record the new revision and upload URL in `upstream_state.json`.",
   "3. `npm run corpus:refresh -- --dry-run` to preview, then `npm run corpus:refresh` to write. The `--` separator is required: without it npm forwards nothing to the script and the preview performs a real write.",
-  "4. Commit the changed PDFs, `corpus_manifest.csv`, `corpus_manifest.csv.bak` and `upstream_state.json` together.",
+  "4. Commit the changed PDFs, `corpus_manifest.csv` and `upstream_state.json` together.",
   "5. Run the `corpus-ingest` workflow (`workflow_dispatch`; `min_hit_rate` defaults to `0.9`). Supply the `knowledge_alias` input, or have the `RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION` secret set: the workflow refuses to start without an explicit target alias. The retrieval gate then decides whether that alias moves.",
   "",
 ];
