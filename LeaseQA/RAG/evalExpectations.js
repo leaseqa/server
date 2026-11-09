@@ -19,8 +19,19 @@ export const normalizeChunkExpectationInput = (chunk) => ({
   chapterRef: asText(chunk?.chapter_ref),
 });
 
+// A case names one source group, or a list when the passage it asks about
+// lives in more than one, such as a chapter and that chapter's handout. Chapter
+// refs and name tokens apply to whichever group matched.
+export const expectedSourceGroupsOf = (evalCase) =>
+  Array.isArray(evalCase?.expectedSourceGroup)
+    ? evalCase.expectedSourceGroup
+    : [evalCase?.expectedSourceGroup];
+
 export const matchesExpectation = (evalCase, candidate) => {
-  if ( !candidate || candidate.sourceGroup !== evalCase.expectedSourceGroup ) {
+  if (
+    !candidate ||
+    !expectedSourceGroupsOf(evalCase).includes(candidate.sourceGroup)
+  ) {
     return false;
   }
   if (

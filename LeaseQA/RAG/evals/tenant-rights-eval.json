@@ -281,7 +281,10 @@
     "category": "clause-review",
     "sourceText": "Security Deposit. Tenant will pay a security deposit of $3,600, equal to two months of rent at $1,800 per month, before moving in. When Tenant moves out, Landlord will keep $350 of the deposit as a non-refundable cleaning fee.",
     "question": "Explain this clause in plain language, say whether it appears legal under the tenant-rights handbook, and flag any tenant risks or missing details.",
-    "expectedSourceGroup": "chapters",
+    "expectedSourceGroup": [
+      "chapters",
+      "handouts"
+    ],
     "expectedChapterRefs": [
       "3"
     ]

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  expectedSourceGroupsOf,
   matchesExpectation,
   normalizeChunkExpectationInput,
   normalizeCitationExpectationInput,
@@ -115,11 +116,34 @@ test("a group-only expectation matches any chunk in that group", () => {
   );
 });
 
+test("a list of source groups matches any of them, with the same chapter refs", () => {
+  const evalCase = {
+    expectedSourceGroup: ["chapters", "handouts"],
+    expectedChapterRefs: ["3"],
+  };
+  const matches = (chunk) =>
+    matchesExpectation(evalCase, normalizeChunkExpectationInput(chunk));
+
+  assert.equal(matches({ source_group: "chapters", chapter_ref: "3" }), true);
+  assert.equal(matches({ source_group: "handouts", chapter_ref: "3" }), true);
+  assert.equal(matches({ source_group: "handouts", chapter_ref: "12" }), false);
+  assert.equal(matches({ source_group: "forms", chapter_ref: "3" }), false);
+});
+
 test("every non-abstaining eval case declares an expected source group", async () => {
   const cases = JSON.parse(await readFile(evalSetPath, "utf8"));
 
   const missing = cases
-    .filter((evalCase) => !evalCase.expectAbstain && !evalCase.expectedSourceGroup)
+    .filter((evalCase) => {
+      if ( evalCase.expectAbstain ) {
+        return false;
+      }
+      const groups = expectedSourceGroupsOf(evalCase);
+      return (
+        groups.length === 0 ||
+        !groups.every((group) => typeof group === "string" && group.length > 0)
+      );
+    })
     .map((evalCase) => evalCase.id);
 
   assert.deepEqual(missing, []);

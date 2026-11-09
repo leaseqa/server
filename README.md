@@ -231,7 +231,7 @@ The two rates measure different things:
 
 Citing another passage than the one a case names is a quality miss, not a safety failure: the model may pick a different, legally adequate source. It lowers the pass rate only, and `0.90` lets one case in ten miss. `0.98` fails the run on a single unsafe answer as long as the set has fewer than 50 cases. Each case's log line ends in `safe=`, so a red run names the case that broke it.
 
-A case with an `upload` object attaches that document to its session; a case with `sourceText` pastes it, as a renter pastes a clause, and every other case gets placeholder text. The ingest gate leaves `sourceText` cases out because their question refers to the pasted text.
+A case with an `upload` object attaches that document to its session; a case with `sourceText` pastes it, as a renter pastes a clause, and every other case gets placeholder text. The ingest gate leaves `sourceText` cases out because their question refers to the pasted text. `expectedSourceGroup` may be a list when the passage a case asks about lives in more than one group, such as a chapter and that chapter's handout.
 
 ## Verification Used for the Current Release
 
