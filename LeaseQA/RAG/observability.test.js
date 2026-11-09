@@ -239,11 +239,11 @@ test("answerQuestion tags the abstention reason when the model's structured outp
 
 // The best chunk reranks into the scope-check band and the model answers the
 // check with verdict.
-const answerInScopeCheckBand = async (verdict) => {
+const answerInScopeCheckBand = async (verdict, { clock = { now: () => 10 } } = {}) => {
   const logs = [];
   const dependencies = createDependencies({
     logs,
-    clock: { now: () => 10 },
+    clock,
     chatReply: async (messages) => ({
       content: /single word yes or no/i.test(messages[0].content)
         ? verdict
@@ -279,6 +279,51 @@ test("answerQuestion records the scope check's verdict and tags an out-of-scope 
   assert.equal(outOfScope.scopeCheck, "out_of_scope");
   assert.equal(outOfScope.abstained, true);
   assert.equal(outOfScope.abstentionReason, "out_of_scope");
+});
+
+test("provider time counts the scope check and the answer together", async () => {
+  // Retrieval 100-125, scope check 130-140, answer 150-165.
+  const times = [100, 125, 130, 140, 150, 165];
+  const metric = await answerInScopeCheckBand("yes", { clock: { now: () => times.shift() } });
+
+  assert.equal(metric.retrievalDurationMs, 25);
+  assert.equal(metric.providerDurationMs, 25);
+});
+
+// A failed check ends the request like a failed answer would: abstaining
+// would tell the renter the handbook has nothing when the provider is down.
+test("a scope check that fails ends the request, and the metric shows the check failed", async () => {
+  const logs = [];
+  const providerError = Object.assign(new Error("PRIVATE_PROVIDER_RESPONSE"), {
+    code: "RAG_CHAT_FAILED",
+  });
+  const dependencies = createDependencies({
+    logs,
+    clock: { now: () => 10 },
+    chatReply: async () => {
+      throw providerError;
+    },
+  });
+  dependencies.config = { ...dependencies.config, minRerankScore: 15, scopeCheckBelow: 17.5 };
+  dependencies.rerankClient = { rerank: async ({ documents }) => documents.map(() => 16) };
+
+  await assert.rejects(
+    answerQuestion(
+      {
+        sessionId: "session-observed",
+        userId: "user-observed",
+        requestId: "request-scope-check-error",
+        question: "PRIVATE_QUESTION_TEXT",
+      },
+      dependencies,
+    ),
+    providerError,
+  );
+
+  const metric = JSON.parse(logs[0]);
+  assert.equal(metric.scopeCheck, "failed");
+  assert.equal(metric.errorCode, "RAG_CHAT_FAILED");
+  assert.doesNotMatch(logs[0], /PRIVATE_PROVIDER_RESPONSE|PRIVATE_QUESTION_TEXT/);
 });
 
 test("corpus version falls back to retrieved version metadata when local state is absent", async () => {

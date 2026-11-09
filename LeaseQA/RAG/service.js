@@ -892,8 +892,11 @@ export const answerQuestion = async ({
   // score as well as an answerable one, so the model first says whether it is
   // about renting at all. It reads what the reranker read: the retrieval
   // question, which carries a follow-up's earlier turn and a clause
-  // question's document.
+  // question's document. A failed check fails the request like a failed
+  // answer: abstaining would tell the renter the handbook has nothing.
   if ( needsScopeCheck({ ranking, config }) ) {
+    // What the error metric shows if the call throws.
+    scopeCheck = "failed";
     providerStartedAt = clock.now();
     const verdict = await streamChatModel({
       config,

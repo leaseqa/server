@@ -1030,5 +1030,12 @@
     "category": "out-of-scope",
     "question": "A debt collector keeps calling me about an old credit card. What are my rights?",
     "expectAbstain": true
+  },
+  {
+    "id": "oos-tax-with-lease",
+    "category": "out-of-scope",
+    "sourceText": "Rent. Tenant will pay rent of $1,800 per month, due on the first day of each month, by check or bank transfer to Landlord. The term of this lease is twelve months.",
+    "question": "Can I deduct the rent in this lease on my income taxes?",
+    "expectAbstain": true
   }
 ]

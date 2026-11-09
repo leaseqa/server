@@ -183,7 +183,13 @@ const printSummary = (results, config) => {
   const answerable = results.filter((result) => !result.expectAbstain);
   const abstaining = results.filter((result) => result.expectAbstain);
   const outOfScope = abstaining.filter((result) => result.category === OUT_OF_SCOPE);
-  const hasBand = Number.isFinite(config.scopeCheckBelow) && config.scopeCheckBelow > config.minRerankScore;
+  // The scope check runs only on a reranked list. A case that fell back to the
+  // fused order has no band, and its score is on another scale.
+  const fusedOrder = results.filter((result) => result.rankedBy !== "rerank");
+  const hasBand =
+    fusedOrder.length === 0 &&
+    Number.isFinite(config.scopeCheckBelow) &&
+    config.scopeCheckBelow > config.minRerankScore;
   // Without a band the floor alone has to stop the out-of-scope questions too.
   const floorOnly = hasBand ? abstaining.filter((result) => result.category !== OUT_OF_SCOPE) : abstaining;
   const count = (items, key) => items.filter((item) => item[key]).length;
@@ -202,6 +208,9 @@ const printSummary = (results, config) => {
     `RAG_MIN_RERANK_SCORE=${config.minRerankScore}  RAG_SCOPE_CHECK_BELOW=${hasBand ? config.scopeCheckBelow : "off"}` +
       `  RAG_CANDIDATES_PER_GROUP=${config.candidatesPerGroup}  RAG_EVIDENCE_LIMIT=${config.evidenceLimit}`,
   );
+  if ( fusedOrder.length > 0 ) {
+    console.log(`fused order, so no scope check and fused scores in the windows: ${ids(fusedOrder)}`);
+  }
   console.log(
     `answerable: expected source reaches the model in ${count(answerable, "reachesModel")}/${answerable.length}` +
       ` (fused order without rerank: ${count(answerable, "reachesModelWithoutRerank")}/${answerable.length})`,

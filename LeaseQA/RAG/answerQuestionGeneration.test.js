@@ -380,9 +380,9 @@ test("a draft that never reached anyone does not block the retry", async () => {
 
 // Every knowledge chunk reranks at score, and the chat model answers the scope
 // check with verdict before streaming answerText for the answer itself.
-const bandDependencies = ({ score, verdict, answerText = ANSWER_JSON }) => {
+const bandDependencies = ({ score, verdict, answerText = ANSWER_JSON, session }) => {
   const calls = [];
-  const base = createStreamingDependencies();
+  const base = createStreamingDependencies({ session });
   return {
     calls,
     dependencies: {
@@ -400,13 +400,17 @@ const bandDependencies = ({ score, verdict, answerText = ANSWER_JSON }) => {
   };
 };
 
-const askInBand = (dependencies, events = []) =>
+const askInBand = (
+  dependencies,
+  events = [],
+  question = "My heat has been broken for a week. Do I still have to pay my full rent?",
+) =>
   answerQuestion(
     {
       sessionId: "session-stream",
       userId: "user-1",
       clientSessionId: null,
-      question: "My heat has been broken for a week. Do I still have to pay my full rent?",
+      question,
       onEvent: (event, data) => events.push([event, data]),
     },
     dependencies,
@@ -444,4 +448,22 @@ test("a best score at or above the band is answered without a scope check", asyn
   assert.equal(calls.length, 1);
   assert.doesNotMatch(calls[0][0].content, /single word yes or no/i);
   assert.equal(result.citations.length, 1);
+});
+
+test("the scope check reads a follow-up with the question before it, as the reranker does", async () => {
+  const session = {
+    ...STREAM_SESSION,
+    messages: [
+      { role: "user", content: "My landlord kept my whole deposit after I moved out." },
+      { role: "assistant", content: "Your landlord must return it within 30 days." },
+    ],
+  };
+  const { calls, dependencies } = bandDependencies({ score: 16, verdict: "yes", session });
+
+  await askInBand(dependencies, [], "Is that legal?");
+
+  // "Is that legal?" alone names no topic; with its earlier turn it is plainly
+  // about a deposit.
+  assert.match(calls[0][1].content, /Is that legal\?/);
+  assert.match(calls[0][1].content, /kept my whole deposit/);
 });

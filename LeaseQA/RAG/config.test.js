@@ -416,3 +416,28 @@ test("corpus root tests the filesystem root exactly once and terminates", () => 
     "every ancestor including the filesystem root is tested, each exactly once",
   );
 });
+
+test("zhipu's scope-check band comes from the preset unless RAG_SCOPE_CHECK_BELOW moves it or turns it off", () => {
+  const zhipu = {
+    RAG_MILVUS_ADDRESS: "https://milvus.example.com",
+    RAG_PROVIDER: "zhipu",
+    ZHIPU_API_KEY: "zhipu-key",
+    RAG_MIN_RERANK_SCORE: undefined,
+    RAG_SCOPE_CHECK_BELOW: undefined,
+  };
+  withEnv(zhipu, () => {
+    const config = getRagConfig();
+    assert.equal(config.minRerankScore, 15.1);
+    assert.equal(config.scopeCheckBelow, 17.5);
+  });
+  withEnv({ ...zhipu, RAG_SCOPE_CHECK_BELOW: "18" }, () => {
+    assert.equal(getRagConfig().scopeCheckBelow, 18);
+  });
+  withEnv({ ...zhipu, RAG_SCOPE_CHECK_BELOW: "off" }, () => {
+    assert.equal(getRagConfig().scopeCheckBelow, null);
+  });
+  // No preset band on another provider's scale.
+  withEnv({ ...zhipu, RAG_PROVIDER: "dashscope", DASHSCOPE_API_KEY: "dashscope-key" }, () => {
+    assert.equal(getRagConfig().scopeCheckBelow, null);
+  });
+});
