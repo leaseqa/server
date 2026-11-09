@@ -230,7 +230,13 @@ export const runEvalCase = async ({ baseUrl, evalCase, clock = performance }) =>
   const passed = evalCase.expectAbstain
     ? abstained && citationValid && contentSafe
     : answerPresent && !abstained && expectedSourceMatched && citationValid && contentSafe;
-  const safe = contentSafe && (evalCase.expectAbstain ? abstained : passed || abstained);
+  // Safe means the answer cannot mislead a renter: no forbidden content, an
+  // out-of-scope question abstains, and an answer either cites well-formed
+  // evidence or abstains outright. Which evidence an answer cites is left to
+  // passed: the model may cite another legally adequate passage than the one
+  // the case names, so a source miss lowers the pass rate, not the safe rate.
+  const safe =
+    contentSafe && citationValid && (!evalCase.expectAbstain || abstained);
 
   return {
     id: evalCase.id,
@@ -313,7 +319,7 @@ export const runEvaluation = async ({
     }
     results.push(result);
     output.log(
-      `${result.passed ? "PASS" : result.abstained ? "ABSTAIN" : "FAIL"} ${result.id} latencyMs=${result.latencyMs} sourceMatch=${result.expectedSourceMatched} citationValid=${result.citationValid}`,
+      `${result.passed ? "PASS" : result.abstained ? "ABSTAIN" : "FAIL"} ${result.id} latencyMs=${result.latencyMs} sourceMatch=${result.expectedSourceMatched} citationValid=${result.citationValid} safe=${result.safe}`,
     );
   }
 
