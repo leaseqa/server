@@ -278,3 +278,22 @@ test("a best score from the floor up to the scope-check bound asks for a scope c
     false,
   );
 });
+
+test("the band is judged on the handbook's best chunk, since the renter's own text matches whatever they ask about it", () => {
+  const band = { ...config, minRerankScore: 15, scopeCheckBelow: 17.5 };
+  const ranked = (...chunks) => ({ rankedBy: "rerank", chunks });
+  const upload = (score) => chunk("lease", { source_group: "upload", rerank_score: score });
+  const handbook = (score) => chunk("ch08", { rerank_score: score });
+
+  // A tax question about "this lease": the lease tops the list, the handbook does not.
+  assert.equal(needsScopeCheck({ ranking: ranked(upload(18.4), handbook(16.75)), config: band }), true);
+  assert.equal(needsScopeCheck({ ranking: ranked(upload(18.4), handbook(18)), config: band }), false);
+  // Only the renter's text clears the floor, so only the check can say it is in scope.
+  assert.equal(needsScopeCheck({ ranking: ranked(upload(16), handbook(12)), config: band }), true);
+  assert.equal(
+    needsScopeCheck({ ranking: ranked(chunk("pasted", { source_group: "text", rerank_score: 19 })), config: band }),
+    true,
+  );
+  // Nothing clears the floor: the answer abstains without asking.
+  assert.equal(needsScopeCheck({ ranking: ranked(upload(14), handbook(13)), config: band }), false);
+});

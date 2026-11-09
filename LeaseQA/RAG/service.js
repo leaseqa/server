@@ -888,9 +888,9 @@ export const answerQuestion = async ({
     .join("\n");
 
   const evidence = selectEvidence({ ranking, config });
-  // From the floor up to RAG_SCOPE_CHECK_BELOW an out-of-scope question can
-  // score as well as an answerable one, so the model first says whether it is
-  // about renting at all. It reads what the reranker read: the retrieval
+  // While the handbook's best chunk scores below RAG_SCOPE_CHECK_BELOW an
+  // out-of-scope question can score as well as an answerable one, so the model
+  // first says whether it is about renting at all. It reads what the reranker read: the retrieval
   // question, which carries a follow-up's earlier turn and a clause
   // question's document. A failed check fails the request like a failed
   // answer: abstaining would tell the renter the handbook has nothing.

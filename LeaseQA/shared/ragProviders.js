@@ -22,14 +22,16 @@ export const ZHIPU_DEFAULT_RERANK_MODEL = "rerank";
 // BigModel's normalized relevance_score is the sigmoid of a logit that runs
 // from about 8 to 23 on this corpus, so every candidate scores 0.9993 or more
 // and they tie. The raw logit keeps the order, so zhipu ranks and abstains on
-// it. Both bounds come from scripts/report-rag-retrieval.js on the 61-case
+// it. Both bounds come from scripts/report-rag-retrieval.js on the 62-case
 // eval set (2026-11-09, 20 candidates per group). The best chunk scored
 // 15.3-23.6 for answerable questions, 11.8-16.2 for out-of-scope ones and 14.9
 // for the tenant question the handbook cannot support, so no single floor
 // separates them. Below the floor, midway between 14.9 and 15.3, the answer
-// abstains. From the floor up to the bound, which clears the strongest
-// out-of-scope score by more than a point, the chat model first says whether
-// the question is about renting in Massachusetts at all.
+// abstains. Above it, while the best handbook chunk scores below the bound,
+// the chat model first says whether the question is about renting in
+// Massachusetts at all. The bound clears every out-of-scope question's best
+// handbook score, at most 16.8 (a tax question about a pasted lease, whose
+// lease itself scored 18.4).
 export const ZHIPU_DEFAULT_MIN_RERANK_SCORE = 15.1;
 export const ZHIPU_DEFAULT_SCOPE_CHECK_BELOW = 17.5;
 

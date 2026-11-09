@@ -10,6 +10,7 @@ import {
 } from "../LeaseQA/RAG/evalExpectations.js";
 import { createRerankClient } from "../LeaseQA/RAG/rerank.js";
 import {
+  bestHandbookScore,
   buildRetrievalQuestion,
   needsScopeCheck,
   rankEvidence,
@@ -31,7 +32,8 @@ import {
 // bounds belong. RAG_MIN_RERANK_SCORE goes at or below every answerable case's
 // best score and above every other case that must abstain, since the scope
 // check stops only out-of-scope questions. RAG_SCOPE_CHECK_BELOW goes above
-// every out-of-scope case's best score. Retrieval only: no server, no
+// every out-of-scope case's best handbook score, which is what the serving
+// path holds it against. Retrieval only: no server, no
 // database, no chat model, so a case in the band is reported as the scope
 // check's to decide; the live eval runs the check itself.
 
@@ -144,6 +146,9 @@ export const reportCase = async ({ evalCase, config, embeddings, rerankClient })
     rerankFailure,
     candidates: chunks.length,
     bestScore: scores[0] ?? null,
+    // What the scope-check bound is held against: the best chunk may be the
+    // case's own upload or pasted text.
+    handbookScore: ranking.rankedBy === "rerank" ? bestHandbookScore(ranking) : null,
     lowestScore: scores.length ? Math.min(...scores) : null,
     expectedRank,
     expectedScore: expectedRank >= 0 ? scores[expectedRank] : null,
@@ -168,6 +173,9 @@ const printCase = (result) => {
       (result.gate === "scope check" ? " after the scope check" : "");
   console.log(
     `${result.id}  best ${formatScore(result.bestScore)}` +
+      (result.handbookScore !== null && result.handbookScore !== result.bestScore
+        ? `, handbook ${formatScore(result.handbookScore)}`
+        : "") +
       ` (lowest ${formatScore(result.lowestScore)} of ${result.candidates})  ${outcome}` +
       `  [fused order: ${result.reachesModelWithoutRerank ? "ok" : "miss"}]` +
       (result.rankedBy === "rerank" ? "" : `  RERANK UNAVAILABLE ${result.rerankFailure || ""}`),
@@ -201,7 +209,10 @@ const printSummary = (results, config) => {
       .sort((left, right) => left.bestScore - right.bestScore);
   const weakestAnswerable = byBest(answerable)[0];
   const strongestFloorOnly = byBest(floorOnly).at(-1);
-  const strongestOutOfScope = byBest(outOfScope).at(-1);
+  const strongestOutOfScope = [...outOfScope]
+    .filter((item) => Number.isFinite(item.handbookScore))
+    .sort((left, right) => left.handbookScore - right.handbookScore)
+    .at(-1);
 
   console.log("");
   console.log(
@@ -237,9 +248,10 @@ const printSummary = (results, config) => {
     );
   }
   if ( hasBand && strongestOutOfScope ) {
-    const clears = config.scopeCheckBelow > strongestOutOfScope.bestScore;
+    const clears = config.scopeCheckBelow > strongestOutOfScope.handbookScore;
     console.log(
-      `scope-check bound: above ${formatScore(strongestOutOfScope.bestScore)} (${strongestOutOfScope.id})` +
+      `scope-check bound on the handbook's best score: above ${formatScore(strongestOutOfScope.handbookScore)}` +
+        ` (${strongestOutOfScope.id})` +
         (clears ? "" : `  -- ${config.scopeCheckBelow} DOES NOT CLEAR IT, SO IT IS ANSWERED`),
     );
   }

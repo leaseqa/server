@@ -467,3 +467,40 @@ test("the scope check reads a follow-up with the question before it, as the rera
   assert.match(calls[0][1].content, /Is that legal\?/);
   assert.match(calls[0][1].content, /kept my whole deposit/);
 });
+
+test("a question that only the renter's own lease matches well is checked before it is answered", async () => {
+  const lease = "Rent. Tenant will pay rent of $1,800 per month.";
+  const { calls, dependencies } = bandDependencies({
+    score: 16.7,
+    verdict: "no",
+    session: { ...STREAM_SESSION, sourceTextPreview: lease },
+  });
+  const handbook = await dependencies.searchHybridChunks({ collectionName: "knowledge_chunks" });
+  dependencies.searchHybridChunks = async ({ collectionName }) =>
+    collectionName === "session_chunks"
+      ? [
+          {
+            id: "session-lease",
+            source_name: "pasted-text",
+            source_group: "text",
+            source_type: "session",
+            chapter_ref: "",
+            file_path: "",
+            source_url: "",
+            text: lease,
+            score: 0.03,
+          },
+        ]
+      : handbook;
+  // The question names "this lease", so the lease itself outscores the band.
+  dependencies.rerankClient = {
+    rerank: async ({ documents }) => documents.map((document) => (document.includes(lease) ? 18.4 : 16.7)),
+  };
+
+  const result = await askInBand(dependencies, [], "Can I deduct the rent in this lease on my income taxes?");
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0][0].content, /single word yes or no/i);
+  assert.deepEqual(result.citations, []);
+  assert.match(result.answer, /could not find enough support/i);
+});

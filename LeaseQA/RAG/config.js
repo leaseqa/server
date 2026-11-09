@@ -153,9 +153,10 @@ export const getRagConfig = () => {
       process.env.RAG_MIN_RERANK_SCORE,
       rerank.minScore,
     ),
-    // A best score from the floor up to this bound is answered only if the
-    // chat model judges the question in scope; below the floor the answer
-    // abstains without asking. "off" turns the check off.
+    // Evidence that clears the floor while the handbook's best chunk scores
+    // below this bound is answered only if the chat model judges the question
+    // in scope; below the floor the answer abstains without asking. "off"
+    // turns the check off.
     scopeCheckBelow:
       process.env.RAG_SCOPE_CHECK_BELOW === "off"
         ? null
