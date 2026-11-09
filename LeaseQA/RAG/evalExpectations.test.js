@@ -5,12 +5,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  expectedSourceGroupsOf,
+  matchesAnswerCitation,
   matchesExpectation,
   normalizeChunkExpectationInput,
   normalizeCitationExpectationInput,
   pastedSourceTextOf,
 } from "./evalExpectations.js";
+import { KNOWLEDGE_SOURCE_GROUPS } from "./retrievalPolicy.js";
 
 const evalSetPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -116,37 +117,52 @@ test("a group-only expectation matches any chunk in that group", () => {
   );
 });
 
-test("a list of source groups matches any of them, with the same chapter refs", () => {
-  const evalCase = {
-    expectedSourceGroup: ["chapters", "handouts"],
-    expectedChapterRefs: ["3"],
-  };
-  const matches = (chunk) =>
-    matchesExpectation(evalCase, normalizeChunkExpectationInput(chunk));
+const citation = (sourceGroup, chapterRef, sourceName = "") =>
+  normalizeCitationExpectationInput({ sourceGroup, chapterRef, sourceName });
 
-  assert.equal(matches({ source_group: "chapters", chapter_ref: "3" }), true);
-  assert.equal(matches({ source_group: "handouts", chapter_ref: "3" }), true);
-  assert.equal(matches({ source_group: "handouts", chapter_ref: "12" }), false);
-  assert.equal(matches({ source_group: "forms", chapter_ref: "3" }), false);
+test("an answer citing a chapter's handout meets a case that names the chapter", () => {
+  const evalCase = { expectedSourceGroup: "chapters", expectedChapterRefs: ["12"] };
+
+  assert.equal(matchesAnswerCitation(evalCase, citation("chapters", "12")), true);
+  assert.equal(matchesAnswerCitation(evalCase, citation("handouts", "12")), true);
+  // Another chapter's handout is still the wrong passage.
+  assert.equal(matchesAnswerCitation(evalCase, citation("handouts", "3")), false);
+  assert.equal(matchesAnswerCitation(evalCase, citation("upload", "")), false);
 });
 
-test("every non-abstaining eval case declares an expected source group", async () => {
-  const cases = JSON.parse(await readFile(evalSetPath, "utf8"));
+test("the ingest gate's matcher still wants the chapter itself", () => {
+  const evalCase = { expectedSourceGroup: "chapters", expectedChapterRefs: ["12"] };
 
-  const missing = cases
-    .filter((evalCase) => {
-      if ( evalCase.expectAbstain ) {
-        return false;
-      }
-      const groups = expectedSourceGroupsOf(evalCase);
-      return (
-        groups.length === 0 ||
-        !groups.every((group) => typeof group === "string" && group.length > 0)
-      );
-    })
+  // The gate checks that the ingest made chapter 12 retrievable, and chapter
+  // 12's handout cannot stand in for that.
+  assert.equal(matchesExpectation(evalCase, citation("handouts", "12")), false);
+  assert.equal(matchesExpectation(evalCase, citation("chapters", "12")), true);
+});
+
+test("a handout never stands in for a form, a booklet or the renter's own document", () => {
+  const handout = citation("handouts", "8", "handout_ch08_getting_repairs_made.pdf");
+
+  assert.equal(
+    matchesAnswerCitation(
+      { expectedSourceGroup: "forms", expectedSourceNameIncludes: ["repair_demand_letter"] },
+      handout,
+    ),
+    false,
+  );
+  assert.equal(matchesAnswerCitation({ expectedSourceGroup: "booklets" }, handout), false);
+  assert.equal(matchesAnswerCitation({ expectedSourceGroup: "upload" }, handout), false);
+});
+
+test("every non-abstaining eval case names a source group a citation can have", async () => {
+  const cases = JSON.parse(await readFile(evalSetPath, "utf8"));
+  const known = new Set([...KNOWLEDGE_SOURCE_GROUPS, "upload", "text"]);
+
+  const unknown = cases
+    .filter((evalCase) => !evalCase.expectAbstain)
+    .filter((evalCase) => !known.has(evalCase.expectedSourceGroup))
     .map((evalCase) => evalCase.id);
 
-  assert.deepEqual(missing, []);
+  assert.deepEqual(unknown, []);
 });
 
 test("only non-blank pasted text counts as a case's own source text", () => {
