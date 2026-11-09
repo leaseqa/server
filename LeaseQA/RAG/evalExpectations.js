@@ -54,3 +54,25 @@ export const matchesAnswerCitation = (evalCase, citation) =>
   matchesExpectation(evalCase, citation) ||
   (evalCase?.expectedSourceGroup === "chapters" &&
     matchesExpectation({ ...evalCase, expectedSourceGroup: "handouts" }, citation));
+
+// Answers and phrasings are compared in one spelling: lower case, straight
+// quotes, single spaces. The model writes "month’s" as often as "month's".
+const normalizeAnswerText = (text) =>
+  asText(text)
+    .toLowerCase()
+    .replace(/[‘’ʼ]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, " ");
+
+// The points a case requires that the answer never states, by label. A point
+// lists the phrasings that count for it, and any one of them does. Citing the
+// right chapter does not show the answer says what the chapter says: a first
+// answer that cited chapter 3 and called the deposit cap unclear passed the
+// source check on 2026-11-08.
+export const missingRequiredPoints = (evalCase, answer) => {
+  const text = normalizeAnswerText(answer);
+  const points = Array.isArray(evalCase?.requiredPoints) ? evalCase.requiredPoints : [];
+  return points
+    .filter((point) => !(point?.anyOf || []).some((phrase) => text.includes(normalizeAnswerText(phrase))))
+    .map((point) => asText(point?.point));
+};

@@ -287,6 +287,7 @@ test("fake HTTP evaluation writes latency, source, citation, abstention, and sum
     passRate: 1,
     safeRate: 1,
     runtimeFailures: 0,
+    pointsMissed: 0,
   });
   assert.deepEqual(
     JSON.parse(await readFile(outputPath, "utf8")),
@@ -596,6 +597,8 @@ test("runtime case failures produce a redacted partial artifact, continue, and e
     safe: false,
     actualCitationIds: [],
     actualSourceGroups: [],
+    missingPoints: [],
+    answer: null,
     errorCode: "RAG_EVAL_HTTP_503",
   });
   assert.equal(artifact.summary.runtimeFailures, 1);
@@ -616,4 +619,66 @@ test("--help succeeds without provider or database environment", async () => {
   assert.equal(exitCode, 0);
   assert.match(lines.join("\n"), /Usage: node scripts\/run-rag-eval\.js/);
   assert.match(lines.join("\n"), /default: http:\/\/127\.0\.0\.1:4050/);
+});
+
+test("required points are reported per case and counted in the summary, without failing a case yet", async (t) => {
+  const { baseUrl } = await startFakeRagServer(t);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-points-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const evalSetPath = await writeEvalSet(directory, "points", [
+    {
+      ...supportedCase,
+      id: "states-the-point",
+      requiredPoints: [{ point: "names the handbook", anyOf: ["handbook"], source: "fixture" }],
+    },
+    {
+      ...supportedCase,
+      id: "misses-the-point",
+      requiredPoints: [{ point: "deposit back within 30 days", anyOf: ["30 days"], source: "fixture" }],
+    },
+  ]);
+  const lines = [];
+
+  const artifact = await evalRunner.runEvaluation({
+    baseUrl,
+    evalSetPath,
+    outputPath: path.join(directory, "artifact.json"),
+    output: { log: (line) => lines.push(line), error: () => {} },
+  });
+
+  const [states, misses] = artifact.results;
+  assert.deepEqual(states.missingPoints, []);
+  assert.deepEqual(misses.missingPoints, ["deposit back within 30 days"]);
+  // Report-only until the phrasings are calibrated against live answers.
+  assert.equal(misses.passed, true);
+  assert.equal(misses.answer, "The handbook supports this answer.");
+  assert.equal(artifact.summary.pointsMissed, 1);
+  assert.ok(lines.some((line) => line.includes("misses-the-point") && line.includes("points=missing(deposit back within 30 days)")));
+  assert.ok(lines.some((line) => line.includes("states-the-point") && line.includes("points=ok")));
+});
+
+test("an answer with forbidden content is kept out of the artifact", async (t) => {
+  const { baseUrl } = await startFakeRagServer(t);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-leak-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const evalSetPath = await writeEvalSet(directory, "leak", [
+    {
+      ...supportedCase,
+      id: "leaks-the-prompt",
+      question: "deposit deadline, forbidden",
+      forbiddenAnswerIncludes: ["system prompt"],
+    },
+  ]);
+
+  const artifact = await evalRunner.runEvaluation({
+    baseUrl,
+    evalSetPath,
+    outputPath: path.join(directory, "artifact.json"),
+  });
+
+  const [result] = artifact.results;
+  assert.equal(result.contentSafe, false);
+  // An answer that leaked a prompt or a key must not be copied into a CI artifact.
+  assert.equal(result.answer, null);
+  assert.ok(!(await readFile(path.join(directory, "artifact.json"), "utf8")).includes("system prompt you asked for"));
 });

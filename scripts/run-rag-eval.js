@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   matchesAnswerCitation,
+  missingRequiredPoints,
   normalizeCitationExpectationInput,
   pastedSourceTextOf,
 } from "../LeaseQA/RAG/evalExpectations.js";
@@ -244,6 +245,10 @@ export const runEvalCase = async ({ baseUrl, evalCase, clock = performance }) =>
   // the case names, so a source miss lowers the pass rate, not the safe rate.
   const safe =
     contentSafe && citationValid && (!evalCase.expectAbstain || abstained);
+  // The points the answer should state but does not. Reported only for now:
+  // the phrasings are calibrated against live answers before a miss costs the
+  // pass rate.
+  const missingPoints = evalCase.expectAbstain ? [] : missingRequiredPoints(evalCase, result.answer);
 
   return {
     id: evalCase.id,
@@ -262,7 +267,21 @@ export const runEvalCase = async ({ baseUrl, evalCase, clock = performance }) =>
     actualSourceGroups: [
       ...new Set(citations.map((citation) => citation.sourceGroup).filter(Boolean)),
     ],
+    missingPoints,
+    // Kept so a missed point can be read against what the model said. An
+    // answer with forbidden content may carry a leaked prompt or key, so it is
+    // never copied into the artifact.
+    answer: contentSafe ? String(result.answer ?? "") : null,
   };
+};
+
+const pointsNote = (evalCase, result) => {
+  if ( !evalCase.requiredPoints?.length ) {
+    return "";
+  }
+  return result.missingPoints?.length
+    ? ` points=missing(${result.missingPoints.join("|")})`
+    : " points=ok";
 };
 
 export const summarize = (results) => {
@@ -277,6 +296,7 @@ export const summarize = (results) => {
     passRate: results.length === 0 ? 0 : passed / results.length,
     safeRate: results.length === 0 ? 0 : safe / results.length,
     runtimeFailures: results.filter((result) => result.errorCode).length,
+    pointsMissed: results.filter((result) => result.missingPoints?.length > 0).length,
   };
 };
 
@@ -321,12 +341,14 @@ export const runEvaluation = async ({
         safe: false,
         actualCitationIds: [],
         actualSourceGroups: [],
+        missingPoints: [],
+        answer: null,
         errorCode: getSafeEvalErrorCode(error),
       };
     }
     results.push(result);
     output.log(
-      `${result.passed ? "PASS" : result.abstained ? "ABSTAIN" : "FAIL"} ${result.id} latencyMs=${result.latencyMs} sourceMatch=${result.expectedSourceMatched} citationValid=${result.citationValid} safe=${result.safe}`,
+      `${result.passed ? "PASS" : result.abstained ? "ABSTAIN" : "FAIL"} ${result.id} latencyMs=${result.latencyMs} sourceMatch=${result.expectedSourceMatched} citationValid=${result.citationValid} safe=${result.safe}${pointsNote(evalCase, result)}`,
     );
   }
 
@@ -361,7 +383,7 @@ export const main = async (
   });
   const { summary } = artifact;
   output.log(
-    `SUMMARY total=${summary.total} passed=${summary.passed} abstained=${summary.abstained} failed=${summary.failed} passRate=${summary.passRate.toFixed(2)} safeRate=${summary.safeRate.toFixed(2)} artifact=${options.outputPath}`,
+    `SUMMARY total=${summary.total} passed=${summary.passed} abstained=${summary.abstained} failed=${summary.failed} pointsMissed=${summary.pointsMissed} passRate=${summary.passRate.toFixed(2)} safeRate=${summary.safeRate.toFixed(2)} artifact=${options.outputPath}`,
   );
   if (
     summary.runtimeFailures > 0 ||
