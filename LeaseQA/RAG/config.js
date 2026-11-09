@@ -153,6 +153,13 @@ export const getRagConfig = () => {
       process.env.RAG_MIN_RERANK_SCORE,
       rerank.minScore,
     ),
+    // A best score from the floor up to this bound is answered only if the
+    // chat model judges the question in scope; below the floor the answer
+    // abstains without asking. A bound at or below the floor turns this off.
+    scopeCheckBelow: parseNumber(
+      process.env.RAG_SCOPE_CHECK_BELOW,
+      rerank.scopeCheckBelow,
+    ),
     ingestGateEnabled: process.env.RAG_INGEST_GATE !== "off",
     ingestGateMinHitRate: parseRate(
       process.env.RAG_INGEST_GATE_MIN_HIT_RATE,

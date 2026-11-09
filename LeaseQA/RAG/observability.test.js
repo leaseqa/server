@@ -113,6 +113,7 @@ test("answerQuestion emits request-scoped timings, citations, version, and abste
     corpusVersion: "corpus-version-abc",
     abstained: false,
     abstentionReason: null,
+    scopeCheck: null,
     errorCode: null,
   });
   assert.doesNotMatch(
@@ -234,6 +235,50 @@ test("answerQuestion tags the abstention reason when the model's structured outp
   const metric = JSON.parse(logs[0]);
   assert.equal(metric.abstained, true);
   assert.equal(metric.abstentionReason, "model_output_invalid");
+});
+
+// The best chunk reranks into the scope-check band and the model answers the
+// check with verdict.
+const answerInScopeCheckBand = async (verdict) => {
+  const logs = [];
+  const dependencies = createDependencies({
+    logs,
+    clock: { now: () => 10 },
+    chatReply: async (messages) => ({
+      content: /single word yes or no/i.test(messages[0].content)
+        ? verdict
+        : JSON.stringify({
+            summary: "The handbook describes a deposit deadline.",
+            summarySupports: ["c1"],
+            bullets: [{ text: "The source states the deadline rule.", supports: ["c1"] }],
+          }),
+    }),
+  });
+  dependencies.config = { ...dependencies.config, minRerankScore: 15, scopeCheckBelow: 17.5 };
+  dependencies.rerankClient = { rerank: async ({ documents }) => documents.map(() => 16) };
+
+  await answerQuestion(
+    {
+      sessionId: "session-observed",
+      userId: "user-observed",
+      requestId: "request-scope-check",
+      question: "PRIVATE_QUESTION_TEXT",
+    },
+    dependencies,
+  );
+  return JSON.parse(logs[0]);
+};
+
+test("answerQuestion records the scope check's verdict and tags an out-of-scope abstention", async () => {
+  const inScope = await answerInScopeCheckBand("yes");
+  assert.equal(inScope.scopeCheck, "in_scope");
+  assert.equal(inScope.abstained, false);
+  assert.equal(inScope.abstentionReason, null);
+
+  const outOfScope = await answerInScopeCheckBand("no");
+  assert.equal(outOfScope.scopeCheck, "out_of_scope");
+  assert.equal(outOfScope.abstained, true);
+  assert.equal(outOfScope.abstentionReason, "out_of_scope");
 });
 
 test("corpus version falls back to retrieved version metadata when local state is absent", async () => {

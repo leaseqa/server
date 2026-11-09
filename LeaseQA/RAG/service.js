@@ -9,8 +9,10 @@ import { getRagConfig } from "./config.js";
 import { parseManifestCsv } from "./corpusManifest.js";
 import {
   buildRagMessages,
+  buildScopeCheckMessages,
   formatEvidenceSourceLabel,
   getEvidenceId,
+  parseScopeVerdict,
 } from "./prompt.js";
 import { runBoundedOperation } from "./operationPolicy.js";
 import { createDraftTracker } from "./answerDraft.js";
@@ -23,6 +25,7 @@ import {
 import {
   buildKnowledgeSearchPlan,
   buildRetrievalQuestion,
+  needsScopeCheck,
   rankEvidence,
   selectEvidence,
 } from "./retrievalPolicy.js";
@@ -771,6 +774,7 @@ export const answerQuestion = async ({
   let selectedCitationIds = [];
   let abstained = false;
   let abstentionReason = null;
+  let scopeCheck = null;
   let corpusVersion = null;
   try {
     corpusVersion = await readCorpusVersion({
@@ -791,6 +795,7 @@ export const answerQuestion = async ({
       corpusVersion,
       abstained,
       abstentionReason,
+      scopeCheck,
       errorCode,
     };
     try {
@@ -882,7 +887,25 @@ export const answerQuestion = async ({
     .map((message) => `${message.role}: ${message.content}`)
     .join("\n");
 
-  const supportedCitationChunks = selectEvidence({ ranking, config });
+  const evidence = selectEvidence({ ranking, config });
+  // From the floor up to RAG_SCOPE_CHECK_BELOW an out-of-scope question can
+  // score as well as an answerable one, so the model first says whether it is
+  // about renting at all. It reads what the reranker read: the retrieval
+  // question, which carries a follow-up's earlier turn and a clause
+  // question's document.
+  if ( needsScopeCheck({ ranking, config }) ) {
+    providerStartedAt = clock.now();
+    const verdict = await streamChatModel({
+      config,
+      chatModel,
+      messages: buildScopeCheckMessages({ question: retrievalQuestion }),
+      retryPolicy,
+    });
+    providerDurationMs += Math.max(0, clock.now() - providerStartedAt);
+    providerStartedAt = null;
+    scopeCheck = parseScopeVerdict(verdict) ? "in_scope" : "out_of_scope";
+  }
+  const supportedCitationChunks = scopeCheck === "out_of_scope" ? [] : evidence;
   const candidateCitations =
     supportedCitationChunks.length > 0
       ? supportedCitationChunks.map(buildCitation)
@@ -920,14 +943,16 @@ export const answerQuestion = async ({
           }
         : undefined,
     });
-    providerDurationMs = Math.max(0, clock.now() - providerStartedAt);
+    providerDurationMs += Math.max(0, clock.now() - providerStartedAt);
     providerStartedAt = null;
     candidateAnswer = normalizeAssistantAnswer({
       rawAnswer,
       citationIdToIndex,
     });
   } else {
-    candidateAnswer = buildInsufficientSupportAnswer("insufficient_retrieval_support");
+    candidateAnswer = buildInsufficientSupportAnswer(
+      scopeCheck === "out_of_scope" ? "out_of_scope" : "insufficient_retrieval_support",
+    );
   }
   const finalized = finalizeAssistantCitations({
     structuredAnswer: candidateAnswer,
@@ -968,7 +993,7 @@ export const answerQuestion = async ({
       retrievalDurationMs = Math.max(0, clock.now() - retrievalStartedAt);
     }
     if ( providerStartedAt !== null ) {
-      providerDurationMs = Math.max(0, clock.now() - providerStartedAt);
+      providerDurationMs += Math.max(0, clock.now() - providerStartedAt);
     }
     emitMetric(getStableRagErrorCode(error, "RAG_REQUEST_FAILED"));
     throw error;

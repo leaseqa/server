@@ -11,6 +11,7 @@ import {
 import { createRerankClient } from "../LeaseQA/RAG/rerank.js";
 import {
   buildRetrievalQuestion,
+  needsScopeCheck,
   rankEvidence,
   selectEvidence,
 } from "../LeaseQA/RAG/retrievalPolicy.js";
@@ -26,10 +27,13 @@ import {
 
 // For every eval case, how its evidence ranks under the live provider: the
 // best chunk's score, where the first chunk from the expected source lands,
-// and whether the model gets to see it. RAG_MIN_RERANK_SCORE belongs above
-// every out-of-scope case's best score and at or below every answerable
-// case's; the summary prints that window. Retrieval only: no server, no
-// database, no chat model.
+// and whether the model gets to see it. The summary prints where the two
+// bounds belong. RAG_MIN_RERANK_SCORE goes at or below every answerable case's
+// best score and above every other case that must abstain, since the scope
+// check stops only out-of-scope questions. RAG_SCOPE_CHECK_BELOW goes above
+// every out-of-scope case's best score. Retrieval only: no server, no
+// database, no chat model, so a case in the band is reported as the scope
+// check's to decide; the live eval runs the check itself.
 
 const evalSetPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -85,6 +89,22 @@ const reachesModel = (evalCase, evidence) =>
     ? evidence.length === 0
     : evidence.some((chunk) => isExpected(evalCase, chunk));
 
+const OUT_OF_SCOPE = "out-of-scope";
+
+// What the serving path does with this ranking before any answer is written.
+const gateOf = ({ ranking, config }) => {
+  if ( selectEvidence({ ranking, config }).length === 0 ) {
+    return "abstains";
+  }
+  return needsScopeCheck({ ranking, config }) ? "scope check" : "answers";
+};
+
+// A case that must abstain does, provided the scope check says no to every
+// out-of-scope question in the band. Nothing stops another such case, like a
+// tenant question the handbook cannot support, but the floor.
+const abstainsAsExpected = (evalCase, gate) =>
+  gate === "abstains" || (gate === "scope check" && evalCase.category === OUT_OF_SCOPE);
+
 export const reportCase = async ({ evalCase, config, embeddings, rerankClient }) => {
   const sessionChunk = sessionChunkFor(evalCase);
   // The server keeps only this preview of the session text, and that is what
@@ -112,10 +132,14 @@ export const reportCase = async ({ evalCase, config, embeddings, rerankClient })
   const expectedRank = evalCase.expectAbstain
     ? -1
     : ranking.chunks.findIndex((chunk) => isExpected(evalCase, chunk));
+  const gate = gateOf({ ranking, config });
 
   return {
     id: evalCase.id,
+    category: evalCase.category,
     expectAbstain: Boolean(evalCase.expectAbstain),
+    gate,
+    abstains: abstainsAsExpected(evalCase, gate),
     rankedBy: ranking.rankedBy,
     rerankFailure,
     candidates: chunks.length,
@@ -138,9 +162,10 @@ export const reportCase = async ({ evalCase, config, embeddings, rerankClient })
 
 const printCase = (result) => {
   const outcome = result.expectAbstain
-    ? `abstains: ${result.reachesModel ? "yes" : "NO"}`
+    ? `abstains: ${result.abstains ? "yes" : "NO"} (${result.gate})`
     : `expected #${result.expectedRank >= 0 ? result.expectedRank + 1 : "-"}` +
-      ` at ${formatScore(result.expectedScore)}, reaches model: ${result.reachesModel ? "yes" : "NO"}`;
+      ` at ${formatScore(result.expectedScore)}, reaches model: ${result.reachesModel ? "yes" : "NO"}` +
+      (result.gate === "scope check" ? " after the scope check" : "");
   console.log(
     `${result.id}  best ${formatScore(result.bestScore)}` +
       ` (lowest ${formatScore(result.lowestScore)} of ${result.candidates})  ${outcome}` +
@@ -156,44 +181,57 @@ const printCase = (result) => {
 
 const printSummary = (results, config) => {
   const answerable = results.filter((result) => !result.expectAbstain);
-  const outOfScope = results.filter((result) => result.expectAbstain);
+  const abstaining = results.filter((result) => result.expectAbstain);
+  const outOfScope = abstaining.filter((result) => result.category === OUT_OF_SCOPE);
+  const hasBand = Number.isFinite(config.scopeCheckBelow) && config.scopeCheckBelow > config.minRerankScore;
+  // Without a band the floor alone has to stop the out-of-scope questions too.
+  const floorOnly = hasBand ? abstaining.filter((result) => result.category !== OUT_OF_SCOPE) : abstaining;
   const count = (items, key) => items.filter((item) => item[key]).length;
   const ids = (items) => items.map((item) => item.id).join(", ") || "none";
+  const inBand = (items) => items.filter((item) => item.gate === "scope check");
   const byBest = (items) =>
     [...items]
       .filter((item) => Number.isFinite(item.bestScore))
       .sort((left, right) => left.bestScore - right.bestScore);
   const weakestAnswerable = byBest(answerable)[0];
+  const strongestFloorOnly = byBest(floorOnly).at(-1);
   const strongestOutOfScope = byBest(outOfScope).at(-1);
 
   console.log("");
   console.log(
-    `RAG_MIN_RERANK_SCORE=${config.minRerankScore}  RAG_CANDIDATES_PER_GROUP=${config.candidatesPerGroup}` +
-      `  RAG_EVIDENCE_LIMIT=${config.evidenceLimit}`,
+    `RAG_MIN_RERANK_SCORE=${config.minRerankScore}  RAG_SCOPE_CHECK_BELOW=${hasBand ? config.scopeCheckBelow : "off"}` +
+      `  RAG_CANDIDATES_PER_GROUP=${config.candidatesPerGroup}  RAG_EVIDENCE_LIMIT=${config.evidenceLimit}`,
   );
   console.log(
     `answerable: expected source reaches the model in ${count(answerable, "reachesModel")}/${answerable.length}` +
       ` (fused order without rerank: ${count(answerable, "reachesModelWithoutRerank")}/${answerable.length})`,
   );
   console.log(`  misses: ${ids(answerable.filter((item) => !item.reachesModel))}`);
-  console.log(
-    `  below the floor, so they abstain: ${ids(answerable.filter((item) => !(item.bestScore >= config.minRerankScore)))}`,
-  );
+  console.log(`  below the floor, so they abstain: ${ids(answerable.filter((item) => item.gate === "abstains"))}`);
+  console.log(`  in the band, answered once the scope check says yes: ${ids(inBand(answerable))}`);
   console.log(
     `  expected source never retrieved: ${ids(answerable.filter((item) => item.expectedRank < 0))}`,
   );
   console.log(
-    `out of scope: abstains in ${count(outOfScope, "reachesModel")}/${outOfScope.length}` +
-      ` (fused order without rerank: ${count(outOfScope, "reachesModelWithoutRerank")}/${outOfScope.length});` +
-      ` answers anyway: ${ids(outOfScope.filter((item) => !item.reachesModel))}`,
+    `must abstain: abstains in ${count(abstaining, "abstains")}/${abstaining.length}` +
+      ` (fused order without rerank: ${count(abstaining, "reachesModelWithoutRerank")}/${abstaining.length});` +
+      ` answers anyway: ${ids(abstaining.filter((item) => !item.abstains))}`,
   );
-  if ( weakestAnswerable && strongestOutOfScope ) {
-    const low = strongestOutOfScope.bestScore;
+  console.log(`  in the band, abstaining only if the scope check says no: ${ids(inBand(outOfScope))}`);
+  if ( weakestAnswerable && strongestFloorOnly ) {
+    const low = strongestFloorOnly.bestScore;
     const high = weakestAnswerable.bestScore;
     console.log(
-      `floor window on the best score: above ${formatScore(low)} (${strongestOutOfScope.id})` +
+      `floor window on the best score: above ${formatScore(low)} (${strongestFloorOnly.id})` +
         ` and at or below ${formatScore(high)} (${weakestAnswerable.id})` +
         (low < high ? "" : "  -- NO SINGLE FLOOR SEPARATES THESE"),
+    );
+  }
+  if ( hasBand && strongestOutOfScope ) {
+    const clears = config.scopeCheckBelow > strongestOutOfScope.bestScore;
+    console.log(
+      `scope-check bound: above ${formatScore(strongestOutOfScope.bestScore)} (${strongestOutOfScope.id})` +
+        (clears ? "" : `  -- ${config.scopeCheckBelow} DOES NOT CLEAR IT, SO IT IS ANSWERED`),
     );
   }
 };

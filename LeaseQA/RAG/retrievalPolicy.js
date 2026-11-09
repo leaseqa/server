@@ -135,3 +135,19 @@ export const selectEvidence = ({ ranking, config }) => {
     ? ranking.chunks.slice(0, config.evidenceLimit)
     : [];
 };
+
+// Whether the evidence is strong enough to show the model but too weak to say
+// the question is about renting at all. On the eval set out-of-scope questions
+// (divorce, unemployment) and answerable ones (no heat, lockouts) both score
+// from the floor up to RAG_SCOPE_CHECK_BELOW, so there the chat model decides
+// first. Only a reranker's scale has such a band.
+export const needsScopeCheck = ({ ranking, config }) => {
+  const bestScore = ranking.chunks[0]?.rerank_score;
+  return (
+    ranking.rankedBy === "rerank" &&
+    Number.isFinite(config.scopeCheckBelow) &&
+    Number.isFinite(bestScore) &&
+    bestScore >= config.minRerankScore &&
+    bestScore < config.scopeCheckBelow
+  );
+};

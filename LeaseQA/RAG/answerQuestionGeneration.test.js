@@ -377,3 +377,71 @@ test("a draft that never reached anyone does not block the retry", async () => {
   assert.equal(chatModel.attempts, 2);
   assert.equal(result.session.messages[1].summary, "The deposit is capped at one month's rent.");
 });
+
+// Every knowledge chunk reranks at score, and the chat model answers the scope
+// check with verdict before streaming answerText for the answer itself.
+const bandDependencies = ({ score, verdict, answerText = ANSWER_JSON }) => {
+  const calls = [];
+  const base = createStreamingDependencies();
+  return {
+    calls,
+    dependencies: {
+      ...base,
+      config: { ...base.config, minRerankScore: 15, scopeCheckBelow: 17.5 },
+      rerankClient: { rerank: async ({ documents }) => documents.map(() => score) },
+      chatModel: {
+        async *stream(messages) {
+          calls.push(messages);
+          const isScopeCheck = /single word yes or no/i.test(messages[0].content);
+          yield { content: isScopeCheck ? verdict : answerText };
+        },
+      },
+    },
+  };
+};
+
+const askInBand = (dependencies, events = []) =>
+  answerQuestion(
+    {
+      sessionId: "session-stream",
+      userId: "user-1",
+      clientSessionId: null,
+      question: "My heat has been broken for a week. Do I still have to pay my full rent?",
+      onEvent: (event, data) => events.push([event, data]),
+    },
+    dependencies,
+  );
+
+test("a question in the scope-check band that the model calls in scope is answered", async () => {
+  const { calls, dependencies } = bandDependencies({ score: 15.3, verdict: "Yes." });
+  const events = [];
+
+  const result = await askInBand(dependencies, events);
+
+  assert.equal(calls.length, 2);
+  assert.match(calls[0][0].content, /single word yes or no/i);
+  assert.deepEqual(result.citations.map((citation) => citation.sourceName), ["ch03_security_deposits.pdf"]);
+  assert.deepEqual(events.slice(0, 2), [["status", { stage: "retrieving" }], ["status", { stage: "generating" }]]);
+});
+
+test("a question in the band that the model calls out of scope abstains before any answer is written", async () => {
+  const { calls, dependencies } = bandDependencies({ score: 16.2, verdict: "no" });
+  const events = [];
+
+  const result = await askInBand(dependencies, events);
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(result.citations, []);
+  assert.match(result.answer, /could not find enough support/i);
+  assert.deepEqual(events, [["status", { stage: "retrieving" }]]);
+});
+
+test("a best score at or above the band is answered without a scope check", async () => {
+  const { calls, dependencies } = bandDependencies({ score: 18.1, verdict: "no" });
+
+  const result = await askInBand(dependencies);
+
+  assert.equal(calls.length, 1);
+  assert.doesNotMatch(calls[0][0].content, /single word yes or no/i);
+  assert.equal(result.citations.length, 1);
+});

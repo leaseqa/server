@@ -9,6 +9,7 @@ import {
   buildKnowledgeSearchPlan,
   buildRetrievalQuestion,
   KNOWLEDGE_SOURCE_GROUPS,
+  needsScopeCheck,
   rankEvidence,
   selectEvidence,
 } from "./retrievalPolicy.js";
@@ -261,3 +262,19 @@ test("buildRetrievalQuestion keeps clause context for enforceability questions",
   assert.match(query, /security deposit/i);
 });
 
+test("a best score from the floor up to the scope-check bound asks for a scope check", () => {
+  const ranked = (score) => ({ rankedBy: "rerank", chunks: [chunk("a", { rerank_score: score })] });
+  const band = { ...config, minRerankScore: 15, scopeCheckBelow: 17.5 };
+
+  assert.equal(needsScopeCheck({ ranking: ranked(16.2), config: band }), true);
+  assert.equal(needsScopeCheck({ ranking: ranked(15), config: band }), true);
+  assert.equal(needsScopeCheck({ ranking: ranked(17.5), config: band }), false);
+  // Below the floor the answer abstains anyway; nothing is left to check.
+  assert.equal(needsScopeCheck({ ranking: ranked(14.9), config: band }), false);
+  // A provider without a band, and the fused fallback, never check.
+  assert.equal(needsScopeCheck({ ranking: ranked(16.2), config: { ...band, scopeCheckBelow: null } }), false);
+  assert.equal(
+    needsScopeCheck({ ranking: { rankedBy: "fusion", chunks: [chunk("a", { score: 0.03 })] }, config: band }),
+    false,
+  );
+});
