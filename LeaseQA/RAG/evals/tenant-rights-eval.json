@@ -922,6 +922,31 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "3"
+    ],
+    "requiredPoints": [
+      {
+        "point": "not for normal wear and tear",
+        "anyOf": [
+          "cannot keep",
+          "can't keep",
+          "cannot use",
+          "can't use",
+          "cannot deduct",
+          "can't deduct",
+          "cannot charge",
+          "can't charge",
+          "except for normal wear and tear",
+          "except normal wear and tear",
+          "except for reasonable wear and tear",
+          "not for normal wear and tear",
+          "not for reasonable wear and tear",
+          "must return your entire",
+          "must return the entire",
+          "must return your full",
+          "must return the full"
+        ],
+        "source": "Chapter 3: If you leave your rental unit in the same condition as you found it (except for normal wear and tear), the landlord must return your entire security deposit and any interest they owe you on it."
+      }
     ]
   },
   {
@@ -931,6 +956,25 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "15"
+    ],
+    "requiredPoints": [
+      {
+        "point": "only with a court order",
+        "anyOf": [
+          "court order",
+          "court orders",
+          "court's permission",
+          "court permission",
+          "court eviction",
+          "only a court",
+          "only a judge",
+          "judge orders",
+          "judge's order",
+          "permission from a judge",
+          "judge's permission"
+        ],
+        "source": "Handout 15: The only way a landlord can lock you out of your room is by getting a court order."
+      }
     ]
   },
   {
@@ -942,6 +986,40 @@
       "8",
       "13",
       "6"
+    ],
+    "requiredPoints": [
+      {
+        "point": "you may withhold some or all of the rent",
+        "anyOf": [
+          "can withhold",
+          "may withhold",
+          "able to withhold",
+          "right to withhold",
+          "withhold all or part",
+          "withhold part",
+          "withhold some",
+          "withhold rent until"
+        ],
+        "source": "Handout 8: If you ask for an inspection, you should: Withhold rent or part of it until the landlord makes the repairs."
+      },
+      {
+        "point": "the landlord must know about the problem first",
+        "anyOf": [
+          "tell your landlord",
+          "telling your landlord",
+          "told your landlord",
+          "tell the landlord",
+          "telling the landlord",
+          "told the landlord",
+          "notify",
+          "notified",
+          "landlord knew",
+          "landlord knows",
+          "landlord know about",
+          "in writing"
+        ],
+        "source": "Handout 8: Before you are behind in rent, write your landlord a letter, list the repairs needed, and say you will withhold rent until the problems are fixed."
+      }
     ]
   },
   {
@@ -951,6 +1029,28 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "18"
+    ],
+    "requiredPoints": [
+      {
+        "point": "you only have to leave if a court orders it",
+        "anyOf": [
+          "court order",
+          "court orders",
+          "court's permission",
+          "court permission",
+          "court eviction",
+          "only a court",
+          "only a judge",
+          "judge orders",
+          "judge's order",
+          "just cause",
+          "do not have to leave",
+          "don't have to leave",
+          "do not have to move",
+          "don't have to move"
+        ],
+        "source": "Handout 18: You only need to move out if a court orders you to leave."
+      }
     ]
   },
   {
