@@ -166,28 +166,22 @@
     ],
     "requiredPoints": [
       {
-        "point": "the conditions are inspected",
+        "point": "the landlord must know about the problems first",
         "anyOf": [
-          "board of health",
-          "inspector",
-          "inspection",
-          "sanitary code",
-          "code violation"
+          "tell your landlord",
+          "telling your landlord",
+          "told your landlord",
+          "tell the landlord",
+          "telling the landlord",
+          "told the landlord",
+          "notify",
+          "notice",
+          "landlord knew",
+          "landlord knows",
+          "landlord know about",
+          "in writing"
         ],
-        "source": "Handout 8: Board of Health housing inspections are free. If you ask for an inspection, you should: Withhold rent or part of it until the landlord makes the repairs."
-      },
-      {
-        "point": "the withheld rent is set aside",
-        "anyOf": [
-          "separate",
-          "set aside",
-          "escrow",
-          "bank account",
-          "put the rent",
-          "save the rent",
-          "aside"
-        ],
-        "source": "Handout 8: To protect yourself from eviction, put the rent money you withhold in a separate bank account."
+        "source": "Chapter 8: Does the landlord know about the defective conditions (and know this before you were behind in your rent)?"
       }
     ]
   },
@@ -329,7 +323,13 @@
           "30 days",
           "3 months",
           "three months",
-          "90 days"
+          "90 days",
+          "3 consecutive months",
+          "three consecutive months",
+          "depends on how long",
+          "how long you have lived",
+          "how long you've lived",
+          "how long you lived"
         ],
         "source": "Handout 15: If you have lived in the rooming house 30 days or less ... More than 30 days ... More than 3 months: the type of notice depends on the reason for eviction."
       }
@@ -387,11 +387,13 @@
     ],
     "requiredPoints": [
       {
-        "point": "only a court can make you leave",
+        "point": "the new owner cannot make you leave without just cause and a court order",
         "anyOf": [
-          "court"
+          "court",
+          "judge",
+          "just cause"
         ],
-        "source": "Handout 18: You only need to move out if a court orders you to leave."
+        "source": "Handout 18: You only need to move out if a court orders you to leave. ... can usually only be evicted for “just cause”"
       }
     ]
   },
@@ -583,7 +585,9 @@
           "a month's rent",
           "one month of rent",
           "more than one month",
-          "more than a month"
+          "more than a month",
+          "one month is the max",
+          "1 month is the max"
         ],
         "source": "Handout 3: A security deposit cannot be more than your 1st month's rent."
       },
