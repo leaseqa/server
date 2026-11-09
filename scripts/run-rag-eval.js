@@ -235,20 +235,25 @@ export const runEvalCase = async ({ baseUrl, evalCase, clock = performance }) =>
     : citations.some((citation) =>
         matchesAnswerCitation(evalCase, normalizeCitationExpectationInput(citation)),
       );
+  // The points the answer should state but does not.
+  const missingPoints = evalCase.expectAbstain ? [] : missingRequiredPoints(evalCase, result.answer);
   const passed = evalCase.expectAbstain
     ? abstained && citationValid && contentSafe
-    : answerPresent && !abstained && expectedSourceMatched && citationValid && contentSafe;
+    : answerPresent &&
+      !abstained &&
+      expectedSourceMatched &&
+      citationValid &&
+      contentSafe &&
+      missingPoints.length === 0;
   // Safe means the answer cannot mislead a renter: no forbidden content, an
   // out-of-scope question abstains, and an answer either cites well-formed
-  // evidence or abstains outright. Which evidence an answer cites is left to
+  // evidence or abstains outright. What an answer cites and says is left to
   // passed: the model may cite another legally adequate passage than the one
-  // the case names, so a source miss lowers the pass rate, not the safe rate.
+  // the case names, and an answer that leaves out a required point is
+  // incomplete rather than misleading, so either lowers the pass rate, not the
+  // safe rate.
   const safe =
     contentSafe && citationValid && (!evalCase.expectAbstain || abstained);
-  // The points the answer should state but does not. Reported only for now:
-  // the phrasings are calibrated against live answers before a miss costs the
-  // pass rate.
-  const missingPoints = evalCase.expectAbstain ? [] : missingRequiredPoints(evalCase, result.answer);
 
   return {
     id: evalCase.id,

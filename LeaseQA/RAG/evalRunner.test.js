@@ -621,7 +621,7 @@ test("--help succeeds without provider or database environment", async () => {
   assert.match(lines.join("\n"), /default: http:\/\/127\.0\.0\.1:4050/);
 });
 
-test("required points are reported per case and counted in the summary, without failing a case yet", async (t) => {
+test("an answer that leaves out a required point fails its case but stays safe", async (t) => {
   const { baseUrl } = await startFakeRagServer(t);
   const directory = await mkdtemp(path.join(os.tmpdir(), "leaseqa-rag-eval-points-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -649,10 +649,14 @@ test("required points are reported per case and counted in the summary, without 
   const [states, misses] = artifact.results;
   assert.deepEqual(states.missingPoints, []);
   assert.deepEqual(misses.missingPoints, ["deposit back within 30 days"]);
-  // Report-only until the phrasings are calibrated against live answers.
-  assert.equal(misses.passed, true);
+  assert.equal(states.passed, true);
+  assert.equal(misses.passed, false);
+  // Incomplete, not misleading: the safe rate does not move.
+  assert.equal(misses.safe, true);
   assert.equal(misses.answer, "The handbook supports this answer.");
   assert.equal(artifact.summary.pointsMissed, 1);
+  assert.equal(artifact.summary.passed, 1);
+  assert.equal(artifact.summary.safeRate, 1);
   assert.ok(lines.some((line) => line.includes("misses-the-point") && line.includes("points=missing(deposit back within 30 days)")));
   assert.ok(lines.some((line) => line.includes("states-the-point") && line.includes("points=ok")));
 });
