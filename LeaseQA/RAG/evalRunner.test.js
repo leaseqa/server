@@ -636,6 +636,20 @@ test("an answer that leaves out a required point fails its case but stays safe",
       id: "misses-the-point",
       requiredPoints: [{ point: "deposit back within 30 days", anyOf: ["30 days"], source: "fixture" }],
     },
+    // Neither has an answer to hold to its point: they fail already, and
+    // counting their points too would blur which answers came back incomplete.
+    {
+      ...supportedCase,
+      id: "abstains-instead",
+      question: "unsupported deposit deadline",
+      requiredPoints: [{ point: "deposit back within 30 days", anyOf: ["30 days"], source: "fixture" }],
+    },
+    {
+      ...supportedCase,
+      id: "fails-at-runtime",
+      question: "runtime failure deposit deadline",
+      requiredPoints: [{ point: "deposit back within 30 days", anyOf: ["30 days"], source: "fixture" }],
+    },
   ]);
   const lines = [];
 
@@ -646,9 +660,14 @@ test("an answer that leaves out a required point fails its case but stays safe",
     output: { log: (line) => lines.push(line), error: () => {} },
   });
 
-  const [states, misses] = artifact.results;
+  const [states, misses, abstains, fails] = artifact.results;
   assert.deepEqual(states.missingPoints, []);
   assert.deepEqual(misses.missingPoints, ["deposit back within 30 days"]);
+  assert.deepEqual(abstains.missingPoints, []);
+  assert.equal(abstains.passed, false);
+  assert.deepEqual(fails.missingPoints, []);
+  assert.ok(lines.some((line) => line.includes("abstains-instead") && line.includes("points=n/a")));
+  assert.ok(lines.some((line) => line.includes("fails-at-runtime") && line.includes("points=n/a")));
   assert.equal(states.passed, true);
   assert.equal(misses.passed, false);
   // Incomplete, not misleading: the safe rate does not move.
@@ -656,7 +675,6 @@ test("an answer that leaves out a required point fails its case but stays safe",
   assert.equal(misses.answer, "The handbook supports this answer.");
   assert.equal(artifact.summary.pointsMissed, 1);
   assert.equal(artifact.summary.passed, 1);
-  assert.equal(artifact.summary.safeRate, 1);
   assert.ok(lines.some((line) => line.includes("misses-the-point") && line.includes("points=missing(deposit back within 30 days)")));
   assert.ok(lines.some((line) => line.includes("states-the-point") && line.includes("points=ok")));
 });

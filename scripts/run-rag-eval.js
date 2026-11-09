@@ -235,8 +235,12 @@ export const runEvalCase = async ({ baseUrl, evalCase, clock = performance }) =>
     : citations.some((citation) =>
         matchesAnswerCitation(evalCase, normalizeCitationExpectationInput(citation)),
       );
-  // The points the answer should state but does not.
-  const missingPoints = evalCase.expectAbstain ? [] : missingRequiredPoints(evalCase, result.answer);
+  // The points the answer should state but does not. Only an answer is read:
+  // an abstention or an empty reply fails already, and counting its points too
+  // would blur which answers came back incomplete.
+  const answered = answerPresent && !abstained;
+  const missingPoints =
+    !evalCase.expectAbstain && answered ? missingRequiredPoints(evalCase, result.answer) : [];
   const passed = evalCase.expectAbstain
     ? abstained && citationValid && contentSafe
     : answerPresent &&
@@ -283,6 +287,9 @@ export const runEvalCase = async ({ baseUrl, evalCase, clock = performance }) =>
 const pointsNote = (evalCase, result) => {
   if ( !evalCase.requiredPoints?.length ) {
     return "";
+  }
+  if ( !result.answerPresent || result.abstained ) {
+    return " points=n/a";
   }
   return result.missingPoints?.length
     ? ` points=missing(${result.missingPoints.join("|")})`

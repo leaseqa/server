@@ -112,7 +112,14 @@
       {
         "point": "an increase needs proper notice",
         "anyOf": [
-          "notice"
+          "proper notice",
+          "advance notice",
+          "written notice",
+          "days' notice",
+          "days notice",
+          "notice in writing",
+          "give you notice",
+          "give notice"
         ],
         "source": "Handout 5: Your landlord can only raise the rent if they give you proper notice and you agree to the increase."
       }
@@ -181,11 +188,11 @@
           "telling the landlord",
           "told the landlord",
           "notify",
-          "notice",
           "landlord knew",
           "landlord knows",
           "landlord know about",
-          "in writing"
+          "in writing",
+          "notified"
         ],
         "source": "Chapter 8: Does the landlord know about the defective conditions (and know this before you were behind in your rent)?"
       }
@@ -209,7 +216,10 @@
           "removed or covered",
           "remove the lead",
           "remove lead",
-          "abate"
+          "abate",
+          "removing or covering",
+          "remove or properly cover",
+          "removed or properly covered"
         ],
         "source": "Handout 9: property owners must remove or cover all lead paint hazards in homes built before 1978 where any children under 6 live."
       }
@@ -263,10 +273,21 @@
     ],
     "requiredPoints": [
       {
-        "point": "only a court can evict",
+        "point": "you need not leave until a court orders it",
         "anyOf": [
-          "court",
-          "judge"
+          "do not have to move",
+          "don't have to move",
+          "do not have to leave",
+          "don't have to leave",
+          "does not mean you must move",
+          "doesn't mean you must move",
+          "not a move out order",
+          "court's permission",
+          "court permission",
+          "court order",
+          "only a court",
+          "only a judge",
+          "judge orders"
         ],
         "source": "Handout 12: You do not have to move out by the date on a Notice to Quit. ... The number of days is the \"notice period\" and tells you how long you have before your landlord can go to court."
       }
@@ -354,12 +375,20 @@
         "point": "rules and evictions are regulated",
         "anyOf": [
           "attorney general",
-          "court",
           "cannot evict",
           "can't evict",
           "only evict",
           "against eviction",
-          "eviction protection"
+          "eviction protection",
+          "court order",
+          "court orders",
+          "court's permission",
+          "court permission",
+          "court eviction",
+          "only a court",
+          "only a judge",
+          "judge orders",
+          "judge's order"
         ],
         "source": "Handout 16: The rules the park owner makes must be approved by the Attorney General's Office ... A park owner cannot: Evict you unless they get a court order."
       }
@@ -400,8 +429,15 @@
       {
         "point": "the new owner cannot make you leave without just cause and a court order",
         "anyOf": [
-          "court",
-          "judge",
+          "court order",
+          "court orders",
+          "court's permission",
+          "court permission",
+          "court eviction",
+          "only a court",
+          "only a judge",
+          "judge orders",
+          "judge's order",
           "just cause"
         ],
         "source": "Handout 18: You only need to move out if a court orders you to leave. ... can usually only be evicted for “just cause”"
@@ -589,19 +625,36 @@
       {
         "point": "the deposit cap is one month's rent",
         "anyOf": [
-          "first month's rent",
-          "1st month's rent",
-          "one month's rent",
-          "1 month's rent",
-          "a month's rent",
-          "one month of rent",
-          "more than one month",
-          "more than a month",
+          "be more than one month",
+          "be more than 1 month",
+          "be more than a month",
+          "be more than your first month",
+          "be more than the first month",
+          "be more than your 1st month",
+          "exceed one month",
+          "exceed 1 month",
+          "exceed a month",
+          "exceed your first month",
+          "exceed the first month",
+          "no more than one month",
+          "no more than your first month",
+          "not more than one month",
+          "at most one month",
+          "at most 1 month",
+          "at most your first month",
+          "up to one month",
+          "up to 1 month",
+          "up to your first month",
           "one month is the max",
           "1 month is the max",
           "one month limit",
           "one month maximum",
-          "one month cap"
+          "one month cap",
+          "capped at one month",
+          "caps deposits at one month",
+          "caps the deposit at one month",
+          "limited to one month",
+          "maximum of one month"
         ],
         "source": "Handout 3: A security deposit cannot be more than your 1st month's rent."
       },
@@ -674,8 +727,15 @@
       {
         "point": "an eviction needs a court",
         "anyOf": [
-          "court",
-          "judge"
+          "court order",
+          "court orders",
+          "court's permission",
+          "court permission",
+          "court eviction",
+          "only a court",
+          "only a judge",
+          "judge orders",
+          "judge's order"
         ],
         "source": "Handout 12: To evict you, a landlord must get permission from a court to force you to leave your rented apartment or home. They can't lock you out."
       }
@@ -721,14 +781,36 @@
       {
         "point": "the deposit cap is one month's rent",
         "anyOf": [
-          "first month's rent",
-          "1st month's rent",
-          "one month's rent",
-          "1 month's rent",
-          "a month's rent",
-          "one month of rent",
-          "more than one month",
-          "more than a month"
+          "be more than one month",
+          "be more than 1 month",
+          "be more than a month",
+          "be more than your first month",
+          "be more than the first month",
+          "be more than your 1st month",
+          "exceed one month",
+          "exceed 1 month",
+          "exceed a month",
+          "exceed your first month",
+          "exceed the first month",
+          "no more than one month",
+          "no more than your first month",
+          "not more than one month",
+          "at most one month",
+          "at most 1 month",
+          "at most your first month",
+          "up to one month",
+          "up to 1 month",
+          "up to your first month",
+          "one month is the max",
+          "1 month is the max",
+          "one month limit",
+          "one month maximum",
+          "one month cap",
+          "capped at one month",
+          "caps deposits at one month",
+          "caps the deposit at one month",
+          "limited to one month",
+          "maximum of one month"
         ],
         "source": "Handout 3: A security deposit cannot be more than your 1st month's rent."
       }

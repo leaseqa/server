@@ -240,3 +240,30 @@ test("every required point names itself, its phrasings and the handbook line beh
   assert.deepEqual(malformed, []);
   assert.deepEqual(onAbstainCases, []);
 });
+
+// A phrasing only shows the answer contains some words, so the points take
+// wordings that state the fact. These answers mention it and still get it
+// wrong; the first is the kind of answer that called the deposit cap unclear.
+test("a hedged or contrary answer does not meet the point it mentions", async () => {
+  const cases = JSON.parse(await readFile(evalSetPath, "utf8"));
+  const missing = (id, answer) => missingRequiredPoints(cases.find((evalCase) => evalCase.id === id), answer);
+
+  assert.deepEqual(
+    missing(
+      "clause-deposit-over-one-month",
+      "The handbook does not clearly say whether a deposit of more than one month is legal. The $350 cleaning fee may be illegal.",
+    ),
+    ["the deposit cap is one month's rent"],
+  );
+  assert.deepEqual(missing("gen-deposit-limit", "A landlord can ask for more than one month if you agree."), [
+    "the deposit cap is one month's rent",
+  ]);
+  assert.deepEqual(missing("ch05-rent-increase", "Your landlord can raise the rent without notice."), [
+    "an increase needs proper notice",
+  ]);
+  assert.deepEqual(
+    missing("ch12-notice-to-quit", "You must move out by the date on it, or your landlord can take you to court."),
+    ["you need not leave until a court orders it"],
+  );
+  assert.deepEqual(missing("gen-deposit-limit", "It cannot be more than your first month's rent."), []);
+});
