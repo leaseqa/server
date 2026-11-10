@@ -23,7 +23,8 @@ on:
       report_args:
         description: >-
           Extra arguments for scripts/report-rag-retrieval.js, e.g.
-          --ids=gen-lockout,oos-divorce or --candidates-per-group=20.
+          --ids=gen-lockout,oos-divorce, --candidates-per-group=20, or
+          --top=30 to list 30 ranked chunks per case with their text.
         required: false
         default: ""
 

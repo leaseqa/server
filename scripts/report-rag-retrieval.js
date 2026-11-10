@@ -107,7 +107,7 @@ const gateOf = ({ ranking, config }) => {
 const abstainsAsExpected = (evalCase, gate) =>
   gate === "abstains" || (gate === "scope check" && evalCase.category === OUT_OF_SCOPE);
 
-export const reportCase = async ({ evalCase, config, embeddings, rerankClient }) => {
+export const reportCase = async ({ evalCase, config, embeddings, rerankClient, top = null }) => {
   const sessionChunk = sessionChunkFor(evalCase);
   // The server keeps only this preview of the session text, and that is what
   // a question about "this clause" carries into retrieval.
@@ -157,10 +157,12 @@ export const reportCase = async ({ evalCase, config, embeddings, rerankClient })
       evalCase,
       selectEvidence({ ranking: fused, config }),
     ),
-    top: ranking.chunks.slice(0, config.evidenceLimit).map((chunk) => ({
+    evidenceLimit: config.evidenceLimit,
+    top: ranking.chunks.slice(0, top ?? config.evidenceLimit).map((chunk) => ({
       label: label(chunk),
       score: scoreOf(ranking, chunk),
       expected: !evalCase.expectAbstain && isExpected(evalCase, chunk),
+      preview: top ? String(chunk.text || "").replace(/\s+/g, " ").trim().slice(0, 90) : null,
     })),
   };
 };
@@ -181,8 +183,12 @@ const printCase = (result) => {
       (result.rankedBy === "rerank" ? "" : `  RERANK UNAVAILABLE ${result.rerankFailure || ""}`),
   );
   result.top.forEach((item, index) => {
+    if ( index === result.evidenceLimit ) {
+      console.log("  -- below here the model does not see it");
+    }
     console.log(
-      `  ${item.expected ? "*" : " "}${index + 1}. ${formatScore(item.score)}  ${item.label}`,
+      `  ${item.expected ? "*" : " "}${index + 1}. ${formatScore(item.score)}  ${item.label}` +
+        (item.preview ? `  "${item.preview}"` : ""),
     );
   });
 };
@@ -257,8 +263,13 @@ const printSummary = (results, config) => {
   }
 };
 
+const positiveIntegerAfter = (argument, prefix) => {
+  const value = Number(argument.slice(prefix.length));
+  return Number.isInteger(value) && value > 0 ? value : null;
+};
+
 export const parseReportArgs = (argv) => {
-  const options = { ids: null, candidatesPerGroup: null };
+  const options = { ids: null, candidatesPerGroup: null, top: null };
   argv.forEach((argument) => {
     if ( argument.startsWith("--ids=") ) {
       options.ids = argument
@@ -268,8 +279,12 @@ export const parseReportArgs = (argv) => {
         .filter(Boolean);
     }
     if ( argument.startsWith("--candidates-per-group=") ) {
-      const value = Number.parseInt(argument.slice("--candidates-per-group=".length), 10);
-      options.candidatesPerGroup = Number.isInteger(value) && value > 0 ? value : null;
+      options.candidatesPerGroup = positiveIntegerAfter(argument, "--candidates-per-group=");
+    }
+    // List this many ranked chunks per case, with the start of each one's
+    // text, to see what just missed the model.
+    if ( argument.startsWith("--top=") ) {
+      options.top = positiveIntegerAfter(argument, "--top=");
     }
   });
   return options;
@@ -293,7 +308,7 @@ export const main = async (argv = process.argv.slice(2)) => {
   const results = [];
   for ( const evalCase of evalCases ) {
     try {
-      const result = await reportCase({ evalCase, config, embeddings, rerankClient });
+      const result = await reportCase({ evalCase, config, embeddings, rerankClient, top: options.top });
       results.push(result);
       printCase(result);
     } catch ( error ) {
