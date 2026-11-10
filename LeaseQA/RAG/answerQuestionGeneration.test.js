@@ -530,7 +530,7 @@ const WITHHOLDING_CHUNK = {
 };
 
 const heatAndWithholding = (verdict) => {
-  const { calls, dependencies } = bandDependencies({ score: 16, verdict });
+  const { dependencies } = bandDependencies({ score: 16, verdict });
   const queries = [];
   dependencies.searchHybridChunks = async ({ collectionName }) =>
     collectionName === "session_chunks" ? [] : [HEAT_CHUNK, WITHHOLDING_CHUNK];
@@ -542,7 +542,7 @@ const heatAndWithholding = (verdict) => {
       );
     },
   };
-  return { calls, queries, dependencies };
+  return { queries, dependencies };
 };
 
 test("a question in scope is re-ranked with the check's search query before it is answered", async () => {

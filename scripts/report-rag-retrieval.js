@@ -33,9 +33,11 @@ import {
 // best score and above every other case that must abstain, since the scope
 // check stops only out-of-scope questions. RAG_SCOPE_CHECK_BELOW goes above
 // every out-of-scope case's best handbook score, which is what the serving
-// path holds it against. Retrieval only: no server, no
-// database, no chat model, so a case in the band is reported as the scope
-// check's to decide; the live eval runs the check itself.
+// path holds it against. Retrieval only: no server, no database, no chat
+// model. So a case in the band is reported as the scope check's to decide,
+// and its evidence as the first ranking's: once the check says yes, the
+// serving path ranks the candidates again with the check's search query. The
+// live eval runs both.
 
 const evalSetPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -107,7 +109,7 @@ const gateOf = ({ ranking, config }) => {
 const abstainsAsExpected = (evalCase, gate) =>
   gate === "abstains" || (gate === "scope check" && evalCase.category === OUT_OF_SCOPE);
 
-export const reportCase = async ({ evalCase, config, embeddings, rerankClient, top = null }) => {
+export const reportCase = async ({ evalCase, config, embeddings, rerankClient, listCount = null }) => {
   const sessionChunk = sessionChunkFor(evalCase);
   // The server keeps only this preview of the session text, and that is what
   // a question about "this clause" carries into retrieval.
@@ -158,11 +160,11 @@ export const reportCase = async ({ evalCase, config, embeddings, rerankClient, t
       selectEvidence({ ranking: fused, config }),
     ),
     evidenceLimit: config.evidenceLimit,
-    top: ranking.chunks.slice(0, top ?? config.evidenceLimit).map((chunk) => ({
+    top: ranking.chunks.slice(0, listCount ?? config.evidenceLimit).map((chunk) => ({
       label: label(chunk),
       score: scoreOf(ranking, chunk),
       expected: !evalCase.expectAbstain && isExpected(evalCase, chunk),
-      preview: top ? String(chunk.text || "").replace(/\s+/g, " ").trim().slice(0, 90) : null,
+      preview: listCount ? String(chunk.text || "").replace(/\s+/g, " ").trim().slice(0, 90) : null,
     })),
   };
 };
@@ -184,7 +186,11 @@ const printCase = (result) => {
   );
   result.top.forEach((item, index) => {
     if ( index === result.evidenceLimit ) {
-      console.log("  -- below here the model does not see it");
+      console.log(
+        result.gate === "scope check"
+          ? "  -- below here the model sees it only if the check's search query ranks it higher"
+          : "  -- below here the model does not see it",
+      );
     }
     console.log(
       `  ${item.expected ? "*" : " "}${index + 1}. ${formatScore(item.score)}  ${item.label}` +
@@ -308,7 +314,7 @@ export const main = async (argv = process.argv.slice(2)) => {
   const results = [];
   for ( const evalCase of evalCases ) {
     try {
-      const result = await reportCase({ evalCase, config, embeddings, rerankClient, top: options.top });
+      const result = await reportCase({ evalCase, config, embeddings, rerankClient, listCount: options.top });
       results.push(result);
       printCase(result);
     } catch ( error ) {

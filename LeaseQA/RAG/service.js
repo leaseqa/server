@@ -776,7 +776,7 @@ export const answerQuestion = async ({
   let abstained = false;
   let abstentionReason = null;
   let scopeCheck = null;
-  let rewrittenQuery = null;
+  let evidenceFromScopeQuery = null;
   let corpusVersion = null;
   try {
     corpusVersion = await readCorpusVersion({
@@ -798,7 +798,7 @@ export const answerQuestion = async ({
       abstained,
       abstentionReason,
       scopeCheck,
-      rewrittenQuery,
+      evidenceFromScopeQuery,
       errorCode,
     };
     try {
@@ -865,12 +865,14 @@ export const answerQuestion = async ({
         // Observability must not change request behavior.
       }
     };
-    const ranking = await rankEvidence({
-      question: retrievalQuestion,
-      chunks: candidates,
-      rerankClient,
-      onRerankError: logRerankError,
-    });
+    const rankCandidates = (rankingQuestion) =>
+      rankEvidence({
+        question: rankingQuestion,
+        chunks: candidates,
+        rerankClient,
+        onRerankError: logRerankError,
+      });
+    const ranking = await rankCandidates(retrievalQuestion);
     retrievalDurationMs = Math.max(0, clock.now() - retrievalStartedAt);
     evidenceRanking = ranking.rankedBy;
     const topChunk = ranking.chunks[0];
@@ -917,24 +919,19 @@ export const answerQuestion = async ({
     // full rent?" with broken heat ranked heat rules over withholding rent.
     // The same candidates are ranked again with the check's query in the
     // handbook's terms; the first ranking stands if this one finds nothing.
-    const searchQuery = parseScopeSearchQuery(verdict);
     if ( scopeCheck === "in_scope" ) {
-      rewrittenQuery = false;
-    }
-    if ( searchQuery ) {
-      const requeryStartedAt = clock.now();
-      const requeried = await rankEvidence({
-        question: `${retrievalQuestion}\n${searchQuery}`,
-        chunks: candidates,
-        rerankClient,
-        onRerankError: logRerankError,
-      });
-      retrievalDurationMs += Math.max(0, clock.now() - requeryStartedAt);
-      const requeriedEvidence =
-        requeried.rankedBy === "rerank" ? selectEvidence({ ranking: requeried, config }) : [];
-      if ( requeriedEvidence.length > 0 ) {
-        evidence = requeriedEvidence;
-        rewrittenQuery = true;
+      evidenceFromScopeQuery = false;
+      const searchQuery = parseScopeSearchQuery(verdict);
+      if ( searchQuery ) {
+        const rerankStartedAt = clock.now();
+        const queryRanking = await rankCandidates(`${retrievalQuestion}\n${searchQuery}`);
+        retrievalDurationMs += Math.max(0, clock.now() - rerankStartedAt);
+        const queryEvidence =
+          queryRanking.rankedBy === "rerank" ? selectEvidence({ ranking: queryRanking, config }) : [];
+        if ( queryEvidence.length > 0 ) {
+          evidence = queryEvidence;
+          evidenceFromScopeQuery = true;
+        }
       }
     }
   }
