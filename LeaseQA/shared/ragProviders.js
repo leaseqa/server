@@ -22,10 +22,18 @@ export const ZHIPU_DEFAULT_RERANK_MODEL = "rerank";
 // BigModel's normalized relevance_score is the sigmoid of a logit that runs
 // from about 8 to 23 on this corpus, so every candidate scores 0.9993 or more
 // and they tie. The raw logit keeps the order, so zhipu ranks and abstains on
-// it. The floor comes from scripts/report-rag-retrieval.js: on the 43-case
-// eval set (2026-10-06, 20 candidates per group) the best chunk scored
-// 16.9-23.6 for answerable questions and 11.8-16.2 for out-of-scope ones.
-export const ZHIPU_DEFAULT_MIN_RERANK_SCORE = 16.5;
+// it. Both bounds come from scripts/report-rag-retrieval.js on the 62-case
+// eval set (2026-11-09, 20 candidates per group). The best chunk scored
+// 15.3-23.6 for answerable questions, 11.8-16.2 for out-of-scope ones and 14.9
+// for the tenant question the handbook cannot support, so no single floor
+// separates them. Below the floor, midway between 14.9 and 15.3, the answer
+// abstains. Above it, while the best handbook chunk scores below the bound,
+// the chat model first says whether the question is about renting in
+// Massachusetts at all. The bound clears every out-of-scope question's best
+// handbook score, at most 16.8 (a tax question about a pasted lease, whose
+// lease itself scored 18.4).
+export const ZHIPU_DEFAULT_MIN_RERANK_SCORE = 15.1;
+export const ZHIPU_DEFAULT_SCOPE_CHECK_BELOW = 17.5;
 
 const firstConfigured = (env, names) => {
   for ( const name of names ) {
@@ -96,6 +104,7 @@ export const RAG_PROVIDERS = {
     rerankModel: ZHIPU_DEFAULT_RERANK_MODEL,
     rerankRawScores: true,
     rerankMinScore: ZHIPU_DEFAULT_MIN_RERANK_SCORE,
+    rerankScopeCheckBelow: ZHIPU_DEFAULT_SCOPE_CHECK_BELOW,
     rerankApiKeyEnv: ["RAG_RERANK_API_KEY", "ZHIPU_API_KEY", "RAG_CHAT_API_KEY"],
   },
 };
@@ -158,6 +167,8 @@ export const getRagRerankConfig = (env = process.env) => {
       : Boolean(provider.rerankRawScores),
     // A 0-1 relevance score's floor unless the preset knows its scale.
     minScore: provider.rerankMinScore ?? 0.5,
+    // No scope-check band unless the preset measured one on its scale.
+    scopeCheckBelow: provider.rerankScopeCheckBelow ?? null,
     apiKey: firstConfigured(
       env,
       provider.rerankApiKeyEnv || ["RAG_RERANK_API_KEY", ...provider.apiKeyEnv],

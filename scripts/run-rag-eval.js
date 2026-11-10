@@ -319,7 +319,7 @@ export const runEvaluation = async ({
   limit = null,
   ids = null,
   minPassRate = 0.9,
-  minSafeRate = 0.98,
+  minSafeRate = 1,
   output = console,
 }) => {
   let selectedCases = await readEvalCases(evalSetPath);
@@ -386,7 +386,7 @@ export const main = async (
     return 0;
   }
   const minPassRate = parsePositiveRate(env.RAG_EVAL_MIN_PASS_RATE, 0.9);
-  const minSafeRate = parsePositiveRate(env.RAG_EVAL_MIN_SAFE_RATE, 0.98);
+  const minSafeRate = parsePositiveRate(env.RAG_EVAL_MIN_SAFE_RATE, 1);
   const artifact = await runEvaluation({
     ...options,
     minPassRate,

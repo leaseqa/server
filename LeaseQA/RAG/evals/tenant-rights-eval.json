@@ -192,7 +192,16 @@
           "landlord knows",
           "landlord know about",
           "in writing",
-          "notified"
+          "notified",
+          "call your landlord",
+          "calling your landlord",
+          "call the landlord",
+          "contact your landlord",
+          "contact the landlord",
+          "let your landlord know",
+          "let the landlord know",
+          "inform your landlord",
+          "inform the landlord"
         ],
         "source": "Chapter 8: Does the landlord know about the defective conditions (and know this before you were behind in your rent)?"
       }
@@ -913,6 +922,238 @@
     "id": "oos-drivers-license",
     "category": "out-of-scope",
     "question": "How do I renew my driver's license in Massachusetts?",
+    "expectAbstain": true
+  },
+  {
+    "id": "gen-deposit-wear-and-tear",
+    "category": "generalization",
+    "question": "Can my landlord keep part of my security deposit for normal wear and tear?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "3"
+    ],
+    "requiredPoints": [
+      {
+        "point": "not for normal wear and tear",
+        "anyOf": [
+          "cannot keep",
+          "can't keep",
+          "cannot use",
+          "can't use",
+          "cannot deduct",
+          "can't deduct",
+          "cannot charge",
+          "can't charge",
+          "except for normal wear and tear",
+          "except normal wear and tear",
+          "except for reasonable wear and tear",
+          "not for normal wear and tear",
+          "not for reasonable wear and tear",
+          "must return your entire",
+          "must return the entire",
+          "must return your full",
+          "must return the full"
+        ],
+        "source": "Chapter 3: If you leave your rental unit in the same condition as you found it (except for normal wear and tear), the landlord must return your entire security deposit and any interest they owe you on it."
+      }
+    ]
+  },
+  {
+    "id": "gen-rooming-house-lockout",
+    "category": "generalization",
+    "question": "I rent a room in a rooming house. Can the owner lock me out without going to court?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "15"
+    ],
+    "requiredPoints": [
+      {
+        "point": "only with a court order",
+        "anyOf": [
+          "court order",
+          "court orders",
+          "court's permission",
+          "court permission",
+          "court eviction",
+          "only a court",
+          "only a judge",
+          "judge orders",
+          "judge's order",
+          "permission from a judge",
+          "judge's permission"
+        ],
+        "source": "Handout 15: The only way a landlord can lock you out of your room is by getting a court order."
+      }
+    ]
+  },
+  {
+    "id": "gen-no-heat-rent",
+    "category": "generalization",
+    "question": "My heat has been broken for a week. Do I still have to pay my full rent?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "8",
+      "13",
+      "6"
+    ],
+    "requiredPoints": [
+      {
+        "point": "you may withhold some or all of the rent",
+        "anyOf": [
+          "can withhold",
+          "may withhold",
+          "able to withhold",
+          "right to withhold",
+          "withhold all or part",
+          "withhold part",
+          "withhold some",
+          "withhold rent until"
+        ],
+        "source": "Handout 8: If you ask for an inspection, you should: Withhold rent or part of it until the landlord makes the repairs."
+      },
+      {
+        "point": "the landlord must know about the problem first",
+        "anyOf": [
+          "tell your landlord",
+          "telling your landlord",
+          "told your landlord",
+          "tell the landlord",
+          "telling the landlord",
+          "told the landlord",
+          "notify",
+          "notified",
+          "landlord knew",
+          "landlord knows",
+          "landlord know about",
+          "in writing",
+          "call your landlord",
+          "calling your landlord",
+          "call the landlord",
+          "contact your landlord",
+          "contact the landlord",
+          "let your landlord know",
+          "let the landlord know",
+          "inform your landlord",
+          "inform the landlord"
+        ],
+        "source": "Handout 8: Before you are behind in rent, write your landlord a letter, list the repairs needed, and say you will withhold rent until the problems are fixed."
+      }
+    ]
+  },
+  {
+    "id": "gen-foreclosure-three-days",
+    "category": "generalization",
+    "question": "After a foreclosure, the bank told me I have to leave in three days. Is that true?",
+    "expectedSourceGroup": "chapters",
+    "expectedChapterRefs": [
+      "18"
+    ],
+    "requiredPoints": [
+      {
+        "point": "you only have to leave if a court orders it",
+        "anyOf": [
+          "court order",
+          "court orders",
+          "court's permission",
+          "court permission",
+          "court eviction",
+          "only a court",
+          "only a judge",
+          "judge orders",
+          "judge's order",
+          "just cause",
+          "do not have to leave",
+          "don't have to leave",
+          "do not have to move",
+          "don't have to move"
+        ],
+        "source": "Handout 18: You only need to move out if a court orders you to leave."
+      }
+    ]
+  },
+  {
+    "id": "oos-immigration",
+    "category": "out-of-scope",
+    "question": "How do I apply for a green card through my spouse?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-speeding-ticket",
+    "category": "out-of-scope",
+    "question": "How do I contest a speeding ticket in Massachusetts?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-child-support",
+    "category": "out-of-scope",
+    "question": "How is child support calculated in Massachusetts?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-unemployment-appeal",
+    "category": "out-of-scope",
+    "question": "How do I appeal a denied unemployment claim in Massachusetts?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-business-llc",
+    "category": "out-of-scope",
+    "question": "How do I register an LLC for my small business?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-car-accident",
+    "category": "out-of-scope",
+    "question": "Who pays my medical bills after a car accident that wasn't my fault?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-will",
+    "category": "out-of-scope",
+    "question": "How do I write a will that is valid in Massachusetts?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-workers-comp",
+    "category": "out-of-scope",
+    "question": "Can I get workers' compensation for a back injury at work?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-neighbor-tree",
+    "category": "out-of-scope",
+    "question": "My neighbor's tree fell on my car. Who pays for the damage?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-homeowner-contractor",
+    "category": "out-of-scope",
+    "question": "A contractor did a bad job repairing the roof of the house I own. Can I sue him?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-mortgage-modification",
+    "category": "out-of-scope",
+    "question": "How do I get my mortgage lender to modify the loan on my home?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-home-purchase-inspection",
+    "category": "out-of-scope",
+    "question": "What should a home inspection cover before I buy a house?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-debt-collector",
+    "category": "out-of-scope",
+    "question": "A debt collector keeps calling me about an old credit card. What are my rights?",
+    "expectAbstain": true
+  },
+  {
+    "id": "oos-tax-with-lease",
+    "category": "out-of-scope",
+    "sourceText": "Rent. Tenant will pay rent of $1,800 per month, due on the first day of each month, by check or bank transfer to Landlord. The term of this lease is twelve months.",
+    "question": "Can I deduct the rent in this lease on my income taxes?",
     "expectAbstain": true
   }
 ]

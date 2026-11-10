@@ -44,7 +44,7 @@ jobs:
       # workflow, and an empty value lets config.js apply its built-in default.
       RAG_MILVUS_KNOWLEDGE_COLLECTION: ${{ inputs.knowledge_collection || secrets.RAG_EVAL_MILVUS_KNOWLEDGE_COLLECTION }}
       RAG_EVAL_MIN_PASS_RATE: "0.90"
-      RAG_EVAL_MIN_SAFE_RATE: "0.98"
+      RAG_EVAL_MIN_SAFE_RATE: "1.00"
       RAG_EVAL_OUTPUT: artifacts/rag-eval.json
       SERVER_ENV: development
       PORT: "4050"

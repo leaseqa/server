@@ -113,7 +113,8 @@ test("zhipu reranks with BigModel's rerank model and the BigModel key", () => {
     baseURL: "https://open.bigmodel.cn/api/paas/v4",
     model: "rerank",
     rawScores: true,
-    minScore: 16.5,
+    minScore: 15.1,
+    scopeCheckBelow: 17.5,
     apiKey: "zhipu-key",
   });
 });

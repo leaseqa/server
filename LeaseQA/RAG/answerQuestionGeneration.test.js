@@ -377,3 +377,130 @@ test("a draft that never reached anyone does not block the retry", async () => {
   assert.equal(chatModel.attempts, 2);
   assert.equal(result.session.messages[1].summary, "The deposit is capped at one month's rent.");
 });
+
+// Every knowledge chunk reranks at score, and the chat model answers the scope
+// check with verdict before streaming answerText for the answer itself.
+const bandDependencies = ({ score, verdict, answerText = ANSWER_JSON, session }) => {
+  const calls = [];
+  const base = createStreamingDependencies({ session });
+  return {
+    calls,
+    dependencies: {
+      ...base,
+      config: { ...base.config, minRerankScore: 15, scopeCheckBelow: 17.5 },
+      rerankClient: { rerank: async ({ documents }) => documents.map(() => score) },
+      chatModel: {
+        async *stream(messages) {
+          calls.push(messages);
+          const isScopeCheck = /single word yes or no/i.test(messages[0].content);
+          yield { content: isScopeCheck ? verdict : answerText };
+        },
+      },
+    },
+  };
+};
+
+const askInBand = (
+  dependencies,
+  events = [],
+  question = "My heat has been broken for a week. Do I still have to pay my full rent?",
+) =>
+  answerQuestion(
+    {
+      sessionId: "session-stream",
+      userId: "user-1",
+      clientSessionId: null,
+      question,
+      onEvent: (event, data) => events.push([event, data]),
+    },
+    dependencies,
+  );
+
+test("a question in the scope-check band that the model calls in scope is answered", async () => {
+  const { calls, dependencies } = bandDependencies({ score: 15.3, verdict: "Yes." });
+  const events = [];
+
+  const result = await askInBand(dependencies, events);
+
+  assert.equal(calls.length, 2);
+  assert.match(calls[0][0].content, /single word yes or no/i);
+  assert.deepEqual(result.citations.map((citation) => citation.sourceName), ["ch03_security_deposits.pdf"]);
+  assert.deepEqual(events.slice(0, 2), [["status", { stage: "retrieving" }], ["status", { stage: "generating" }]]);
+});
+
+test("a question in the band that the model calls out of scope abstains before any answer is written", async () => {
+  const { calls, dependencies } = bandDependencies({ score: 16.2, verdict: "no" });
+  const events = [];
+
+  const result = await askInBand(dependencies, events);
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(result.citations, []);
+  assert.match(result.answer, /could not find enough support/i);
+  assert.deepEqual(events, [["status", { stage: "retrieving" }]]);
+});
+
+test("a best score at or above the band is answered without a scope check", async () => {
+  const { calls, dependencies } = bandDependencies({ score: 18.1, verdict: "no" });
+
+  const result = await askInBand(dependencies);
+
+  assert.equal(calls.length, 1);
+  assert.doesNotMatch(calls[0][0].content, /single word yes or no/i);
+  assert.equal(result.citations.length, 1);
+});
+
+test("the scope check reads a follow-up with the question before it, as the reranker does", async () => {
+  const session = {
+    ...STREAM_SESSION,
+    messages: [
+      { role: "user", content: "My landlord kept my whole deposit after I moved out." },
+      { role: "assistant", content: "Your landlord must return it within 30 days." },
+    ],
+  };
+  const { calls, dependencies } = bandDependencies({ score: 16, verdict: "yes", session });
+
+  await askInBand(dependencies, [], "Is that legal?");
+
+  // "Is that legal?" alone names no topic; with its earlier turn it is plainly
+  // about a deposit.
+  assert.match(calls[0][1].content, /Is that legal\?/);
+  assert.match(calls[0][1].content, /kept my whole deposit/);
+});
+
+test("a question that only the renter's own lease matches well is checked before it is answered", async () => {
+  const lease = "Rent. Tenant will pay rent of $1,800 per month.";
+  const { calls, dependencies } = bandDependencies({
+    score: 16.7,
+    verdict: "no",
+    session: { ...STREAM_SESSION, sourceTextPreview: lease },
+  });
+  const handbook = await dependencies.searchHybridChunks({ collectionName: "knowledge_chunks" });
+  dependencies.searchHybridChunks = async ({ collectionName }) =>
+    collectionName === "session_chunks"
+      ? [
+          {
+            id: "session-lease",
+            source_name: "pasted-text",
+            source_group: "text",
+            source_type: "session",
+            chapter_ref: "",
+            file_path: "",
+            source_url: "",
+            text: lease,
+            score: 0.03,
+          },
+        ]
+      : handbook;
+  // The question names "this lease", so the lease itself outscores the band.
+  dependencies.rerankClient = {
+    rerank: async ({ documents }) => documents.map((document) => (document.includes(lease) ? 18.4 : 16.7)),
+  };
+
+  const result = await askInBand(dependencies, [], "Can I deduct the rent in this lease on my income taxes?");
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0][0].content, /single word yes or no/i);
+  assert.deepEqual(result.citations, []);
+  assert.match(result.answer, /could not find enough support/i);
+});

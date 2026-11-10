@@ -177,7 +177,7 @@ test("loadGateCases drops pasted-text cases because their question needs the ses
 test("loadGateCases reads the real tenant-rights eval set by default", async () => {
   const cases = await loadGateCases({});
 
-  assert.equal(cases.length, 38);
+  assert.equal(cases.length, 42);
   assert.equal(
     cases.every((evalCase) => Boolean(evalCase.expectedSourceGroup)),
     true,

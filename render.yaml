@@ -115,6 +115,8 @@ services:
         sync: false
       - key: RAG_MIN_RERANK_SCORE
         sync: false
+      - key: RAG_SCOPE_CHECK_BELOW
+        sync: false
       - key: RAG_SESSION_TOP_K
         sync: false
       - key: RAG_MIN_SUPPORT_SCORE

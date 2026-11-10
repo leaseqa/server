@@ -9,6 +9,7 @@ import {
   buildKnowledgeSearchPlan,
   buildRetrievalQuestion,
   KNOWLEDGE_SOURCE_GROUPS,
+  needsScopeCheck,
   rankEvidence,
   selectEvidence,
 } from "./retrievalPolicy.js";
@@ -261,3 +262,38 @@ test("buildRetrievalQuestion keeps clause context for enforceability questions",
   assert.match(query, /security deposit/i);
 });
 
+test("a best score from the floor up to the scope-check bound asks for a scope check", () => {
+  const ranked = (score) => ({ rankedBy: "rerank", chunks: [chunk("a", { rerank_score: score })] });
+  const band = { ...config, minRerankScore: 15, scopeCheckBelow: 17.5 };
+
+  assert.equal(needsScopeCheck({ ranking: ranked(16.2), config: band }), true);
+  assert.equal(needsScopeCheck({ ranking: ranked(15), config: band }), true);
+  assert.equal(needsScopeCheck({ ranking: ranked(17.5), config: band }), false);
+  // Below the floor the answer abstains anyway; nothing is left to check.
+  assert.equal(needsScopeCheck({ ranking: ranked(14.9), config: band }), false);
+  // A provider without a band, and the fused fallback, never check.
+  assert.equal(needsScopeCheck({ ranking: ranked(16.2), config: { ...band, scopeCheckBelow: null } }), false);
+  assert.equal(
+    needsScopeCheck({ ranking: { rankedBy: "fusion", chunks: [chunk("a", { score: 0.03 })] }, config: band }),
+    false,
+  );
+});
+
+test("the band is judged on the handbook's best chunk, since the renter's own text matches whatever they ask about it", () => {
+  const band = { ...config, minRerankScore: 15, scopeCheckBelow: 17.5 };
+  const ranked = (...chunks) => ({ rankedBy: "rerank", chunks });
+  const upload = (score) => chunk("lease", { source_group: "upload", rerank_score: score });
+  const handbook = (score) => chunk("ch08", { rerank_score: score });
+
+  // A tax question about "this lease": the lease tops the list, the handbook does not.
+  assert.equal(needsScopeCheck({ ranking: ranked(upload(18.4), handbook(16.75)), config: band }), true);
+  assert.equal(needsScopeCheck({ ranking: ranked(upload(18.4), handbook(18)), config: band }), false);
+  // Only the renter's text clears the floor, so only the check can say it is in scope.
+  assert.equal(needsScopeCheck({ ranking: ranked(upload(16), handbook(12)), config: band }), true);
+  assert.equal(
+    needsScopeCheck({ ranking: ranked(chunk("pasted", { source_group: "text", rerank_score: 19 })), config: band }),
+    true,
+  );
+  // Nothing clears the floor: the answer abstains without asking.
+  assert.equal(needsScopeCheck({ ranking: ranked(upload(14), handbook(13)), config: band }), false);
+});

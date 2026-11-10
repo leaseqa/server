@@ -135,3 +135,32 @@ export const selectEvidence = ({ ranking, config }) => {
     ? ranking.chunks.slice(0, config.evidenceLimit)
     : [];
 };
+
+// The best reranked score among handbook chunks, or null without one. The
+// renter's own text matches whatever they ask about it ("can I deduct the rent
+// in this lease from my taxes?"), so only the handbook's score says whether
+// the question is about renting.
+export const bestHandbookScore = (ranking) => {
+  const best = ranking.chunks.find((chunk) => KNOWLEDGE_SOURCE_GROUPS.includes(chunk.source_group));
+  return Number.isFinite(best?.rerank_score) ? best.rerank_score : null;
+};
+
+// Whether the evidence is strong enough to show the model but too weak to say
+// the question is about renting at all. On the eval set out-of-scope questions
+// (divorce, unemployment) and answerable ones (no heat, lockouts) both score
+// from the floor up to RAG_SCOPE_CHECK_BELOW, so there the chat model decides
+// first. The floor is held against the best chunk, which may be the renter's
+// own text; the bound against the handbook's best. Only a reranker's scale has
+// such a band.
+export const needsScopeCheck = ({ ranking, config }) => {
+  const bestScore = ranking.chunks[0]?.rerank_score;
+  if (
+    ranking.rankedBy !== "rerank" ||
+    !Number.isFinite(config.scopeCheckBelow) ||
+    !(Number.isFinite(bestScore) && bestScore >= config.minRerankScore)
+  ) {
+    return false;
+  }
+  const handbookScore = bestHandbookScore(ranking);
+  return handbookScore === null || handbookScore < config.scopeCheckBelow;
+};
