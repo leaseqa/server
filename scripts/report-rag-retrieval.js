@@ -270,7 +270,7 @@ const printSummary = (results, config) => {
 };
 
 const positiveIntegerAfter = (argument, prefix) => {
-  const value = Number(argument.slice(prefix.length));
+  const value = Number.parseInt(argument.slice(prefix.length), 10);
   return Number.isInteger(value) && value > 0 ? value : null;
 };
 

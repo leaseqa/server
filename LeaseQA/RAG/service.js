@@ -918,7 +918,10 @@ export const answerQuestion = async ({
     // the part of the handbook that answers it: "do I still have to pay my
     // full rent?" with broken heat ranked heat rules over withholding rent.
     // The same candidates are ranked again with the check's query in the
-    // handbook's terms; the first ranking stands if this one finds nothing.
+    // handbook's terms. Whether to answer was settled on the first ranking,
+    // whose scores the floor and the band are set on (and topEvidenceScore
+    // keeps); this ranking only picks what the model sees, and the first one
+    // stands if the reranker fails.
     if ( scopeCheck === "in_scope" ) {
       evidenceFromScopeQuery = false;
       const searchQuery = parseScopeSearchQuery(verdict);
@@ -926,10 +929,8 @@ export const answerQuestion = async ({
         const rerankStartedAt = clock.now();
         const queryRanking = await rankCandidates(`${retrievalQuestion}\n${searchQuery}`);
         retrievalDurationMs += Math.max(0, clock.now() - rerankStartedAt);
-        const queryEvidence =
-          queryRanking.rankedBy === "rerank" ? selectEvidence({ ranking: queryRanking, config }) : [];
-        if ( queryEvidence.length > 0 ) {
-          evidence = queryEvidence;
+        if ( queryRanking.rankedBy === "rerank" && queryRanking.chunks.length > 0 ) {
+          evidence = queryRanking.chunks.slice(0, config.evidenceLimit);
           evidenceFromScopeQuery = true;
         }
       }

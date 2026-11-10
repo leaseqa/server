@@ -566,3 +566,42 @@ test("a yes without a search query keeps the first ranking", async () => {
   assert.equal(queries.length, 1);
   assert.deepEqual(result.citations.map((citation) => citation.sourceName), ["handout_ch06_utilities.pdf"]);
 });
+
+test("when ranking again with the search query fails, the first ranking stands", async () => {
+  const { dependencies } = heatAndWithholding("yes\nwithholding rent until the landlord makes repairs");
+  let calls = 0;
+  dependencies.rerankClient = {
+    rerank: async ({ documents }) => {
+      calls += 1;
+      if ( calls === 2 ) {
+        throw Object.assign(new Error("rerank unavailable"), { status: 400 });
+      }
+      return documents.map((document) => (/heat/.test(document) ? 16 : 15));
+    },
+  };
+
+  const result = await askInBand(dependencies);
+
+  assert.equal(calls, 2);
+  assert.deepEqual(result.citations.map((citation) => citation.sourceName), ["handout_ch06_utilities.pdf"]);
+});
+
+// The floor and the band were decided on the first ranking; the query's
+// ranking only picks which candidates the model sees, so its scale does not
+// have to clear a floor set on the renter's words.
+test("the search query's ranking orders the evidence even when its scores sit below the floor", async () => {
+  const { dependencies } = heatAndWithholding("yes\nwithholding rent until the landlord makes repairs");
+  dependencies.rerankClient = {
+    rerank: async ({ query, documents }) =>
+      documents.map((document) => {
+        if ( !/withhold/.test(query) ) {
+          return /heat/.test(document) ? 16 : 15;
+        }
+        return /withhold/.test(document) ? 14 : 13;
+      }),
+  };
+
+  const result = await askInBand(dependencies);
+
+  assert.deepEqual(result.citations.map((citation) => citation.sourceName), ["ch08_getting_repairs_made.pdf"]);
+});
