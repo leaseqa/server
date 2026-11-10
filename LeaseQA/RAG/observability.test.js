@@ -114,6 +114,7 @@ test("answerQuestion emits request-scoped timings, citations, version, and abste
     abstained: false,
     abstentionReason: null,
     scopeCheck: null,
+    rewrittenQuery: null,
     errorCode: null,
   });
   assert.doesNotMatch(
@@ -279,6 +280,13 @@ test("answerQuestion records the scope check's verdict and tags an out-of-scope 
   assert.equal(outOfScope.scopeCheck, "out_of_scope");
   assert.equal(outOfScope.abstained, true);
   assert.equal(outOfScope.abstentionReason, "out_of_scope");
+});
+
+test("answerQuestion records whether the check's search query re-ranked the evidence", async () => {
+  assert.equal((await answerInScopeCheckBand("yes")).rewrittenQuery, false);
+  assert.equal((await answerInScopeCheckBand("yes\ndeposit return deadline")).rewrittenQuery, true);
+  // An out-of-scope question has nothing to re-rank.
+  assert.equal((await answerInScopeCheckBand("no")).rewrittenQuery, null);
 });
 
 test("provider time counts the scope check and the answer together", async () => {

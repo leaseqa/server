@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildRagMessages, buildScopeCheckMessages, parseScopeVerdict } from "./prompt.js";
+import { buildRagMessages, buildScopeCheckMessages, parseScopeSearchQuery, parseScopeVerdict } from "./prompt.js";
 
 const supportChunks = [
   {
@@ -131,4 +131,25 @@ test("only a clear yes counts as in scope", () => {
   assert.equal(parseScopeVerdict("It depends."), false);
   assert.equal(parseScopeVerdict(""), false);
   assert.equal(parseScopeVerdict(undefined), false);
+});
+
+test("the scope check also asks for a search query in the handbook's own terms", () => {
+  const [system] = buildScopeCheckMessages({ question: "My heat is broken. Do I still pay full rent?" });
+
+  assert.match(system.content, /second line/i);
+  assert.match(system.content, /search query/i);
+  assert.match(system.content, /handbook/i);
+});
+
+test("only a yes carries a search query, taken from its second line", () => {
+  assert.equal(
+    parseScopeSearchQuery("yes\nwithholding rent until the landlord repairs the heat"),
+    "withholding rent until the landlord repairs the heat",
+  );
+  assert.equal(parseScopeSearchQuery("Yes.\n\n  \"rent withholding for no heat\"  "), "rent withholding for no heat");
+  assert.equal(parseScopeSearchQuery("yes"), null);
+  assert.equal(parseScopeSearchQuery("no\ndivorce filing"), null);
+  assert.equal(parseScopeSearchQuery(undefined), null);
+  // A runaway line is cut, not passed to the reranker whole.
+  assert.equal(parseScopeSearchQuery(`yes\n${"heat ".repeat(200)}`).length, 300);
 });
