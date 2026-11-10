@@ -6,6 +6,18 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "1"
+    ],
+    "requiredPoints": [
+      {
+        "point": "document the condition",
+        "anyOf": [
+          "statement of condition",
+          "photo",
+          "picture",
+          "video"
+        ],
+        "source": "Chapter 1: prepare a statement describing the condition of the apartment. This is called a \"Statement of Condition.\" ... You may want to take pictures (or video) of certain conditions."
+      }
     ]
   },
   {
@@ -15,6 +27,15 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "2"
+    ],
+    "requiredPoints": [
+      {
+        "point": "eviction records can be sealed",
+        "anyOf": [
+          "seal"
+        ],
+        "source": "Handout 2: Starting in May 2025, there will be a process to seal an eviction."
+      }
     ]
   },
   {
@@ -24,6 +45,17 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "3"
+    ],
+    "requiredPoints": [
+      {
+        "point": "returned within 30 days",
+        "anyOf": [
+          "30 days",
+          "thirty days",
+          "30-day"
+        ],
+        "source": "Handout 3: the landlord must return your security deposit balance, with interest, within 30 days after you move out."
+      }
     ]
   },
   {
@@ -33,6 +65,39 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "4"
+    ],
+    "requiredPoints": [
+      {
+        "point": "a lease runs for a set time",
+        "anyOf": [
+          "specific time",
+          "set period",
+          "fixed period",
+          "fixed term",
+          "specific period",
+          "set term",
+          "set amount of time",
+          "certain period",
+          "one year",
+          "12 months",
+          "a year",
+          "set time",
+          "1 year",
+          "an end date",
+          "set end date",
+          "fixed end date",
+          "specific end date"
+        ],
+        "source": "Handout 4: Tenant with Lease: If you have a written agreement to rent for a specific time period at a specific rent ..."
+      },
+      {
+        "point": "a tenancy at will runs month to month",
+        "anyOf": [
+          "month-to-month",
+          "month to month"
+        ],
+        "source": "Handout 4: If your agreement with your landlord is a month-to-month tenancy, you are a tenant at will."
+      }
     ]
   },
   {
@@ -42,6 +107,22 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "5"
+    ],
+    "requiredPoints": [
+      {
+        "point": "an increase needs proper notice",
+        "anyOf": [
+          "proper notice",
+          "advance notice",
+          "written notice",
+          "days' notice",
+          "days notice",
+          "notice in writing",
+          "give you notice",
+          "give notice"
+        ],
+        "source": "Handout 5: Your landlord can only raise the rent if they give you proper notice and you agree to the increase."
+      }
     ]
   },
   {
@@ -51,6 +132,19 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "6"
+    ],
+    "requiredPoints": [
+      {
+        "point": "call the Board of Health",
+        "anyOf": [
+          "board of health",
+          "health department",
+          "inspector",
+          "inspectional services",
+          "code enforcement"
+        ],
+        "source": "Handout 6: If you cannot reach the landlord or they do not fix the problem, call the local Board of Health."
+      }
     ]
   },
   {
@@ -60,6 +154,19 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "7"
+    ],
+    "requiredPoints": [
+      {
+        "point": "it is illegal",
+        "anyOf": [
+          "illegal",
+          "unlawful",
+          "against the law",
+          "prohibited",
+          "not allowed"
+        ],
+        "source": "Handout 7 lists as illegal discrimination: You have young children, and a landlord tells you they cannot rent to you because the apartment has lead paint."
+      }
     ]
   },
   {
@@ -69,6 +176,26 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "8"
+    ],
+    "requiredPoints": [
+      {
+        "point": "the landlord must know about the problems first",
+        "anyOf": [
+          "tell your landlord",
+          "telling your landlord",
+          "told your landlord",
+          "tell the landlord",
+          "telling the landlord",
+          "told the landlord",
+          "notify",
+          "landlord knew",
+          "landlord knows",
+          "landlord know about",
+          "in writing",
+          "notified"
+        ],
+        "source": "Chapter 8: Does the landlord know about the defective conditions (and know this before you were behind in your rent)?"
+      }
     ]
   },
   {
@@ -78,6 +205,24 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "9"
+    ],
+    "requiredPoints": [
+      {
+        "point": "remove or cover the lead hazards",
+        "anyOf": [
+          "delead",
+          "de-lead",
+          "remove or cover",
+          "removed or covered",
+          "remove the lead",
+          "remove lead",
+          "abate",
+          "removing or covering",
+          "remove or properly cover",
+          "removed or properly covered"
+        ],
+        "source": "Handout 9: property owners must remove or cover all lead paint hazards in homes built before 1978 where any children under 6 live."
+      }
     ]
   },
   {
@@ -87,6 +232,15 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "10"
+    ],
+    "requiredPoints": [
+      {
+        "point": "retaliation is illegal",
+        "anyOf": [
+          "retaliat"
+        ],
+        "source": "Chapter 10: an adverse action, such as notice to quit or a rent increase, within six months of organizing or joining a tenants' union is presumed retaliation."
+      }
     ]
   },
   {
@@ -96,6 +250,17 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "11"
+    ],
+    "requiredPoints": [
+      {
+        "point": "take pictures before leaving",
+        "anyOf": [
+          "photo",
+          "picture",
+          "video"
+        ],
+        "source": "Handout 11: Take pictures before you leave."
+      }
     ]
   },
   {
@@ -105,6 +270,27 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "12"
+    ],
+    "requiredPoints": [
+      {
+        "point": "you need not leave until a court orders it",
+        "anyOf": [
+          "do not have to move",
+          "don't have to move",
+          "do not have to leave",
+          "don't have to leave",
+          "does not mean you must move",
+          "doesn't mean you must move",
+          "not a move out order",
+          "court's permission",
+          "court permission",
+          "court order",
+          "only a court",
+          "only a judge",
+          "judge orders"
+        ],
+        "source": "Handout 12: You do not have to move out by the date on a Notice to Quit. ... The number of days is the \"notice period\" and tells you how long you have before your landlord can go to court."
+      }
     ]
   },
   {
@@ -114,6 +300,21 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "13"
+    ],
+    "requiredPoints": [
+      {
+        "point": "the home must be habitable",
+        "anyOf": [
+          "habitab",
+          "part of your rent",
+          "rent abatement",
+          "abatement",
+          "make repairs",
+          "order repairs",
+          "rent back"
+        ],
+        "source": "Handout 13: Landlords must provide \"habitable\" or decent living conditions. You can ask the court to order them to make repairs and return part of your rent."
+      }
     ]
   },
   {
@@ -123,6 +324,18 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "14"
+    ],
+    "requiredPoints": [
+      {
+        "point": "Housing Court",
+        "anyOf": [
+          "housing court",
+          "housing or district court",
+          "housing and district court",
+          "housing or district courts"
+        ],
+        "source": "Handout 14: most landlord-tenant cases in Housing Court or District Court. If there is a Housing Court where you live, consider starting your case there."
+      }
     ]
   },
   {
@@ -132,6 +345,24 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "15"
+    ],
+    "requiredPoints": [
+      {
+        "point": "protection grows with time lived there",
+        "anyOf": [
+          "30 days",
+          "3 months",
+          "three months",
+          "90 days",
+          "3 consecutive months",
+          "three consecutive months",
+          "depends on how long",
+          "how long you have lived",
+          "how long you've lived",
+          "how long you lived"
+        ],
+        "source": "Handout 15: If you have lived in the rooming house 30 days or less ... More than 30 days ... More than 3 months: the type of notice depends on the reason for eviction."
+      }
     ]
   },
   {
@@ -141,6 +372,29 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "16"
+    ],
+    "requiredPoints": [
+      {
+        "point": "rules and evictions are regulated",
+        "anyOf": [
+          "attorney general",
+          "cannot evict",
+          "can't evict",
+          "only evict",
+          "against eviction",
+          "eviction protection",
+          "court order",
+          "court orders",
+          "court's permission",
+          "court permission",
+          "court eviction",
+          "only a court",
+          "only a judge",
+          "judge orders",
+          "judge's order"
+        ],
+        "source": "Handout 16: The rules the park owner makes must be approved by the Attorney General's Office ... A park owner cannot: Evict you unless they get a court order."
+      }
     ]
   },
   {
@@ -150,6 +404,20 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "17"
+    ],
+    "requiredPoints": [
+      {
+        "point": "at least a year's notice",
+        "anyOf": [
+          "1 year",
+          "one year",
+          "a year",
+          "2 years",
+          "two years",
+          "12 months"
+        ],
+        "source": "Handout 17: they must give you a notice to vacate at least 1 year before the date they want you to move out ... at least 2 years if you have a limited income, are 62 years or older, or have a physical disability."
+      }
     ]
   },
   {
@@ -159,6 +427,24 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "18"
+    ],
+    "requiredPoints": [
+      {
+        "point": "the new owner cannot make you leave without just cause and a court order",
+        "anyOf": [
+          "court order",
+          "court orders",
+          "court's permission",
+          "court permission",
+          "court eviction",
+          "only a court",
+          "only a judge",
+          "judge orders",
+          "judge's order",
+          "just cause"
+        ],
+        "source": "Handout 18: You only need to move out if a court orders you to leave. ... can usually only be evicted for “just cause”"
+      }
     ]
   },
   {
@@ -205,6 +491,17 @@
     "expectedSourceGroup": "booklets",
     "expectedSourceNameIncludes": [
       "answer"
+    ],
+    "requiredPoints": [
+      {
+        "point": "the Answer deadline",
+        "anyOf": [
+          "business days",
+          "deadline",
+          "answer date"
+        ],
+        "source": "Booklet 3: The court and your landlord must get your Answer on or before 3 business days before your first court date."
+      }
     ]
   },
   {
@@ -214,6 +511,15 @@
     "expectedSourceGroup": "booklets",
     "expectedSourceNameIncludes": [
       "late_answer"
+    ],
+    "requiredPoints": [
+      {
+        "point": "file a motion",
+        "anyOf": [
+          "motion"
+        ],
+        "source": "Booklet 3A: Use this Motion to Allow Late Answer & Discovery form to ask the court to accept your Answer and Discovery late."
+      }
     ]
   },
   {
@@ -252,6 +558,17 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "3"
+    ],
+    "requiredPoints": [
+      {
+        "point": "returned within 30 days",
+        "anyOf": [
+          "30 days",
+          "thirty days",
+          "30-day"
+        ],
+        "source": "Handout 3: the landlord must return your security deposit balance, with interest, within 30 days after you move out."
+      }
     ]
   },
   {
@@ -263,7 +580,18 @@
       "content": "RESIDENTIAL LEASE AGREEMENT\nThis lease is between the Landlord and Tenant for the apartment at 12 Beacon Street, Boston, MA.\n1. Term and Renewal: This lease runs for one year. The Tenant must give the Landlord at least 60 days written notice before the end of the term to renew.\n2. Rent: Monthly rent is $1,800, due on the first of each month.\n3. Repairs: The Landlord must repair heating, plumbing, and electrical problems within 48 hours of written notice.\n4. Security Deposit: The Landlord holds a $1,800 security deposit and will return it within 60 days after move-out, minus any itemized deductions.\n5. Late Fee: A late fee of $50 applies if rent is paid after the 5th of the month."
     },
     "question": "My lease says I must give 60 days notice to renew. How much notice does my lease require?",
-    "expectedSourceGroup": "upload"
+    "expectedSourceGroup": "upload",
+    "requiredPoints": [
+      {
+        "point": "the lease asks for 60 days",
+        "anyOf": [
+          "60 days",
+          "sixty days",
+          "60-day"
+        ],
+        "source": "The uploaded lease: This lease requires 60 days written notice to renew."
+      }
+    ]
   },
   {
     "id": "upload-lease-deposit-return-law",
@@ -274,7 +602,18 @@
       "content": "RESIDENTIAL LEASE AGREEMENT\nThis lease is between the Landlord and Tenant for the apartment at 12 Beacon Street, Boston, MA.\n1. Term and Renewal: This lease runs for one year. The Tenant must give the Landlord at least 60 days written notice before the end of the term to renew.\n2. Rent: Monthly rent is $1,800, due on the first of each month.\n3. Repairs: The Landlord must repair heating, plumbing, and electrical problems within 48 hours of written notice.\n4. Security Deposit: The Landlord holds a $1,800 security deposit and will return it within 60 days after move-out, minus any itemized deductions.\n5. Late Fee: A late fee of $50 applies if rent is paid after the 5th of the month."
     },
     "question": "My lease says my security deposit will be returned within 60 days after move-out. Is that consistent with Massachusetts law?",
-    "expectedSourceGroup": "upload"
+    "expectedSourceGroup": "upload",
+    "requiredPoints": [
+      {
+        "point": "the law says 30 days",
+        "anyOf": [
+          "30 days",
+          "thirty days",
+          "30-day"
+        ],
+        "source": "Handout 3: the landlord must return your security deposit balance, with interest, within 30 days after you move out."
+      }
+    ]
   },
   {
     "id": "clause-deposit-over-one-month",
@@ -284,6 +623,57 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "3"
+    ],
+    "requiredPoints": [
+      {
+        "point": "the deposit cap is one month's rent",
+        "anyOf": [
+          "be more than one month",
+          "be more than 1 month",
+          "be more than a month",
+          "be more than your first month",
+          "be more than the first month",
+          "be more than your 1st month",
+          "exceed one month",
+          "exceed 1 month",
+          "exceed a month",
+          "exceed your first month",
+          "exceed the first month",
+          "no more than one month",
+          "no more than your first month",
+          "not more than one month",
+          "at most one month",
+          "at most 1 month",
+          "at most your first month",
+          "up to one month",
+          "up to 1 month",
+          "up to your first month",
+          "one month is the max",
+          "1 month is the max",
+          "one month limit",
+          "one month maximum",
+          "one month cap",
+          "capped at one month",
+          "caps deposits at one month",
+          "caps the deposit at one month",
+          "limited to one month",
+          "maximum of one month"
+        ],
+        "source": "Handout 3: A security deposit cannot be more than your 1st month's rent."
+      },
+      {
+        "point": "the fee is not allowed",
+        "anyOf": [
+          "not allowed",
+          "illegal",
+          "unlawful",
+          "cannot charge",
+          "can't charge",
+          "prohibited",
+          "not permitted"
+        ],
+        "source": "Chapter 3: A landlord is not allowed to charge other fees like pet, cleaning, or application fees."
+      }
     ]
   },
   {
@@ -293,6 +683,18 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "8"
+    ],
+    "requiredPoints": [
+      {
+        "point": "permission, an emergency or a court order",
+        "anyOf": [
+          "permission",
+          "emergency",
+          "court order",
+          "consent"
+        ],
+        "source": "Chapter 1: The landlord is only allowed to enter your apartment if you give them permission, if it is an emergency, or if they have a court order."
+      }
     ]
   },
   {
@@ -302,6 +704,17 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "5"
+    ],
+    "requiredPoints": [
+      {
+        "point": "no late fee until 30 days late",
+        "anyOf": [
+          "30 days",
+          "thirty days",
+          "30-day"
+        ],
+        "source": "Handout 5: your landlord cannot collect the late fee until 30 days after the rent was due."
+      }
     ]
   },
   {
@@ -312,6 +725,23 @@
     "expectedChapterRefs": [
       "12",
       "13"
+    ],
+    "requiredPoints": [
+      {
+        "point": "an eviction needs a court",
+        "anyOf": [
+          "court order",
+          "court orders",
+          "court's permission",
+          "court permission",
+          "court eviction",
+          "only a court",
+          "only a judge",
+          "judge orders",
+          "judge's order"
+        ],
+        "source": "Handout 12: To evict you, a landlord must get permission from a court to force you to leave your rented apartment or home. They can't lock you out."
+      }
     ]
   },
   {
@@ -321,6 +751,25 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "7"
+    ],
+    "requiredPoints": [
+      {
+        "point": "it is illegal",
+        "anyOf": [
+          "illegal",
+          "unlawful",
+          "against the law",
+          "prohibited",
+          "not allowed",
+          "cannot refuse",
+          "can't refuse",
+          "cannot deny",
+          "can't deny",
+          "cannot discriminate",
+          "can't discriminate"
+        ],
+        "source": "Handout 7 lists as illegal discrimination: A landlord refuses to rent to you because you have a Section 8 voucher."
+      }
     ]
   },
   {
@@ -330,6 +779,44 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "3"
+    ],
+    "requiredPoints": [
+      {
+        "point": "the deposit cap is one month's rent",
+        "anyOf": [
+          "be more than one month",
+          "be more than 1 month",
+          "be more than a month",
+          "be more than your first month",
+          "be more than the first month",
+          "be more than your 1st month",
+          "exceed one month",
+          "exceed 1 month",
+          "exceed a month",
+          "exceed your first month",
+          "exceed the first month",
+          "no more than one month",
+          "no more than your first month",
+          "not more than one month",
+          "at most one month",
+          "at most 1 month",
+          "at most your first month",
+          "up to one month",
+          "up to 1 month",
+          "up to your first month",
+          "one month is the max",
+          "1 month is the max",
+          "one month limit",
+          "one month maximum",
+          "one month cap",
+          "capped at one month",
+          "caps deposits at one month",
+          "caps the deposit at one month",
+          "limited to one month",
+          "maximum of one month"
+        ],
+        "source": "Handout 3: A security deposit cannot be more than your 1st month's rent."
+      }
     ]
   },
   {
@@ -339,6 +826,20 @@
     "expectedSourceGroup": "chapters",
     "expectedChapterRefs": [
       "3"
+    ],
+    "requiredPoints": [
+      {
+        "point": "interest every year",
+        "anyOf": [
+          "once a year",
+          "every year",
+          "each year",
+          "annual",
+          "yearly",
+          "per year"
+        ],
+        "source": "Handout 3: Pay you interest on your security deposit and last month's rent once a year."
+      }
     ]
   },
   {
@@ -351,6 +852,15 @@
       "8",
       "10",
       "13"
+    ],
+    "requiredPoints": [
+      {
+        "point": "retaliation is illegal",
+        "anyOf": [
+          "retaliat"
+        ],
+        "source": "Chapter 12: If a landlord sends you a Notice to Quit or tries to evict you by going to court within 6 months after you did any of the activities protected by the law, a judge must \"presume\" that your landlord is retaliating."
+      }
     ]
   },
   {
@@ -369,6 +879,16 @@
     "expectedSourceGroup": "booklets",
     "expectedSourceNameIncludes": [
       "indigency"
+    ],
+    "requiredPoints": [
+      {
+        "point": "an Affidavit of Indigency",
+        "anyOf": [
+          "indigency",
+          "indigent"
+        ],
+        "source": "Booklet 10: File an Affidavit of Indigency. Tell the court you cannot afford the fees and costs in your case, and ask the court to waive your court fees."
+      }
     ]
   },
   {

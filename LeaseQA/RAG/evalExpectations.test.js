@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   matchesAnswerCitation,
   matchesExpectation,
+  missingRequiredPoints,
   normalizeChunkExpectationInput,
   normalizeCitationExpectationInput,
   pastedSourceTextOf,
@@ -184,4 +185,85 @@ test("no eval case both uploads a document and pastes text", async () => {
     .map((evalCase) => evalCase.id);
 
   assert.deepEqual(both, []);
+});
+
+test("an answer meets a required point when it says any of the point's phrasings", () => {
+  const evalCase = {
+    requiredPoints: [
+      { point: "deposit back within 30 days", anyOf: ["30 days", "thirty days"] },
+      { point: "deposit capped at one month", anyOf: ["first month's rent", "one month"] },
+    ],
+  };
+
+  assert.deepEqual(
+    missingRequiredPoints(evalCase, "Your landlord must return it within THIRTY DAYS.\nIt cannot be more than your first month’s rent."),
+    [],
+  );
+  assert.deepEqual(missingRequiredPoints(evalCase, "Return it within 30 days."), ["deposit capped at one month"]);
+  // Hyphens and dashes read as spaces, on either side.
+  assert.deepEqual(
+    missingRequiredPoints(
+      { requiredPoints: [{ point: "cap", anyOf: ["one month limit"] }, { point: "deadline", anyOf: ["30-day"] }] },
+      "It breaks the one-month limit—and the 30 day deadline.",
+    ),
+    [],
+  );
+  // Two months' rent is not one month's rent.
+  assert.deepEqual(
+    missingRequiredPoints(evalCase, "You must pay two months' rent; the evidence doesn't confirm a limit."),
+    ["deposit back within 30 days", "deposit capped at one month"],
+  );
+  assert.deepEqual(missingRequiredPoints({}, "anything"), []);
+  assert.deepEqual(missingRequiredPoints(evalCase, undefined), ["deposit back within 30 days", "deposit capped at one month"]);
+});
+
+test("every required point names itself, its phrasings and the handbook line behind it", async () => {
+  const cases = JSON.parse(await readFile(evalSetPath, "utf8"));
+
+  const malformed = cases.flatMap((evalCase) =>
+    (evalCase.requiredPoints || [])
+      .filter(
+        (point) =>
+          typeof point?.point !== "string" ||
+          point.point.trim() === "" ||
+          !Array.isArray(point.anyOf) ||
+          point.anyOf.length === 0 ||
+          !point.anyOf.every((phrase) => typeof phrase === "string" && phrase.trim() !== "") ||
+          typeof point.source !== "string" ||
+          point.source.trim() === "",
+      )
+      .map((point) => `${evalCase.id}: ${JSON.stringify(point)}`),
+  );
+  // An abstaining case has no answer to hold to a point.
+  const onAbstainCases = cases.filter((evalCase) => evalCase.expectAbstain && evalCase.requiredPoints).map((evalCase) => evalCase.id);
+
+  assert.deepEqual(malformed, []);
+  assert.deepEqual(onAbstainCases, []);
+});
+
+// A phrasing only shows the answer contains some words, so the points take
+// wordings that state the fact. These answers mention it and still get it
+// wrong; the first is the kind of answer that called the deposit cap unclear.
+test("a hedged or contrary answer does not meet the point it mentions", async () => {
+  const cases = JSON.parse(await readFile(evalSetPath, "utf8"));
+  const missing = (id, answer) => missingRequiredPoints(cases.find((evalCase) => evalCase.id === id), answer);
+
+  assert.deepEqual(
+    missing(
+      "clause-deposit-over-one-month",
+      "The handbook does not clearly say whether a deposit of more than one month is legal. The $350 cleaning fee may be illegal.",
+    ),
+    ["the deposit cap is one month's rent"],
+  );
+  assert.deepEqual(missing("gen-deposit-limit", "A landlord can ask for more than one month if you agree."), [
+    "the deposit cap is one month's rent",
+  ]);
+  assert.deepEqual(missing("ch05-rent-increase", "Your landlord can raise the rent without notice."), [
+    "an increase needs proper notice",
+  ]);
+  assert.deepEqual(
+    missing("ch12-notice-to-quit", "You must move out by the date on it, or your landlord can take you to court."),
+    ["you need not leave until a court orders it"],
+  );
+  assert.deepEqual(missing("gen-deposit-limit", "It cannot be more than your first month's rent."), []);
 });
