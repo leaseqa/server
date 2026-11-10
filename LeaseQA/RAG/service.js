@@ -12,6 +12,7 @@ import {
   buildScopeCheckMessages,
   formatEvidenceSourceLabel,
   getEvidenceId,
+  parseScopeSearchQuery,
   parseScopeVerdict,
 } from "./prompt.js";
 import { runBoundedOperation } from "./operationPolicy.js";
@@ -775,6 +776,7 @@ export const answerQuestion = async ({
   let abstained = false;
   let abstentionReason = null;
   let scopeCheck = null;
+  let evidenceFromScopeQuery = null;
   let corpusVersion = null;
   try {
     corpusVersion = await readCorpusVersion({
@@ -796,6 +798,7 @@ export const answerQuestion = async ({
       abstained,
       abstentionReason,
       scopeCheck,
+      evidenceFromScopeQuery,
       errorCode,
     };
     try {
@@ -848,24 +851,28 @@ export const answerQuestion = async ({
       retryPolicy,
     }),
     ]);
-    const ranking = await rankEvidence({
-      question: retrievalQuestion,
-      chunks: dedupeById([...sessionChunks, ...knowledgeCandidates]),
-      rerankClient,
-      onRerankError: (error) => {
-        try {
-          logger.error(
-            JSON.stringify({
-              event: "rag_rerank_failed",
-              requestId: requestId || null,
-              errorCode: getStableRagErrorCode(error, "RAG_RERANK_FAILED"),
-            }),
-          );
-        } catch {
-          // Observability must not change request behavior.
-        }
-      },
-    });
+    const candidates = dedupeById([...sessionChunks, ...knowledgeCandidates]);
+    const logRerankError = (error) => {
+      try {
+        logger.error(
+          JSON.stringify({
+            event: "rag_rerank_failed",
+            requestId: requestId || null,
+            errorCode: getStableRagErrorCode(error, "RAG_RERANK_FAILED"),
+          }),
+        );
+      } catch {
+        // Observability must not change request behavior.
+      }
+    };
+    const rankCandidates = (rankingQuestion) =>
+      rankEvidence({
+        question: rankingQuestion,
+        chunks: candidates,
+        rerankClient,
+        onRerankError: logRerankError,
+      });
+    const ranking = await rankCandidates(retrievalQuestion);
     retrievalDurationMs = Math.max(0, clock.now() - retrievalStartedAt);
     evidenceRanking = ranking.rankedBy;
     const topChunk = ranking.chunks[0];
@@ -887,13 +894,13 @@ export const answerQuestion = async ({
     .map((message) => `${message.role}: ${message.content}`)
     .join("\n");
 
-  const evidence = selectEvidence({ ranking, config });
+  let evidence = selectEvidence({ ranking, config });
   // While the handbook's best chunk scores below RAG_SCOPE_CHECK_BELOW an
   // out-of-scope question can score as well as an answerable one, so the model
-  // first says whether it is about renting at all. It reads what the reranker read: the retrieval
-  // question, which carries a follow-up's earlier turn and a clause
-  // question's document. A failed check fails the request like a failed
-  // answer: abstaining would tell the renter the handbook has nothing.
+  // first says whether it is about renting at all. It reads what the reranker
+  // read: the retrieval question, which carries a follow-up's earlier turn and
+  // a clause question's document. A failed check fails the request like a
+  // failed answer: abstaining would tell the renter the handbook has nothing.
   if ( needsScopeCheck({ ranking, config }) ) {
     // What the error metric shows if the call throws.
     scopeCheck = "failed";
@@ -907,6 +914,27 @@ export const answerQuestion = async ({
     providerDurationMs += Math.max(0, clock.now() - providerStartedAt);
     providerStartedAt = null;
     scopeCheck = parseScopeVerdict(verdict) ? "in_scope" : "out_of_scope";
+    // A question this weak often finds its topic in the renter's words but not
+    // the part of the handbook that answers it: "do I still have to pay my
+    // full rent?" with broken heat ranked heat rules over withholding rent.
+    // The same candidates are ranked again with the check's query in the
+    // handbook's terms. Whether to answer was settled on the first ranking,
+    // whose scores the floor and the band are set on (and topEvidenceScore
+    // keeps); this ranking only picks what the model sees, and the first one
+    // stands if the reranker fails.
+    if ( scopeCheck === "in_scope" ) {
+      evidenceFromScopeQuery = false;
+      const searchQuery = parseScopeSearchQuery(verdict);
+      if ( searchQuery ) {
+        const rerankStartedAt = clock.now();
+        const queryRanking = await rankCandidates(`${retrievalQuestion}\n${searchQuery}`);
+        retrievalDurationMs += Math.max(0, clock.now() - rerankStartedAt);
+        if ( queryRanking.rankedBy === "rerank" && queryRanking.chunks.length > 0 ) {
+          evidence = queryRanking.chunks.slice(0, config.evidenceLimit);
+          evidenceFromScopeQuery = true;
+        }
+      }
+    }
   }
   const supportedCitationChunks = scopeCheck === "out_of_scope" ? [] : evidence;
   const candidateCitations =

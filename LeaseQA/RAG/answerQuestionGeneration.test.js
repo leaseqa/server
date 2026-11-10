@@ -504,3 +504,104 @@ test("a question that only the renter's own lease matches well is checked before
   assert.deepEqual(result.citations, []);
   assert.match(result.answer, /could not find enough support/i);
 });
+
+// Two handbook chunks: one about heat, which the renter's words match, and one
+// about withholding rent, which answers what they are asking.
+const HEAT_CHUNK = {
+  id: "knowledge-heat",
+  source_name: "handout_ch06_utilities.pdf",
+  source_group: "handouts",
+  source_type: "handbook",
+  chapter_ref: "6",
+  file_path: "",
+  source_url: "https://example.org/handout6",
+  text: "A landlord must provide heat from September 15 through May 31.",
+  score: 0.95,
+};
+const WITHHOLDING_CHUNK = {
+  ...HEAT_CHUNK,
+  id: "knowledge-withholding",
+  source_name: "ch08_getting_repairs_made.pdf",
+  source_group: "chapters",
+  chapter_ref: "8",
+  source_url: "https://example.org/ch08",
+  text: "A tenant may withhold rent until repairs are made.",
+  score: 0.9,
+};
+
+const heatAndWithholding = (verdict) => {
+  const { dependencies } = bandDependencies({ score: 16, verdict });
+  const queries = [];
+  dependencies.searchHybridChunks = async ({ collectionName }) =>
+    collectionName === "session_chunks" ? [] : [HEAT_CHUNK, WITHHOLDING_CHUNK];
+  dependencies.rerankClient = {
+    rerank: async ({ query, documents }) => {
+      queries.push(query);
+      return documents.map((document) =>
+        /withhold/.test(query) && /withhold/.test(document) ? 17 : /heat/.test(document) ? 16 : 15,
+      );
+    },
+  };
+  return { queries, dependencies };
+};
+
+test("a question in scope is re-ranked with the check's search query before it is answered", async () => {
+  const { queries, dependencies } = heatAndWithholding("yes\nwithholding rent until the landlord makes repairs");
+
+  const result = await askInBand(dependencies);
+
+  assert.equal(queries.length, 2);
+  // The renter's own words stay in the query; the check adds the handbook's.
+  assert.match(queries[1], /My heat has been broken for a week/);
+  assert.match(queries[1], /withholding rent until the landlord makes repairs/);
+  // The answer cites c1, now the chunk that says rent may be withheld.
+  assert.deepEqual(result.citations.map((citation) => citation.sourceName), ["ch08_getting_repairs_made.pdf"]);
+});
+
+test("a yes without a search query keeps the first ranking", async () => {
+  const { queries, dependencies } = heatAndWithholding("yes");
+
+  const result = await askInBand(dependencies);
+
+  assert.equal(queries.length, 1);
+  assert.deepEqual(result.citations.map((citation) => citation.sourceName), ["handout_ch06_utilities.pdf"]);
+});
+
+test("when ranking again with the search query fails, the first ranking stands", async () => {
+  const { dependencies } = heatAndWithholding("yes\nwithholding rent until the landlord makes repairs");
+  let calls = 0;
+  dependencies.rerankClient = {
+    rerank: async ({ documents }) => {
+      calls += 1;
+      if ( calls === 2 ) {
+        throw Object.assign(new Error("rerank unavailable"), { status: 400 });
+      }
+      return documents.map((document) => (/heat/.test(document) ? 16 : 15));
+    },
+  };
+
+  const result = await askInBand(dependencies);
+
+  assert.equal(calls, 2);
+  assert.deepEqual(result.citations.map((citation) => citation.sourceName), ["handout_ch06_utilities.pdf"]);
+});
+
+// The floor and the band were decided on the first ranking; the query's
+// ranking only picks which candidates the model sees, so its scale does not
+// have to clear a floor set on the renter's words.
+test("the search query's ranking orders the evidence even when its scores sit below the floor", async () => {
+  const { dependencies } = heatAndWithholding("yes\nwithholding rent until the landlord makes repairs");
+  dependencies.rerankClient = {
+    rerank: async ({ query, documents }) =>
+      documents.map((document) => {
+        if ( !/withhold/.test(query) ) {
+          return /heat/.test(document) ? 16 : 15;
+        }
+        return /withhold/.test(document) ? 14 : 13;
+      }),
+  };
+
+  const result = await askInBand(dependencies);
+
+  assert.deepEqual(result.citations.map((citation) => citation.sourceName), ["ch08_getting_repairs_made.pdf"]);
+});

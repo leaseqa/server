@@ -201,7 +201,9 @@
           "let your landlord know",
           "let the landlord know",
           "inform your landlord",
-          "inform the landlord"
+          "inform the landlord",
+          "write your landlord",
+          "write the landlord"
         ],
         "source": "Chapter 8: Does the landlord know about the defective conditions (and know this before you were behind in your rent)?"
       }
@@ -666,7 +668,8 @@
           "caps deposits at one month",
           "caps the deposit at one month",
           "limited to one month",
-          "maximum of one month"
+          "maximum of one month",
+          "caps security deposits at one month"
         ],
         "source": "Handout 3: A security deposit cannot be more than your 1st month's rent."
       },
@@ -822,7 +825,8 @@
           "caps deposits at one month",
           "caps the deposit at one month",
           "limited to one month",
-          "maximum of one month"
+          "maximum of one month",
+          "caps security deposits at one month"
         ],
         "source": "Handout 3: A security deposit cannot be more than your 1st month's rent."
       }
@@ -1034,7 +1038,9 @@
           "let your landlord know",
           "let the landlord know",
           "inform your landlord",
-          "inform the landlord"
+          "inform the landlord",
+          "write your landlord",
+          "write the landlord"
         ],
         "source": "Handout 8: Before you are behind in rent, write your landlord a letter, list the repairs needed, and say you will withhold rent until the problems are fixed."
       }

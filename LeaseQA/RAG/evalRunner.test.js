@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import * as evalRunner from "../../scripts/run-rag-eval.js";
-import { sessionChunkFor } from "../../scripts/report-rag-retrieval.js";
+import { parseReportArgs, sessionChunkFor } from "../../scripts/report-rag-retrieval.js";
 
 const knowledgeCitation = (chapterRef) => ({
   citationId: `knowledge-${chapterRef}`,
@@ -379,6 +379,18 @@ test("the retrieval report ranks the same session text the eval sends", () => {
     sessionChunkFor({ ...supportedCase, sourceText: "   " }).text,
     evalRunner.EVAL_PLACEHOLDER_SOURCE_TEXT,
   );
+});
+
+test("the retrieval report can list more of the ranking than the model sees", () => {
+  assert.deepEqual(parseReportArgs(["--ids=gen-no-heat-rent,ch08-rent-withholding", "--top=30"]), {
+    ids: ["gen-no-heat-rent", "ch08-rent-withholding"],
+    candidatesPerGroup: null,
+    top: 30,
+  });
+  // Unset or unusable, the report lists what reaches the model.
+  assert.equal(parseReportArgs([]).top, null);
+  assert.equal(parseReportArgs(["--top=0"]).top, null);
+  assert.equal(parseReportArgs(["--top=many"]).top, null);
 });
 
 test("a source miss costs the pass rate, not the safe rate", async (t) => {
