@@ -29,6 +29,14 @@ const profileUpdateSchema = z
     message: "At least one profile field is required.",
   });
 
+const passwordChangeSchema = z
+  .object({
+    currentPassword: password,
+    newPassword: password,
+  })
+  .strict();
+
 export const parseRegistration = (body) => registrationSchema.parse(body);
 export const parseLogin = (body) => loginSchema.parse(body);
 export const parseProfileUpdate = (body) => profileUpdateSchema.parse(body);
+export const parsePasswordChange = (body) => passwordChangeSchema.parse(body);

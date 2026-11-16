@@ -40,6 +40,13 @@ export const deleteUser = (userId) =>
 export const verifyPassword = (plainPassword, hashedPassword) =>
   bcrypt.compareSync(plainPassword, hashedPassword);
 
+export const updatePassword = (userId, password) =>
+  model.findByIdAndUpdate(
+    userId,
+    { hashedPassword: bcrypt.hashSync(password, 10) },
+    { new: true },
+  );
+
 export const verifyLawyer = (userId) =>
   model.findByIdAndUpdate(
     userId,
@@ -57,5 +64,7 @@ export const sanitizeUser = (user) => {
   if ( !user ) return null;
   const userObj = user.toObject ? user.toObject() : user;
   const { hashedPassword, ...rest } = userObj;
-  return rest;
+  // Whether there is a password to change: accounts created through Google
+  // have none, and the account page offers the form only when there is one.
+  return { ...rest, hasPassword: Boolean(hashedPassword) };
 };

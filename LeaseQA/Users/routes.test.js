@@ -109,6 +109,7 @@ test("PATCH /:userId/ban persists banned state and returns the resolved user", a
       _id: "user-1",
       username: "Tenant",
       banned: true,
+      hasPassword: false,
     });
   } finally {
     userModel.findById = originalFindById;

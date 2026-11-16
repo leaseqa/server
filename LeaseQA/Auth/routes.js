@@ -2,10 +2,10 @@ import express from "express";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import * as usersDao from "../Users/dao.js";
-import { sendData, sendError } from "../utils/responses.js";
-import { isBlockedDemoAccount } from "../shared/demoAccounts.js";
+import { sendData, sendError, sendUnauthorized } from "../utils/responses.js";
+import { isBlockedDemoAccount, isDemoAccountEmail } from "../shared/demoAccounts.js";
 import { requireUser, scrubBlockedDemoSession } from "../utils/session.js";
-import { parseLogin, parseRegistration } from "./input.js";
+import { parseLogin, parsePasswordChange, parseRegistration } from "./input.js";
 import { ZodError } from "zod";
 
 const sendValidationError = (res, error) => sendError(res, {
@@ -202,6 +202,63 @@ export const createAuthRouter = (dao = usersDao, { env = process.env } = {}) => 
     const currentUser = requireUser(req, res, { env });
     if ( !currentUser ) return;
     return sendData(res, currentUser);
+  });
+
+  router.post("/password", async (req, res, next) => {
+    try {
+      const currentUser = requireUser(req, res, { env });
+      if ( !currentUser ) return;
+
+      let change;
+      try {
+        change = parsePasswordChange(req.body);
+      } catch ( error ) {
+        if ( error instanceof ZodError ) return sendValidationError(res, error);
+        throw error;
+      }
+
+      const user = await dao.findUserById(currentUser._id);
+      if ( !user ) return sendUnauthorized(res, "Sign in again to change your password.");
+      // Everyone who tries the demo signs in with the same password.
+      if ( isDemoAccountEmail(user.email) ) {
+        return sendError(res, {
+          code: "FORBIDDEN",
+          message: "Demo accounts keep their shared password.",
+          status: 403,
+        });
+      }
+      if ( !user.hashedPassword ) {
+        return sendError(res, {
+          code: "NO_PASSWORD",
+          message: "This account signs in with Google, so it has no password to change.",
+          status: 409,
+        });
+      }
+      // 400 rather than 401: the session is fine, the form is not.
+      if ( !dao.verifyPassword(change.currentPassword, user.hashedPassword) ) {
+        return sendError(res, {
+          code: "INVALID_CURRENT_PASSWORD",
+          message: "Current password is incorrect.",
+          status: 400,
+        });
+      }
+      if ( change.newPassword === change.currentPassword ) {
+        return sendError(res, {
+          code: "VALIDATION_ERROR",
+          message: "Choose a new password that differs from the current one.",
+          status: 400,
+        });
+      }
+
+      const updated = await dao.updatePassword(user._id, change.newPassword);
+      // A fresh session id, as at sign-in, so an id that leaked before the
+      // change stops working with it.
+      const safeUser = await establishAuthenticatedSession(req, updated, dao);
+      console.log("[Auth] password_changed");
+      return sendData(res, safeUser);
+    } catch ( error ) {
+      return next(error);
+    }
   });
 
   return router;
