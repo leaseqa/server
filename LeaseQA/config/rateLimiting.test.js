@@ -4,11 +4,11 @@ import assert from "node:assert/strict";
 import { createApplication } from "../app.js";
 
 // The real budgets, not the CI-raised ones: CI_DISABLE_RATE_LIMIT is left unset.
-const startApp = async (t, { trustProxy } = {}) => {
+const startApp = async (t, { trustProxy, currentUser } = {}) => {
   const app = createApplication({
     env: { CLIENT_URL: "http://localhost:3000" },
     sessionMiddleware: (req, _res, next) => {
-      req.session = {};
+      req.session = currentUser ? { currentUser } : {};
       next();
     },
   });
@@ -98,4 +98,25 @@ test("every limiter answers in the API's JSON error shape", async (t) => {
   const body = await response.json();
   assert.equal(body.error.code, "RATE_LIMITED");
   assert.match(body.error.message, /Wait a minute/);
+});
+
+test("password change attempts count against the signed-in user", async (t) => {
+  const baseUrl = await startApp(t, {
+    currentUser: { _id: "user-1", email: "tenant@example.com", role: "tenant" },
+  });
+  // An empty body fails validation after the session check, before any lookup.
+  const attempt = () => fetch(`${baseUrl}/api/auth/password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+
+  for ( let i = 0; i < 10; i += 1 ) {
+    const response = await attempt();
+    assert.equal(response.status, 400, `attempt ${i + 1}`);
+  }
+
+  const limited = await attempt();
+  assert.equal(limited.status, 429);
+  assert.equal((await limited.json()).error.code, "RATE_LIMITED");
 });

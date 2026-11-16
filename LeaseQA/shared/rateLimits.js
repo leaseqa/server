@@ -25,8 +25,9 @@ export const isRagRead = (method) =>
 // Only the requests that test a credential spend the sign-in budget. It used to
 // cover all of /api/auth, so the session check every page load makes used it up
 // too: ten loads in fifteen minutes and the next sign-in got a 429, and a
-// signed-in user who reloaded was shown as signed out.
-export const CREDENTIAL_ROUTES = ["/api/auth/login", "/api/auth/register"];
+// signed-in user who reloaded was shown as signed out. Changing a password
+// tests the current one, so it is counted the same way.
+export const CREDENTIAL_ROUTES = ["/api/auth/login", "/api/auth/register", "/api/auth/password"];
 export const CREDENTIAL_LIMIT = { windowMs: 15 * MINUTE, max: 10 };
 
 // The budget belongs to the account, not the address. Requests reach the server

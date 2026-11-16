@@ -3,9 +3,27 @@ import assert from "node:assert/strict";
 
 import {
   parseLogin,
+  parsePasswordChange,
   parseProfileUpdate,
   parseRegistration,
 } from "./input.js";
+
+test("parsePasswordChange needs both passwords and nothing else", () => {
+  assert.deepEqual(
+    parsePasswordChange({ currentPassword: "old-secret", newPassword: "new-secret" }),
+    { currentPassword: "old-secret", newPassword: "new-secret" },
+  );
+  assert.throws(() => parsePasswordChange({ newPassword: "new-secret" }));
+  assert.throws(() => parsePasswordChange({ currentPassword: "old-secret", newPassword: "" }));
+  assert.throws(
+    () => parsePasswordChange({
+      currentPassword: "old-secret",
+      newPassword: "new-secret",
+      email: "tenant@example.com",
+    }),
+    /Unrecognized key/,
+  );
+});
 
 test("parseRegistration normalizes public fields and forces tenant role", () => {
   assert.deepEqual(

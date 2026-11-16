@@ -690,3 +690,129 @@ test("POST /logout destroys the session and clears the cookie", async () => {
   assert.equal(res.clearedCookie, "connect.sid");
   assert.deepEqual(res.payload.data, { success: true });
 });
+
+const passwordUser = (overrides = {}) => ({
+  _id: "user-1",
+  email: "tenant@example.com",
+  username: "Tenant",
+  hashedPassword: "hash-of-old-secret",
+  role: "tenant",
+  ...overrides,
+});
+
+const createPasswordRouter = (user, updates = []) => createAuthRouter({
+  findUserById: async () => user,
+  verifyPassword: (plain, hash) => hash === "hash-of-old-secret" && plain === "old-secret",
+  updatePassword: async (id, password) => {
+    updates.push({ id, password });
+    return { ...user, hashedPassword: `hash-of-${password}` };
+  },
+  sanitizeUser: ({ hashedPassword, ...safeUser }) => ({
+    ...safeUser,
+    hasPassword: Boolean(hashedPassword),
+  }),
+});
+
+const signedInSession = () => ({
+  currentUser: { _id: "user-1", email: "tenant@example.com", role: "tenant" },
+  regenerated: false,
+  regenerate(callback) {
+    this.regenerated = true;
+    callback(null);
+  },
+  save(callback) {
+    callback(null);
+  },
+});
+
+const changePassword = async (router, body, session = signedInSession()) => {
+  const handler = getRouteHandler(router, "post", "/password");
+  const req = { body, session, sessionID: "session-1" };
+  const res = createResponse();
+  await handler(req, res);
+  return { req, res };
+};
+
+test("POST /password stores the new password and starts a fresh session", async () => {
+  const updates = [];
+  const router = createPasswordRouter(passwordUser(), updates);
+
+  const { req, res } = await changePassword(router, {
+    currentPassword: "old-secret",
+    newPassword: "new-secret",
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(updates, [{ id: "user-1", password: "new-secret" }]);
+  assert.equal(req.session.regenerated, true);
+  assert.equal(res.payload.data.hasPassword, true);
+  assert.equal("hashedPassword" in res.payload.data, false);
+});
+
+test("POST /password refuses a wrong current password and changes nothing", async () => {
+  const updates = [];
+  const router = createPasswordRouter(passwordUser(), updates);
+
+  const { res } = await changePassword(router, {
+    currentPassword: "guess",
+    newPassword: "new-secret",
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.error.code, "INVALID_CURRENT_PASSWORD");
+  assert.deepEqual(updates, []);
+});
+
+test("POST /password rejects a new password equal to the current one", async () => {
+  const updates = [];
+  const router = createPasswordRouter(passwordUser(), updates);
+
+  const { res } = await changePassword(router, {
+    currentPassword: "old-secret",
+    newPassword: "old-secret",
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.error.code, "VALIDATION_ERROR");
+  assert.deepEqual(updates, []);
+});
+
+test("POST /password tells an account made through Google that it has no password", async () => {
+  const router = createPasswordRouter(passwordUser({ hashedPassword: undefined, googleId: "g-1" }));
+
+  const { res } = await changePassword(router, {
+    currentPassword: "anything",
+    newPassword: "new-secret",
+  });
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.payload.error.code, "NO_PASSWORD");
+});
+
+test("POST /password keeps the demo accounts' shared password", async () => {
+  const updates = [];
+  const router = createPasswordRouter(passwordUser({ email: "tenant@leaseqa.dev" }), updates);
+
+  const { res } = await changePassword(router, {
+    currentPassword: "old-secret",
+    newPassword: "new-secret",
+  });
+
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(updates, []);
+});
+
+test("POST /password needs a signed-in user and a complete body", async () => {
+  const router = createPasswordRouter(passwordUser());
+
+  const signedOut = await changePassword(
+    router,
+    { currentPassword: "old-secret", newPassword: "new-secret" },
+    {},
+  );
+  assert.equal(signedOut.res.statusCode, 401);
+
+  const incomplete = await changePassword(router, { currentPassword: "old-secret" });
+  assert.equal(incomplete.res.statusCode, 400);
+  assert.equal(incomplete.res.payload.error.code, "VALIDATION_ERROR");
+});
