@@ -38,7 +38,7 @@ services:
     # CLIs, run locally/CI).
     envVars:
       - key: NODE_VERSION
-        value: 24.19.0
+        value: 26.13.1
 
       # App / auth
       - key: SERVER_URL
