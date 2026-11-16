@@ -30,17 +30,27 @@ export const isRagRead = (method) =>
 export const CREDENTIAL_ROUTES = ["/api/auth/login", "/api/auth/register", "/api/auth/password"];
 export const CREDENTIAL_LIMIT = { windowMs: 15 * MINUTE, max: 10 };
 
+const signedInKey = (req) => {
+  const userId = req.session?.currentUser?._id;
+  return userId ? `user:${userId}` : null;
+};
+const addressKey = (req) => `ip:${ipKeyGenerator(req.ip)}`;
+
 // The budget belongs to the account, not the address. Requests reach the server
 // through Render's Cloudflare edge (and Vercel's rewrite before that), and
 // index.js trusts one hop, so req.ip is an edge node that many users share: one
 // person's failed attempts locked out everyone behind the same node. Keying by
 // the account still stops anyone guessing one password, from any address.
 export const credentialKey = (req) => {
-  const userId = req.session?.currentUser?._id;
-  if ( userId ) return `user:${userId}`;
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-  return email ? `email:${email}` : `ip:${ipKeyGenerator(req.ip)}`;
+  return signedInKey(req) ?? (email ? `email:${email}` : addressKey(req));
 };
+
+// The other budgets are per signed-in user for the same reason. Guests fall back
+// to the address, so in production they all draw from one pool. Their browser
+// session would tell them apart, but a script can start a new one with every
+// request, and the RAG budgets exist to cap what generation costs.
+export const requesterKey = (req) => signedInKey(req) ?? addressKey(req);
 
 // Every limiter answers with the same JSON error body as the routes, so the
 // client can show the message instead of "Request failed with status code 429".

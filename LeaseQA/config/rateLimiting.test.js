@@ -2,13 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createApplication } from "../app.js";
+import { RAG_READ_LIMIT, RAG_WRITE_LIMIT } from "../shared/rateLimits.js";
 
 // The real budgets, not the CI-raised ones: CI_DISABLE_RATE_LIMIT is left unset.
 const startApp = async (t, { trustProxy, currentUser } = {}) => {
   const app = createApplication({
     env: { CLIENT_URL: "http://localhost:3000" },
     sessionMiddleware: (req, _res, next) => {
-      req.session = currentUser ? { currentUser } : {};
+      // X-Test-User signs one request in as that user; X-Test-Session gives a
+      // guest request a browser session of its own.
+      const userId = req.get("X-Test-User");
+      const user = userId ? { _id: userId } : currentUser;
+      req.session = user ? { currentUser: user } : {};
+      req.sessionID = req.get("X-Test-Session");
       next();
     },
   });
@@ -28,6 +34,20 @@ const failedSignIn = (baseUrl, email, headers = {}) =>
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify({ email, password: "" }),
+  });
+
+// Neither path is a route. The limiters sit in front of the routers, so they
+// count these like real calls, without reaching the model or a database.
+const REVIEW_PATH = "/api/rag/not-a-route";
+const OTHER_PATH = "/api/folders/not-a-route";
+
+const call = (baseUrl, path, { method = "GET", user, browserSession } = {}) =>
+  fetch(`${baseUrl}${path}`, {
+    method,
+    headers: {
+      ...(user && { "X-Test-User": user }),
+      ...(browserSession && { "X-Test-Session": browserSession }),
+    },
   });
 
 test("the session check a page load makes never spends the sign-in budget", async (t) => {
@@ -119,4 +139,64 @@ test("password change attempts count against the signed-in user", async (t) => {
   const limited = await attempt();
   assert.equal(limited.status, 429);
   assert.equal((await limited.json()).error.code, "RATE_LIMITED");
+});
+
+test("each signed-in user has their own lease review budget", async (t) => {
+  const baseUrl = await startApp(t);
+
+  for ( let i = 0; i < RAG_WRITE_LIMIT.max; i += 1 ) {
+    const response = await call(baseUrl, REVIEW_PATH, { method: "POST", user: "user-a" });
+    assert.equal(response.status, 404, `write ${i + 1}`);
+  }
+
+  const limited = await call(baseUrl, REVIEW_PATH, { method: "POST", user: "user-a" });
+  assert.equal(limited.status, 429);
+  assert.match((await limited.json()).error.message, /lease review budget/);
+
+  const otherUser = await call(baseUrl, REVIEW_PATH, { method: "POST", user: "user-b" });
+  assert.equal(otherUser.status, 404);
+  const guest = await call(baseUrl, REVIEW_PATH, { method: "POST" });
+  assert.equal(guest.status, 404);
+});
+
+test("guests share one lease review pool, however many sessions they start", async (t) => {
+  const baseUrl = await startApp(t);
+
+  for ( let i = 0; i < RAG_WRITE_LIMIT.max; i += 1 ) {
+    await call(baseUrl, REVIEW_PATH, { method: "POST", browserSession: `guest-${i}` });
+  }
+
+  const freshSession = await call(baseUrl, REVIEW_PATH, { method: "POST", browserSession: "guest-new" });
+  assert.equal(freshSession.status, 429);
+  const signedIn = await call(baseUrl, REVIEW_PATH, { method: "POST", user: "user-a" });
+  assert.equal(signedIn.status, 404);
+});
+
+test("each signed-in user has their own lease review read budget", async (t) => {
+  // The general limit stops a test at 100 requests a minute, long before 240
+  // reads, so this checks the count the read limiter reports instead.
+  const baseUrl = await startApp(t);
+
+  for ( let i = 0; i < 5; i += 1 ) {
+    await call(baseUrl, REVIEW_PATH, { user: "user-a" });
+  }
+
+  const userA = await call(baseUrl, REVIEW_PATH, { user: "user-a" });
+  const userB = await call(baseUrl, REVIEW_PATH, { user: "user-b" });
+  assert.equal(userA.headers.get("x-ratelimit-limit"), String(RAG_READ_LIMIT.max));
+  assert.equal(userA.headers.get("x-ratelimit-remaining"), String(RAG_READ_LIMIT.max - 6));
+  assert.equal(userB.headers.get("x-ratelimit-remaining"), String(RAG_READ_LIMIT.max - 1));
+});
+
+test("each signed-in user has their own general budget", async (t) => {
+  const baseUrl = await startApp(t);
+
+  for ( let i = 0; i < 100; i += 1 ) {
+    const response = await call(baseUrl, OTHER_PATH, { user: "user-a" });
+    assert.equal(response.status, 404, `request ${i + 1}`);
+  }
+
+  assert.equal((await call(baseUrl, OTHER_PATH, { user: "user-a" })).status, 429);
+  assert.equal((await call(baseUrl, OTHER_PATH, { user: "user-b" })).status, 404);
+  assert.equal((await call(baseUrl, OTHER_PATH)).status, 404);
 });

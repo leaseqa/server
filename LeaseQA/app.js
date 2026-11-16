@@ -14,6 +14,7 @@ import {
   credentialKey,
   isRagRead,
   rateLimitedResponse,
+  requesterKey,
 } from "./shared/rateLimits.js";
 import answerRoutes from "./Answers/routes.js";
 import discussionRoutes from "./Discussions/routes.js";
@@ -66,18 +67,21 @@ export const createApplication = ({
   const ragReadLimiter = rateLimit({
     ...RAG_READ_LIMIT,
     max: isTest ? 10000 : RAG_READ_LIMIT.max,
+    keyGenerator: requesterKey,
     skip: (req) => !isRagRead(req.method),
     handler: rateLimitedResponse("Too many lease review requests this hour. Try again later."),
   });
   const ragWriteLimiter = rateLimit({
     ...RAG_WRITE_LIMIT,
     max: isTest ? 10000 : RAG_WRITE_LIMIT.max,
+    keyGenerator: requesterKey,
     skip: (req) => isRagRead(req.method),
     handler: rateLimitedResponse("This hour's lease review budget is used up. Try again later."),
   });
   const generalLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: isTest ? 10000 : 100,
+    keyGenerator: requesterKey,
     handler: rateLimitedResponse("Too many requests. Wait a minute and try again."),
   });
 
